@@ -17,6 +17,7 @@ jobs:
           cd ../
           mkdir output
           cp -R ./frontron/docs/* ./output
+          cp -R ./output ./frontron/docs/*
       - name: Pushes to another repository
         id: push_directory
         uses: cpina/github-action-push-to-another-repository@main

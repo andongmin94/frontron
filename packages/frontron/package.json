@@ -1,6 +1,6 @@
 {
-  "name": "frontron-react-ts",
-  "version": "0.0.3",
+  "name": "frontron",
+  "version": "0.0.5",
   "type": "module",
   "license": "MIT",
   "author": "andongmin",

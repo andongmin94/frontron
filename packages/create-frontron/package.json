@@ -1,0 +1,52 @@
+{
+  "name": "create-frontron",
+  "version": "0.0.7",
+  "type": "module",
+  "license": "MIT",
+  "author": "andongmin",
+  "bin": {
+    "create-frontron": "index.js",
+    "cva": "index.js"
+  },
+  "files": [
+    "index.js",
+    "template-*/**",
+    "dist"
+  ],
+  "scripts": {
+    "dev": "unbuild --stub",
+    "build": "unbuild",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": "^18.0.0 || >=20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andongmin/frontron.git"
+  },
+  "bugs": {
+    "url": "https://github.com/andongmin/frontron/issues"
+  },
+  "homepage": "https://frontron.vercel.app",
+  "dependencies": {
+    "@types/minimist": "^1.2.5",
+    "@types/prompts": "^2.4.9",
+    "cross-spawn": "^7.0.3",
+    "isexe": "latest",
+    "kleur": "latest",
+    "kolorist": "^1.8.0",
+    "minimist": "^1.2.8",
+    "path-key": "latest",
+    "prompts": "^2.4.2",
+    "shebang-command": "latest",
+    "shebang-regex": "latest",
+    "sisteransi": "latest",
+    "unbuild": "^2.0.0",
+    "which": "latest"
+  },
+  "devDependencies": {
+    "@types/cross-spawn": "^6.0.6"
+  }
+}

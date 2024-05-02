@@ -25,7 +25,7 @@ jobs:
           API_TOKEN_GITHUB: ${{ secrets.TOKEN }}
         with:
           source-directory: 'output'
-          destination-github-username: Frontron
+          destination-github-username: frontron
           destination-repository-name: frontron
           user-email: andongmin94@gmail.com
           commit-message: ${{ github.event.commits[0].message }}

@@ -325,6 +325,8 @@ async function init() {
   )
 
   pkg.name = packageName || getProjectName()
+  pkg.build.appId = pkg.name
+  pkg.build.productName = pkg.name
 
   write('package.json', JSON.stringify(pkg, null, 2) + '\n')
 

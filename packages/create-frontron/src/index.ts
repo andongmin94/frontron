@@ -87,12 +87,22 @@ const FRAMEWORKS: Framework[] = [
     color: white,
     variants: [
       {
-        name: 'next-ts',
+        name: 'next-app-ts',
         display: 'TypeScript',
         color: blue,
       },
       {
-        name: 'next',
+        name: 'next-page-ts',
+        display: 'TypeScript',
+        color: blue,
+      },
+      {
+        name: 'next-app',
+        display: 'JavaScript',
+        color: yellow,
+      },
+      {
+        name: 'next-page',
         display: 'JavaScript',
         color: yellow,
       },
@@ -412,7 +422,7 @@ function setupReactSwc(root: string, isTs: boolean) {
   editFile(path.resolve(root, 'package.json'), (content) => {
     return content.replace(
       /"@vitejs\/plugin-react": ".+?"/,
-      `"@vitejs/plugin-react-swc": "^3.5.0"`,
+      `"@vitejs/plugin-react-swc": "^3.6.0"`,
     )
   })
   editFile(

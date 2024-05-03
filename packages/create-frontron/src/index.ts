@@ -88,22 +88,22 @@ const FRAMEWORKS: Framework[] = [
     variants: [
       {
         name: 'next-app-ts',
-        display: 'TypeScript',
+        display: 'App  Router + TypeScript',
         color: blue,
       },
       {
         name: 'next-page-ts',
-        display: 'TypeScript',
+        display: 'Page Router + TypeScript',
         color: blue,
       },
       {
         name: 'next-app',
-        display: 'JavaScript',
+        display: 'App  Router + JavaScript',
         color: yellow,
       },
       {
         name: 'next-page',
-        display: 'JavaScript',
+        display: 'Page Router + JavaScript',
         color: yellow,
       },
     ],

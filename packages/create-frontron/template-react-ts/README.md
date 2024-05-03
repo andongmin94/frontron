@@ -1,30 +1,33 @@
-# React + TypeScript + Vite
+# React + TypeScript + Vite + Electron Boilerplate
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+<img src="https://github.com/andongmin94/electron-boilerplate/assets/110483588/1131accd-8ea3-4e30-8af1-f551c4e486b1">
 
-Currently, two official plugins are available:
+Used CSS : Tailwind + Shadcn
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+This is boilerplate that based in vite build tool with react + electron.
 
-## Expanding the ESLint configuration
+```
+script
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+npm run dev : only executing react web dev server
 
-- Configure the top-level `parserOptions` property like this:
+npm run build : only react + vite build
 
-```js
-export default {
-  // other rules...
-  parserOptions: {
-    ecmaVersion: 'latest',
-    sourceType: 'module',
-    project: ['./tsconfig.json', './tsconfig.node.json'],
-    tsconfigRootDir: __dirname,
-  },
-}
+npm run elec : only executing electron dev server
+
+npm run app : executing electron dev server after executing react web dev server
+
+npm run app:build : electron build
+// Before doing app:build, changing BASE_URL in main.js localhost:3000 to your url.
 ```
 
-- Replace `plugin:@typescript-eslint/recommended` to `plugin:@typescript-eslint/recommended-type-checked` or `plugin:@typescript-eslint/strict-type-checked`
-- Optionally add `plugin:@typescript-eslint/stylistic-type-checked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and add `plugin:react/recommended` & `plugin:react/jsx-runtime` to the `extends` list
+## Roadmap
+
+- [x] Make react, next.js with typescript and electron.
+- [ ] Make vue with typescript and electron.
+- [ ] Make react, next.js, vue with javascript and electron. (non-TS, add "extends": null in "build")
+- [ ] Make npm modules that packing named "samsung-electron".
+
+## License
+
+Licensed under the [MIT license](https://github.com/andongmin94/electron-boilerplate/blob/react/LICENCE.md).

@@ -7,11 +7,10 @@ import prompts from 'prompts'
 import {
   blue,
   cyan,
-  green,
   red,
   reset,
   yellow,
-  white
+  lightBlue
 } from 'kolorist'
 
 // Avoids autoconversion to number of the project name by defining that the args
@@ -38,37 +37,10 @@ type FrameworkVariant = {
 
 const FRAMEWORKS: Framework[] = [
   {
-    name: 'vue',
-    display: 'Vue',
-    color: green,
-    variants: [
-      {
-        name: 'vue-ts',
-        display: 'TypeScript',
-        color: blue,
-      },
-      {
-        name: 'vue',
-        display: 'JavaScript',
-        color: yellow,
-      },
-    ],
-  },
-  {
     name: 'react',
     display: 'React',
     color: cyan,
     variants: [
-      {
-        name: 'react-ts',
-        display: 'TypeScript',
-        color: blue,
-      },
-      {
-        name: 'react-swc-ts',
-        display: 'TypeScript + SWC',
-        color: blue,
-      },
       {
         name: 'react',
         display: 'JavaScript',
@@ -79,32 +51,49 @@ const FRAMEWORKS: Framework[] = [
         display: 'JavaScript + SWC',
         color: yellow,
       },
+      {
+        name: 'react-ts',
+        display: 'TypeScript',
+        color: lightBlue,
+      },
+      {
+        name: 'react-swc-ts',
+        display: 'TypeScript + SWC',
+        color: lightBlue,
+      }
     ],
   },
   {
-    name: 'next',
-    display: 'Next.js',
-    color: white,
+    name: 'next-page',
+    display: 'Next  Page Router',
+    color: blue,
     variants: [
       {
-        name: 'next-app-ts',
-        display: 'App  Router + TypeScript',
-        color: blue,
+        name: 'next-page',
+        display: 'JavaScript',
+        color: yellow,
       },
       {
         name: 'next-page-ts',
-        display: 'Page Router + TypeScript',
-        color: blue,
+        display: 'TypeScript',
+        color: lightBlue,
       },
+    ],
+  },
+  {
+    name: 'next-app',
+    display: 'Next  App  Router',
+    color: lightBlue,
+    variants: [
       {
         name: 'next-app',
-        display: 'App  Router + JavaScript',
+        display: 'JavaScript',
         color: yellow,
       },
       {
-        name: 'next-page',
-        display: 'Page Router + JavaScript',
-        color: yellow,
+        name: 'next-app-ts',
+        display: 'TypeScript',
+        color: lightBlue,
       },
     ],
   }

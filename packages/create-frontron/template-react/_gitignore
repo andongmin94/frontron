@@ -1,3 +1,8 @@
+# Excepts for git
+node_modules
+dist_app
+*.local
+
 # Logs
 logs
 *.log
@@ -6,12 +11,6 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
-
-node_modules
-out
-dist_app
-dist-ssr
-*.local
 
 # Editor directories and files
 .vscode/*

@@ -3,7 +3,6 @@
   "version": "0.0.1",
   "license": "MIT",
   "author": "Andongmin",
-  "description": "next-app-electron-boilerplate",
   "main": "electron/main.js",
   "build": {
     "appId": "frontron",

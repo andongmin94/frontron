@@ -38,6 +38,23 @@ type FrameworkVariant = {
 
 const FRAMEWORKS: Framework[] = [
   {
+    name: 'vue',
+    display: 'Vue',
+    color: green,
+    variants: [
+      {
+        name: 'vue-ts',
+        display: 'TypeScript',
+        color: blue,
+      },
+      {
+        name: 'vue',
+        display: 'JavaScript',
+        color: yellow,
+      },
+    ],
+  },
+  {
     name: 'react',
     display: 'React',
     color: cyan,
@@ -66,7 +83,7 @@ const FRAMEWORKS: Framework[] = [
   },
   {
     name: 'next',
-    display: 'Next',
+    display: 'Next.js',
     color: white,
     variants: [
       {
@@ -76,23 +93,6 @@ const FRAMEWORKS: Framework[] = [
       },
       {
         name: 'next',
-        display: 'JavaScript',
-        color: yellow,
-      },
-    ],
-  },
-  {
-    name: 'vue',
-    display: 'Vue',
-    color: green,
-    variants: [
-      {
-        name: 'vue-ts',
-        display: 'TypeScript',
-        color: blue,
-      },
-      {
-        name: 'vue',
         display: 'JavaScript',
         color: yellow,
       },
@@ -334,11 +334,11 @@ async function init() {
   switch (pkgManager) {
     case 'yarn':
       console.log('  yarn')
-      console.log('  yarn dev')
+      console.log('  yarn app')
       break
     default:
       console.log(`  ${pkgManager} install`)
-      console.log(`  ${pkgManager} run dev`)
+      console.log(`  ${pkgManager} run app`)
       break
   }
   console.log()

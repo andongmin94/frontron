@@ -31,9 +31,8 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
     "app": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .\"",
-    "app:build": "tsc && vite build && electron-builder"
+    "build": "tsc && vite build && electron-builder"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.4",

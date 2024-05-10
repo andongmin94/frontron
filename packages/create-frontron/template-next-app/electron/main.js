@@ -15,7 +15,7 @@ const PORT = process.env.NODE_ENV === 'development' ? 3000 : 1994;
 const express = require('express');
 const server = express();
 
-// 개발 모드가 아닐 때 빌드 파일 서빙 로직
+// 개발 모드가 아닐때 빌드 파일 서빙 로직
 if (process.env.NODE_ENV !== 'development') {
   // 빌드 파일 서빙
   server.use(express.static(path.join(__dirname, '../out')));
@@ -35,13 +35,6 @@ if (process.env.NODE_ENV !== 'development') {
       }, 1000); // 1초 후에 다시 시도
     }
   });
-}
-
-// 개발 모드일 때 디버깅 단축키 설정
-if (process.env.NODE_ENV === 'development') {
-  // F5 새로고침, F12 개발자 도구 열기
-  electronLocalshortcut.register("F5", () => { console.log('F5 is pressed'); mainWindow.reload() });
-  electronLocalshortcut.register("F12", () => { console.log("F12 is pressed"); mainWindow.webContents.toggleDevTools() });
 }
 
 // 일렉트론 생성 함수
@@ -82,6 +75,10 @@ app.whenReady().then(createWindow).then(() => {
     { label: "Open", type: "normal", click: () => mainWindow.show() },
     { label: "Quit", type: "normal", click: () => app.quit() }
   ]));
+
+  // F5 새로고침, F12 개발자 도구 열기
+  electronLocalshortcut.register("F5", () => { console.log('F5 is pressed'); mainWindow.reload() });
+  electronLocalshortcut.register("F12", () => { console.log("F12 is pressed"); mainWindow.webContents.toggleDevTools() });
 });
 
 module.exports = { mainWindow };

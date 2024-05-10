@@ -1,35 +1,8 @@
 {
   "name": "frontron",
-  "version": "0.0.17",
-  "type": "module",
+  "version": "0.0.29",
   "license": "MIT",
   "author": "andongmin",
-  "main": "src/electron/main.js",
-  "build": {
-    "appId": "frontron",
-    "mac": {
-      "icon": "public/icon.png"
-    },
-    "win": {
-      "icon": "public/icon.png"
-    },
-    "productName": "frontron",
-    "copyright": "Copyright © andongmin",
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true
-    },
-    "files": [
-      "dist/**/*",
-      "src/electron/**/*",
-      "node_modules/**/*",
-      "public/**/*"
-    ],
-    "directories": {
-      "buildResources": "assets",
-      "output": "dist_electron"
-    }
-  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/andongmin94/frontron.git"
@@ -38,82 +11,16 @@
     "url": "https://github.com/andongmin94/frontron/issues"
   },
   "homepage": "https://frontron.vercel.app",
-  "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "elec": "electron .",
-    "app": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && npm run elec\"",
-    "app:build": "electron-builder"
-  },
   "dependencies": {
-    "@hookform/resolvers": "^3.3.4",
-    "@radix-ui/react-accordion": "^1.1.2",
-    "@radix-ui/react-alert-dialog": "^1.0.5",
-    "@radix-ui/react-aspect-ratio": "^1.0.3",
-    "@radix-ui/react-avatar": "^1.0.4",
-    "@radix-ui/react-checkbox": "^1.0.4",
-    "@radix-ui/react-collapsible": "^1.0.3",
-    "@radix-ui/react-context-menu": "^2.1.5",
-    "@radix-ui/react-dialog": "^1.0.5",
-    "@radix-ui/react-dropdown-menu": "^2.0.6",
-    "@radix-ui/react-hover-card": "^1.0.7",
-    "@radix-ui/react-label": "^2.0.2",
-    "@radix-ui/react-menubar": "^1.0.4",
-    "@radix-ui/react-navigation-menu": "^1.1.4",
-    "@radix-ui/react-popover": "^1.0.7",
-    "@radix-ui/react-progress": "^1.0.3",
-    "@radix-ui/react-radio-group": "^1.1.3",
-    "@radix-ui/react-scroll-area": "^1.0.5",
-    "@radix-ui/react-select": "^2.0.0",
-    "@radix-ui/react-separator": "^1.0.3",
-    "@radix-ui/react-slider": "^1.1.2",
-    "@radix-ui/react-slot": "^1.0.2",
-    "@radix-ui/react-switch": "^1.0.3",
-    "@radix-ui/react-tabs": "^1.0.4",
-    "@radix-ui/react-toast": "^1.1.5",
-    "@radix-ui/react-toggle": "^1.0.3",
-    "@radix-ui/react-toggle-group": "^1.0.4",
-    "@radix-ui/react-tooltip": "^1.0.7",
-    "@tanstack/react-table": "^8.16.0",
     "axios": "^1.6.8",
-    "class-variance-authority": "^0.7.0",
-    "clsx": "^2.1.1",
-    "cmdk": "^1.0.0",
-    "date-fns": "^3.6.0",
-    "dotenv": "^16.4.5",
-    "electron-localshortcut": "^3.2.1",
-    "embla-carousel-react": "^8.0.4",
-    "express": "^4.19.2",
-    "https": "^1.0.0",
-    "input-otp": "^1.2.4",
-    "lucide-react": "^0.378.0",
-    "next-themes": "^0.3.0",
-    "react": "^18.3.1",
-    "react-day-picker": "^8.10.1",
-    "react-dom": "^18.3.1",
-    "react-hook-form": "^7.51.4",
-    "react-resizable-panels": "^2.0.19",
-    "sonner": "^1.4.41",
-    "tailwind-merge": "^2.3.0",
-    "tailwindcss-animate": "^1.0.7",
-    "vaul": "^0.9.0",
-    "zod": "^3.23.6",
-    "@types/node": "^20.12.8",
-    "@types/react": "^18.3.1",
-    "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.2.1",
-    "autoprefixer": "^10.4.19",
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
+    "dotenv": "^16.4.5",
     "electron": "^30.0.2",
     "electron-builder": "^24.13.3",
-    "eslint": "^8.57.0",
-    "eslint-plugin-react": "^7.34.1",
-    "eslint-plugin-react-hooks": "^4.6.2",
-    "eslint-plugin-react-refresh": "^0.4.6",
-    "postcss": "^8.4.38",
-    "tailwindcss": "^3.4.3",
-    "vite": "^5.2.11",
+    "electron-localshortcut": "^3.2.1",
+    "express": "^4.19.2",
+    "https": "^1.0.0",
     "wait-on": "^7.2.0"
   }
 }

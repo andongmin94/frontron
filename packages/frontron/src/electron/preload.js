@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('frontron', {
+contextBridge.exposeInMainWorld('electron', {
   send: (channel, data) => {
     ipcRenderer.send(channel, data);
   },
@@ -8,5 +8,3 @@ contextBridge.exposeInMainWorld('frontron', {
     ipcRenderer.on(channel, (event, ...args) => func(...args));
   }
 });
-
-module.exports = { contextBridge };

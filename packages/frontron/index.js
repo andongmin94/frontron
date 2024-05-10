@@ -37,6 +37,13 @@ if (process.env.NODE_ENV !== 'development') {
   });
 }
 
+// 개발 모드일 때 디버깅 단축키 설정
+if (process.env.NODE_ENV === 'development') {
+  // F5 새로고침, F12 개발자 도구 열기
+  electronLocalshortcut.register("F5", () => { console.log('F5 is pressed'); mainWindow.reload() });
+  electronLocalshortcut.register("F12", () => { console.log("F12 is pressed"); mainWindow.webContents.toggleDevTools() });
+}
+
 // 일렉트론 생성 함수
 let mainWindow;
 const createWindow = () => {
@@ -75,12 +82,6 @@ app.whenReady().then(createWindow).then(() => {
     { label: "Open", type: "normal", click: () => mainWindow.show() },
     { label: "Quit", type: "normal", click: () => app.quit() }
   ]));
-
-  // F5 새로고침, F12 개발자 도구 열기
-  electronLocalshortcut.register("F5", () => { console.log('F5 is pressed'); mainWindow.reload() });
-  electronLocalshortcut.register("F12", () => { console.log("F12 is pressed"); mainWindow.webContents.toggleDevTools() });
 });
 
 module.exports = { mainWindow };
-
-// 여기서부터 코드 작성

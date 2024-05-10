@@ -72,8 +72,8 @@ app.whenReady().then(createWindow).then(() => {
   tray.setToolTip("react-electron-boilerplate");
   tray.on("double-click", () => mainWindow.show());
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: "켜기", type: "normal", click: () => mainWindow.show() },
-    { label: "끄기", type: "normal", click: () => app.quit() }
+    { label: "Open", type: "normal", click: () => mainWindow.show() },
+    { label: "Quit", type: "normal", click: () => app.quit() }
   ]));
 
   // F5 새로고침, F12 개발자 도구 열기

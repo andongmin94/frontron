@@ -29,4 +29,5 @@ head:
 
 _November 16, 2023_
 
+
 ![Vite 5 Announcement Cover Image](/icon.png)

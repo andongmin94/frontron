@@ -1,1 +1,1 @@
-const { mainWindow } = require('frontron');
+const { mainWindow } = require('frontron/react');

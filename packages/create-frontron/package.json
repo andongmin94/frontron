@@ -1,6 +1,6 @@
 {
   "name": "create-frontron",
-  "version": "0.0.30",
+  "version": "0.0.31",
   "type": "module",
   "license": "MIT",
   "author": "andongmin",
@@ -24,10 +24,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/andongmin94/frontron.git"
+    "url": "git+https://github.com/frontron/frontron.git"
   },
   "bugs": {
-    "url": "https://github.com/andongmin94/frontron/issues"
+    "url": "https://github.com/frontron/frontron/issues"
   },
   "homepage": "https://frontron.vercel.app",
   "dependencies": {

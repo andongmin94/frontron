@@ -1,12 +1,10 @@
 ---
-title: Configuring Vite
+title: Configuring f
 ---
 
-# Configuring Vite
+# Configuring f
 
-When running `vite` from the command line, Vite will automatically try to resolve a config file named `vite.config.js` inside [project root](/guide/#index-html-and-project-root) (other JS and TS extensions are also supported).
-
-The most basic config file looks like this:
+f
 
 ```js
 import {

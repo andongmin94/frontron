@@ -111,10 +111,6 @@ export default defineConfig({
               link: '/guide/components/breadcrumb',
             },
             {
-              text: 'New',
-              link: '/guide/components/new',
-            },
-            {
               text: 'Button',
               link: '/guide/components/button',
             },

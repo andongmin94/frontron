@@ -1,5 +1,5 @@
 ---
-title: About Frontron
+title: About Frontron Showcase
 author:
   name: The Frontron Team
 date: 2024-05-12
@@ -10,16 +10,16 @@ head:
       content: website
   - - meta
     - property: og:title
-      content: Announcing Frontron
+      content: Frontron Showcase
   - - meta
     - property: og:image
       content: https://frontron/vercel/app/icon.png
   - - meta
     - property: og:url
-      content: https://frontron/vercel/app/announcing-vite5
+      content: https://frontron/vercel/app/showcase-1
   - - meta
     - property: og:description
-      content: Frontron Release Announcement
+      content: Frontron Showcase
   - - meta
     - name: twitter:card
       content: summary_large_image
@@ -28,4 +28,4 @@ head:
 # Frontron is out!
 
 _May 12, 2024
-![Frontron 5 Announcement Cover Image](/icon.png)
+![Frontron Showcase](/icon.png)

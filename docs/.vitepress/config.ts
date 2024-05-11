@@ -286,7 +286,7 @@ export default defineConfig({
           text: 'Config',
           items: [
             {
-              text: 'Configuring Vite',
+              text: 'Configuring f',
               link: '/config/',
             },
             {

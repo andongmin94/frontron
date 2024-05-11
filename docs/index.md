@@ -2,11 +2,11 @@
 layout: home
 
 title: Frontron
-titleTemplate: The Easiest frontend GUI for desktop app development
+titleTemplate: GUI Library for Desktop App Development
 
 hero:
   name: Frontron
-  text: Frontend GUI for Desktop App Development
+  text: GUI Library for Desktop App Development
   tagline:  Made in D101(self-directed) of SSAFY 10th.
   image:
     src: /frontron.svg

@@ -2,14 +2,14 @@ import { defineConfig } from 'vitepress'
 import { transformerTwoslash } from '@shikijs/vitepress-twoslash'
 import { buildEnd } from './buildEnd.config'
 
-const ogDescription = 'The Easiest frontend GUI for desktop app development'
+const ogDescription = 'GUI Library for Desktop App Development'
 const ogImage = 'https://frontron.vercel.app/frontron.svg'
 const ogTitle = 'Frontron'
 const ogUrl = 'https://frontron.vercel.app'
 
 export default defineConfig({
   title: 'Frontron',
-  description: 'The Easiest Frontend GUI for desktop app development',
+  description: 'GUI Library for Desktop App Development',
 
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/frontron.svg' }],

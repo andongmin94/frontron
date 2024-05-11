@@ -17,7 +17,7 @@ hero:
       link: /guide/
     - theme: alt
       text: View on GitHub
-      link: https://github.com/andongmin94/frontron
+      link: https://github.com/frontron/frontron
 ---
 
 <script setup>

@@ -47,15 +47,6 @@ export default defineConfig({
       { icon: 'github', link: 'https://github.com/andongmin94/frontron' },
     ],
 
-    algolia: {
-      appId: '7H67QR5P0A',
-      apiKey: 'deaab78bcdfe96b599497d25acc6460e',
-      indexName: 'frontron',
-      searchParameters: {
-        facetFilters: ['tags:en'],
-      },
-    },
-
     footer: {
       message: `Released under the MIT License`,
       copyright: 'Copyright © 2024 andongmin',

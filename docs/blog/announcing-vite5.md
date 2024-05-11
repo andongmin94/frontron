@@ -1,33 +1,44 @@
 ---
-title: Vite 5.0 is out!
-author:
-  name: The Vite Team
-date: 2023-11-16
-sidebar: false
-head:
-  - - meta
-    - property: og:type
-      content: website
-  - - meta
-    - property: og:title
-      content: Announcing Vite 5
-  - - meta
-    - property: og:image
-      content: https://vitejs.dev/og-image-announcing-vite5.png
-  - - meta
-    - property: og:url
-      content: https://vitejs.dev/blog/announcing-vite5
-  - - meta
-    - property: og:description
-      content: Vite 5 Release Announcement
-  - - meta
-    - name: twitter:card
-      content: summary_large_image
+title: Configuring f
 ---
 
-# Vite 5.0 is out!
+# Configuring f
 
-_November 16, 2023_
+f
 
+```js
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
 
-![Vite 5 Announcement Cover Image](/icon.png)
+export function AccordionDemo() {
+  return (
+    <Accordion type="single" collapsible className="w-full">
+      <AccordionItem value="item-1">
+        <AccordionTrigger>Is it accessible?</AccordionTrigger>
+        <AccordionContent>
+          Yes. It adheres to the WAI-ARIA design pattern.
+        </AccordionContent>
+      </AccordionItem>
+      <AccordionItem value="item-2">
+        <AccordionTrigger>Is it styled?</AccordionTrigger>
+        <AccordionContent>
+          Yes. It comes with default styles that matches the other
+          components&apos; aesthetic.
+        </AccordionContent>
+      </AccordionItem>
+      <AccordionItem value="item-3">
+        <AccordionTrigger>Is it animated?</AccordionTrigger>
+        <AccordionContent>
+          Yes. It&apos;s animated by default, but you can disable it if you
+          prefer.
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
+  )
+}
+
+```

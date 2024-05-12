@@ -16,12 +16,12 @@ jobs:
         run:  apk add nodejs npm
       - name: Build docs 디렉토리
         run: |
-          cd ./frontron/docs
+          cd ./docs
           npm install
           npm run docs-build
       - name: creates output
         run: |
-          cd ../
+          cd ../../
           mkdir output
           cp -R ./frontron/* ./output
           cp -R ./output ./frontron/

@@ -21,7 +21,8 @@ jobs:
           npm run docs-build
       - name: creates output
         run: |
-          cd ../../
+          cd ../
+          cd ../
           mkdir output
           cp -R ./frontron/* ./output
           cp -R ./output ./frontron/

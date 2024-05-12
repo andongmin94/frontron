@@ -13,7 +13,7 @@ jobs:
       - name: Install mustache (to update the date)
         run: apk add ruby && gem install mustache
       - name: Install npm
-        run:  apt-get install -y npm
+        run:  apk add nodejs npm
       - name: Build docs 디렉토리
         run: |
           cd ./frontron/docs

@@ -1,8 +1,8 @@
 ---
-title: Configuring Frontron for React
+title: Configuring Frontron for Next.js Page Router
 ---
 
-# Configuring Frontron for React
+# Configuring Frontron for Next.js Page Router
 
 If you want to use frontron in your current project, you can use npm install.
 

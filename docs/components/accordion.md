@@ -1,11 +1,14 @@
 ---
-title: Configuring f
+title: Accordion
 ---
 
-# Configuring f
+# Accordion
 
-f
+::: tip Preview
+![accordion](/components/accordion.png)
+:::
 
+::: details Code
 ```js
 import {
   Accordion,
@@ -40,5 +43,5 @@ export function AccordionDemo() {
     </Accordion>
   )
 }
-
 ```
+:::

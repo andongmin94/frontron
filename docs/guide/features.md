@@ -12,13 +12,9 @@ import { someMethod } from 'my-dep'
 
 The above will throw an error in the browser. Frontron will detect such bare module imports in all served source files and perform the following:
 
-1. [Pre-bundle](./dep-pre-bundling) them to improve page loading speed and convert CommonJS / UMD modules to ESM. The pre-bundling step is performed with [esbuild](http://esbuild.github.io/) and makes Frontron's cold start time significantly faster than any JavaScript-based bundler.
+1. Pre-bundle them to improve page loading speed and convert CommonJS / UMD modules to ESM. The pre-bundling step is performed with [esbuild](http://esbuild.github.io/) and makes Frontron's cold start time significantly faster than any JavaScript-based bundler.
 
 2. Rewrite the imports to valid URLs like `/node_modules/.vite/deps/my-dep.js?v=f3sf2ebd` so that the browser can import them properly.
-
-**Dependencies are Strongly Cached**
-
-Frontron caches dependency requests via HTTP headers, so if you wish to locally edit/debug a dependency, follow the steps [here](./dep-pre-bundling#browser-cache).
 
 ## TypeScript
 
@@ -28,7 +24,7 @@ Frontron supports importing `.ts` files out of the box.
 
 `.jsx` and `.tsx` files are also supported out of the box. JSX transpilation is also handled via [esbuild](https://esbuild.github.io).
 
-If using JSX without React or Vue, custom `jsxFactory` and `jsxFragment` can be configured using the [`esbuild` option](/config/shared-options.md#esbuild). For example for Preact:
+If using JSX without React or Vue, custom `jsxFactory` and `jsxFragment` can be configured using the `esbuild` option. For example for Preact:
 
 ```js twoslash
 // vite.config.js
@@ -71,7 +67,7 @@ Frontron is pre-configured to support CSS `@import` inlining via `postcss-import
 
 If the project contains valid PostCSS config (any format supported by [postcss-load-config](https://github.com/postcss/postcss-load-config), e.g. `postcss.config.js`), it will be automatically applied to all imported CSS.
 
-Note that CSS minification will run after PostCSS and will use [`build.cssTarget`](/config/build-options.md#build-csstarget) option.
+Note that CSS minification will run after PostCSS and will use `build.cssTarget` option.
 
 ### CSS Modules
 
@@ -91,7 +87,7 @@ import classes from './example.module.css'
 document.getElementById('foo').className = classes.red
 ```
 
-CSS modules behavior can be configured via the [`css.modules` option](/config/shared-options.md#css-modules).
+CSS modules behavior can be configured via the `css.modules` option.
 
 If `css.modules.localsConvention` is set to enable camelCase locals (e.g. `localsConvention: 'camelCaseOnly'`), you can also use named imports:
 
@@ -143,9 +139,6 @@ Special queries can modify how assets are loaded:
 
 ```js twoslash
 import 'vite/client'
-// ---cut---
-// Explicitly load assets as URL
-import assetAsURL from './asset.js?url'
 ```
 
 ```js twoslash
@@ -169,7 +162,7 @@ import 'vite/client'
 import InlineWorker from './worker.js?worker&inline'
 ```
 
-More details in [Static Asset Handling](./assets).
+More details in Static Asset Handling.
 
 ## JSON
 
@@ -365,7 +358,7 @@ const modules = import.meta.glob('./dir/*.js', {
 Note that:
 
 - This is a Vite-only feature and is not a web or ES standard.
-- The glob patterns are treated like import specifiers: they must be either relative (start with `./`) or absolute (start with `/`, resolved relative to project root) or an alias path (see [`resolve.alias` option](/config/shared-options.md#resolve-alias)).
+- The glob patterns are treated like import specifiers: they must be either relative (start with `./`) or absolute (start with `/`, resolved relative to project root) or an alias path (see `resolve.alias` option).
 - The glob matching is done via [`fast-glob`](https://github.com/mrmlnc/fast-glob) - check out its documentation for [supported glob patterns](https://github.com/mrmlnc/fast-glob#pattern-syntax).
 - You should also be aware that all the arguments in the `import.meta.glob` must be **passed as literals**. You can NOT use variables or expressions in them.
 
@@ -411,7 +404,7 @@ init({
 })
 ```
 
-In the production build, `.wasm` files smaller than `assetInlineLimit` will be inlined as base64 strings. Otherwise, they will be treated as a [static asset](./assets) and fetched on-demand.
+In the production build, `.wasm` files smaller than `assetInlineLimit` will be inlined as base64 strings. Otherwise, they will be treated as a static asset and fetched on-demand.
 
 ::: tip NOTE
 [ES Module Integration Proposal for WebAssembly](https://github.com/WebAssembly/esm-integration) is not currently supported.
@@ -420,7 +413,7 @@ Use [`vite-plugin-wasm`](https://github.com/Menci/vite-plugin-wasm) or other com
 
 ### Accessing the WebAssembly Module
 
-If you need access to the `Module` object, e.g. to instantiate it multiple times, use an [explicit URL import](./assets#explicit-url-imports) to resolve the asset, and then perform the instantiation:
+If you need access to the `Module` object, e.g. to instantiate it multiple times, use an explicit URL import to resolve the asset, and then perform the instantiation:
 
 ```js twoslash
 import 'vite/client'
@@ -512,7 +505,7 @@ import 'vite/client'
 import MyWorker from './worker?worker&url'
 ```
 
-See [Worker Options](/config/worker-options.md) for details on configuring the bundling of all workers.
+See Worker Options for details on configuring the bundling of all workers.
 
 ## Content Security Policy (CSP)
 
@@ -520,7 +513,7 @@ To deploy CSP, certain directives or configs must be set due to Vite's internals
 
 ### [`'nonce-{RANDOM}'`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/Sources#nonce-base64-value)
 
-When [`html.cspNonce`](/config/shared-options#html-cspnonce) is set, Frontron adds a nonce attribute with the specified value to any `<script>` and `<style>` tags, as well as `<link>` tags for stylesheets and module preloading. Additionally, when this option is set, Frontron will inject a meta tag (`<meta property="csp-nonce" nonce="PLACEHOLDER" />`).
+When `html.cspNonce` is set, Frontron adds a nonce attribute with the specified value to any `<script>` and `<style>` tags, as well as `<link>` tags for stylesheets and module preloading. Additionally, when this option is set, Frontron will inject a meta tag (`<meta property="csp-nonce" nonce="PLACEHOLDER" />`).
 
 The nonce value of a meta tag with `property="csp-nonce"` will be used by Frontron whenever necessary during both dev and after build.
 
@@ -530,7 +523,7 @@ Ensure that you replace the placeholder with a unique value for each request. Th
 
 ### [`data:`](<https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/Sources#scheme-source:~:text=schemes%20(not%20recommended).-,data%3A,-Allows%20data%3A>)
 
-By default, during build, Frontron inlines small assets as data URIs. Allowing `data:` for related directives (e.g. [`img-src`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/img-src), [`font-src`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/font-src)), or, disabling it by setting [`build.assetsInlineLimit: 0`](/config/build-options#build-assetsinlinelimit) is necessary.
+By default, during build, Frontron inlines small assets as data URIs. Allowing `data:` for related directives (e.g. [`img-src`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/img-src), [`font-src`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/font-src)), or, disabling it by setting `build.assetsInlineLimit: 0` is necessary.
 
 :::warning
 Do not allow `data:` for [`script-src`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/script-src). It will allow injection of arbitrary scripts.
@@ -544,7 +537,7 @@ Do not allow `data:` for [`script-src`](https://developer.mozilla.org/en-US/docs
 
 Frontron automatically extracts the CSS used by modules in an async chunk and generates a separate file for it. The CSS file is automatically loaded via a `<link>` tag when the associated async chunk is loaded, and the async chunk is guaranteed to only be evaluated after the CSS is loaded to avoid [FOUC](https://en.wikipedia.org/wiki/Flash_of_unstyled_content#:~:text=A%20flash%20of%20unstyled%20content,before%20all%20information%20is%20retrieved.).
 
-If you'd rather have all the CSS extracted into a single file, you can disable CSS code splitting by setting [`build.cssCodeSplit`](/config/build-options.md#build-csscodesplit) to `false`.
+If you'd rather have all the CSS extracted into a single file, you can disable CSS code splitting by setting `build.cssCodeSplit` to `false`.
 
 ### Preload Directives Generation
 

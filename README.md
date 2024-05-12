@@ -22,10 +22,12 @@ To get started with Frontron, you need to install it via npm:
 npm install frontron
 ```
 
+## Starting Project with template
+
 Usage
 Here's a simple example to get you started with Frontron:
 
-1. Create a new Frontron project
+### 1. Create a new Frontron project
 You can create a new Frontron project using create-frontron. This tool allows you to scaffold a new project with various templates.
 
 Compatibility Note:
@@ -81,16 +83,19 @@ Currently Supported Template Presets
 
 You can use . for the project name to scaffold in the current directory.
 
-2. Start the development server
+### 2. Start the development server
+
 ```bash
 npm run app
 ```
 This command will start the development server with hot module replacement, making it easy to see your changes in real-time.
 
-3. Build your application for production
+### 3. Build your application for production
+
 ```bash
 npm run build
 ```
+
 This command will bundle your application using Rollup and produce optimized static assets for production.
 
 Documentation

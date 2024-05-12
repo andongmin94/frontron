@@ -1,4 +1,4 @@
-<img src="/docs/public/frontron.svg" alt="logo">
+<img src="/docs/public/frontron.svg" alt="logo" height=165px>
 
 # Frontron <a href="https://npmjs.com/package/frontron"><img src="https://img.shields.io/npm/v/frontron" alt="npm package"></a>
 

@@ -46,7 +46,7 @@ export const core = [
   },
   {
     avatar: 'https://avatars.githubusercontent.com/u/139519997?v=4',
-    name: 'Sooji Pyeon',
+    name: 'Susie Pyun',
     title: 'Developer',
     desc: 'A developer striving  to learn and grow.',
     links: [

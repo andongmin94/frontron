@@ -1,6 +1,6 @@
 {
   "name": "frontron",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "type": "module",
   "license": "MIT",
   "author": "andongmin",
@@ -32,10 +32,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/andongmin/frontron.git"
+    "url": "git+https://github.com/andongmin94/frontron.git"
   },
   "bugs": {
-    "url": "https://github.com/andongmin/frontron/issues"
+    "url": "https://github.com/andongmin94/frontron/issues"
   },
   "homepage": "https://frontron.vercel.app",
   "scripts": {

@@ -4,19 +4,19 @@ title: Configuring Frontron for React
 
 # Configuring Frontron for React
 
-If you want to use frontron in your current project, you can use npm install.
+If you want to use Frontron in your current project, you can use npm install.
 
 ```bash
 npm install frontron
 ```
 
-However, The `install` command needs some configuring in your package and directory.
+However, The `install` command needs some configuration in your package and directory.
 
 The `install` command will prompt you to set some fields in your config.
 There are a few rules to follow for the purposes of this tutorial:
 
 * `entry point` should be `main.cjs`.
-* `author` and `description` can be any value, but are necessary for app packaging(`description` is option but recommend use some values).
+* `author` and `description` can be any value, but are necessary for app packaging(`description` is optional but recommended).
 
 Your `package.json` file should look something like this:
 
@@ -24,20 +24,32 @@ Your `package.json` file should look something like this:
 "name": "my-frontron-app",
 "version": "0.0.1",
 "main": "src/electron/main.cjs",
-"author": "your develop name",
+"author": "your developer name",
 ```
 
 > Note: If you're encountering any issues with installing frontron, please
 > Report to frontron issues.
 
-Finally, you want to be able to execute Frontron-app. In the `scripts`
+Finally, you need to be able to execute your Frontron app. In the `scripts`
 field of your `package.json` config, add a `app` command like so:
 
 ```json
 "scripts": {
-    "app": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .\"",
+    "app": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .\""
 }
 ```
+
+If your local development server runs on a different port, you will need to modify the localhost part accordingly.
+
+For example, if your server runs on port 5173, you should update the script as follows:
+
+```json
+"scripts": {
+    "app": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\""
+}
+```
+
+This adjustment ensures that wait-on correctly waits for your development server to be ready before starting the Frontron application.
 
 This `app` command will let you open your app in development mode.
 
@@ -59,7 +71,7 @@ During execution, Electron will look for this script in the `main`
 field of the app's `package.json` config, which you should have configured during the
 app scaffolding step.
 
-To use `frontron` components in the `main` script, create an empty file named `main.cjs` in the `electron` folder
+To use `frontron` components in the `main` script, create an empty file named `main.cjs` in the `frontron` folder
 of your project's src directory.
 
 > Note: If you run the `start` script again at this point, your app will no longer throw
@@ -99,7 +111,7 @@ The fastest way to distribute your newly created app is using
 
 Add a description to your `package.json` file, otherwise npmbuild will fail. Blank description are not valid.
 
-Add description like next to build your app.
+Add a build field to your package.json like this:.
 
 ```json
 "build": {
@@ -111,7 +123,7 @@ Add description like next to build your app.
     "icon": "public/icon.png"
   },
   "productName": "my-frontron-app",
-  "copyright": "Copyright © your develop name",
+  "copyright": "Copyright © your developer name",
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true

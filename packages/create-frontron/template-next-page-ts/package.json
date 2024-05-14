@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "license": "MIT",
   "author": "Andongmin",
-  "main": "src/electron/main.js",
+  "main": "src/frontron/main.js",
   "build": {
     "appId": "frontron",
     "mac": {
@@ -20,7 +20,7 @@
     },
     "files": [
       "node_modules/**/*",
-      "src/electron/**/*",
+      "src/frontron/**/*",
       "public/**/*",
       "out/**/*"
     ],

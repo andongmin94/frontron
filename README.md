@@ -1,6 +1,8 @@
 <div align=center>
 
-<img src="/docs/public/frontron.svg" alt="logo" height=165px>
+<a href="https://frontron.vercel.app">
+<img src="/docs/public/frontron.svg" alt="logo" height=200px>
+</a>
 
 </div>
 

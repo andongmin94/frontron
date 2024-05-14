@@ -1,6 +1,6 @@
 {
   "name": "frontron",
-  "version": "0.0.34",
+  "version": "0.0.35",
   "license": "MIT",
   "author": "andongmin",
   "repository": {
@@ -16,7 +16,7 @@
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
     "dotenv": "^16.4.5",
-    "electron": "^30.0.2",
+    "electron": "^30.0.4",
     "electron-builder": "^24.13.3",
     "electron-localshortcut": "^3.2.1",
     "express": "^4.19.2",

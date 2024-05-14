@@ -6,18 +6,18 @@ title: Getting Started
 
 ## Overview
 
-Frontron is GUI Library that supports to desktop app development for web developers.
+Frontron is GUI Library that supports desktop app development for web developers.
 
 ## Browser Support
 
-Frontron supports Chromium V8 engine and Electron individual browers.
+Frontron supports Chromium V8 engine and Electron individual Electron browsers.
 
-You can use this for your web project through changing some config in frontron.
+You can use this for your web project by changing some configurations in frontron.
 
 
 ## Viewing Source Code
 
-You can view Frontron templates source code in github repository.
+You can view Frontron templates source code in GitHub repository.
 
 The supported template presets are:
 
@@ -82,7 +82,7 @@ See [create-frontron](https://github.com/frontron/frontron/tree/main/packages/cr
 4. **Favicon**: This icon appears in the browser tab when your application is accessed as a web app.
 5. **Logo**: This is the general logo used throughout your application.
 
-You can see `icon.png` in the `public` directory. Replace this file with your desired icon to update all the mentioned icons simultaneously.
+You can find the `icon.png` file in the `public` directory. Replace this file with your desired icon to update all the mentioned icons simultaneously.
 
 ```
 /public
@@ -93,3 +93,12 @@ To update these icons, simply replace the `icon.png` file in the `public` direct
 
 After replacing the icon, you don't need to restart your application or clear the browser cache to see the changes take effect.
 
+## Options for `Install frontron`
+
+If you want to use Frontron like `install frontron` in your current project, `install` command needs some configuration in your package and directory.
+
+[React](/config/)
+
+[Next.js Page Router](/config/next-page)
+
+[Next.js App Router](/config/next-app)

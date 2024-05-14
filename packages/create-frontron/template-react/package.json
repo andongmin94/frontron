@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "type": "module",
   "author": "Andongmin",
-  "main": "src/electron/main.cjs",
+  "main": "src/frontron/main.cjs",
   "build": {
     "appId": "frontron",
     "mac": {
@@ -20,7 +20,7 @@
     },
     "files": [
       "node_modules/**/*",
-      "src/electron/**/*",
+      "src/frontron/**/*",
       "public/**/*",
       "dist/**/*"
     ],

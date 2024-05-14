@@ -23,7 +23,7 @@ Your `package.json` file should look something like this:
 ```json
 "name": "my-frontron-app",
 "version": "0.0.1",
-"main": "src/electron/main.cjs",
+"main": "src/frontron/main.cjs",
 "author": "your developer name",
 ```
 
@@ -39,15 +39,7 @@ field of your `package.json` config, add a `app` command like so:
 }
 ```
 
-If your local development server runs on a different port, you will need to modify the localhost part accordingly.
-
-For example, if your server runs on port 5173, you should update the script as follows:
-
-```json
-"scripts": {
-    "app": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\""
-}
-```
+If your local development server is running on a different port, use port 3000.
 
 This adjustment ensures that wait-on correctly waits for your development server to be ready before starting the Frontron application.
 

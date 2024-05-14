@@ -23,7 +23,7 @@ Your `package.json` file should look something like this:
 ```json
 "name": "my-frontron-app",
 "version": "0.0.1",
-"main": "src/electron/main.js",
+"main": "src/frontron/main.js",
 "author": "your developer name",
 ```
 

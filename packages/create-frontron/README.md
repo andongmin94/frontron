@@ -32,7 +32,7 @@ Then follow the prompts!
 You can also directly specify the project name and the template you want to use via additional command line options. For example, to scaffold a `frontron` project with React templates, run:
 
 ```bash
-# npm 7+, extra double-dash is needed:
+# npm 20+
 npm create frontron@latest my-react-app -- --template react
 
 # yarn

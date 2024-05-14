@@ -39,6 +39,8 @@ field of your `package.json` config, add a `app` command like so:
 }
 ```
 
+This adjustment ensures that wait-on correctly waits for your development server to be ready before starting the Frontron application.
+
 This `app` command will let you open your app in development mode.
 
 ```bash

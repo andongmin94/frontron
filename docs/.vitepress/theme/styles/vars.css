@@ -5,10 +5,10 @@
 :root {
   --vp-c-brand: #0055ff;
   --vp-c-brand-light: #0055ff;
-  --vp-c-brand-lighter: #0055ff;
-  --vp-c-brand-lightest: #0055ff;
-  --vp-c-brand-dark: #0055ff;
-  --vp-c-brand-darker: #0055ff;
+  --vp-c-brand-lighter: #3075ff;
+  --vp-c-brand-lightest: #3075ff;
+  --vp-c-brand-dark: #3075ff;
+  --vp-c-brand-darker: #3075ff;
   --vp-c-brand-dimm: rgba(100, 108, 255, 0.08);
 }
 

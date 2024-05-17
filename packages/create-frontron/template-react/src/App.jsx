@@ -1,5 +1,5 @@
 import { useState } from "react";
-import frontronLogo from "/icon.png";
+import frontronLogon from "/icon.png";
 import viteLogo from "/vite.svg";
 import reactLogo from "./assets/react.svg";
 import "./App.css";
@@ -10,7 +10,7 @@ function App() {
   return (
     <div className="app">
       <div>
-        <img src={frontronLogo} className="logo frontron" alt="Frontron logo" />
+        <img src={frontronLogon} className="logo frontron" alt="Frontron logo" />
         <img src={reactLogo} className="logo react" alt="React logo" />
         <img src={viteLogo} className="logo" alt="Vite logo" />
       </div>

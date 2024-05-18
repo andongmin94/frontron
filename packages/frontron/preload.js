@@ -8,3 +8,5 @@ contextBridge.exposeInMainWorld('frontron', {
     ipcRenderer.on(channel, (event, ...args) => func(...args));
   }
 });
+
+module.exports = { contextBridge };

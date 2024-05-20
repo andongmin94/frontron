@@ -10,7 +10,7 @@ Frontron is GUI Library that supports desktop app development for web developers
 
 ## Browser Support
 
-Frontron supports Chromium V8 engine and Electron individual Electron browsers.
+Frontron supports Chromium V8 engine and Electron browsers.
 
 You can use this for your web project by changing some configurations in frontron.
 

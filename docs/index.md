@@ -7,7 +7,7 @@ titleTemplate: GUI Library for Desktop App Development
 hero:
   name: Frontron
   text: GUI Library for Desktop App Development
-  tagline:  Made in D101(self-directed) of SSAFY 10th.
+  tagline:  Create desktop app with frontron.
   image:
     src: /frontron.svg
     alt: Frontron

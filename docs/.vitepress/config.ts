@@ -17,7 +17,7 @@ export default defineConfig({
       'link',
       { rel: 'alternate', type: 'application/rss+xml', href: '/blog.rss' },
     ],
-    ['link', { rel: 'main developer', href: 'https://github.com/andongmin94' }],
+    ['link', { rel: 'organization', href: 'https://github.com/frontron' }],
     ['meta', { property: 'og:type', content: 'website' }],
     ['meta', { property: 'og:title', content: ogTitle }],
     ['meta', { property: 'og:image', content: ogImage }],
@@ -39,12 +39,12 @@ export default defineConfig({
     logo: '/frontron.svg',
 
     editLink: {
-      pattern: 'https://github.com/andongmin94/frontron/edit/main/docs',
+      pattern: 'https://github.com/frontron/frontron/edit/main/docs',
       text: 'Suggest changes to this page',
     },
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/andongmin94/frontron' },
+      { icon: 'github', link: 'https://github.com/frontron/frontron' },
     ],
 
     footer: {

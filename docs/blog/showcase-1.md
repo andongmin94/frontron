@@ -1,7 +1,7 @@
 ---
-title: About Frontron Showcase
+title: The First Frontron Showcase
 author:
-  name: The Frontron Team
+  name: Team Frontron
 date: 2024-05-12
 sidebar: false
 head:
@@ -10,7 +10,7 @@ head:
       content: website
   - - meta
     - property: og:title
-      content: Frontron Showcase
+      content: The First Frontron Showcase
   - - meta
     - property: og:image
       content: https://frontron/vercel/app/icon.png
@@ -19,13 +19,13 @@ head:
       content: https://frontron/vercel/app/showcase-1
   - - meta
     - property: og:description
-      content: Frontron Showcase
+      content: The First Frontron Showcase
   - - meta
     - name: twitter:card
       content: summary_large_image
 ---
 
-# Frontron is out!
+# The First Frontron Showcase
 
-_May 12, 2024
+May 12, 2024
 ![Frontron Showcase](/icon.png)

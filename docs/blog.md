@@ -8,6 +8,6 @@ outline: false
 import BlogIndex from './.vitepress/theme/components/BlogIndex.vue'
 </script>
 
-# Frontron Showcase Lists
+# Frontron Showcases
 
 <BlogIndex/>

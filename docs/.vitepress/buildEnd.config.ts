@@ -9,7 +9,7 @@ const blogUrl = `${siteUrl}/blog`
 export const buildEnd = async (config: SiteConfig) => {
   const feed = new Feed({
     title: 'Frontron',
-    description: '프론트엔드 GUI로 가장 빠른 데스크탑 앱 개발',
+    description: 'GUI Library for Desktop App Development',
     id: blogUrl,
     link: blogUrl,
     language: 'en',

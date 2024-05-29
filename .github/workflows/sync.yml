@@ -12,9 +12,16 @@ jobs:
       - uses: actions/checkout@v3
       - name: Install mustache (to update the date)
         run: apk add ruby && gem install mustache
+      - name: Install npm
+        run:  apk add nodejs npm
+      - name: Build docs 디렉토리
+        run: |
+          cd ./docs
+          npm install
+          npm run docs-build
       - name: creates output
         run: |
-          cd ../
+          cd ../../
           mkdir output
           cp -R ./frontron/* ./output
           cp -R ./output ./frontron/

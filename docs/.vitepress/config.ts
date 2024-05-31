@@ -55,13 +55,8 @@ export default defineConfig({
     nav: [
       { text: 'Guide', link: '/guide/', activeMatch: '/guide/' },
       { text: 'Config', link: '/config/', activeMatch: '/config/' },
-      {
-        text: 'Resources',
-        items: [
-          { text: 'Team', link: '/team' },
-          { text: 'Showcase', link: '/blog' },
-        ],
-      },
+      { text: 'Team', link: '/team' },
+      { text: 'Showcase', link: '/blog' },
     ],
 
     sidebar: {
@@ -282,16 +277,16 @@ export default defineConfig({
           text: 'Config',
           items: [
             {
-              text: 'Configuring f',
+              text: 'React',
               link: '/config/',
             },
             {
-              text: 'Shared Options',
-              link: '/config/shared-options',
+              text: ' Next.js Page Router',
+              link: '/config/next-page',
             },
             {
-              text: 'Server Options',
-              link: '/config/server-options',
+              text: 'Next.js App Router',
+              link: '/config/next-app',
             }
           ],
         },

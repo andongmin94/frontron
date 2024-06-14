@@ -24,8 +24,7 @@ The supported template presets are:
 |             JavaScript              |                TypeScript                 |
 | :---------------------------------: | :---------------------------------------: |
 |  [react](https://github.com/andongmin94/frontron/tree/main/packages/create-frontron/template-react)    |  [react-ts](https://github.com/andongmin94/frontron/tree/main/packages/create-frontron/template-react-ts)    |
-|  [next-app](https://github.com/andongmin94/frontron/tree/main/packages/create-frontron/template-next-app)|  [next-app-ts](https://github.com/andongmin94/frontron/tree/main/packages/create-frontron/template-next-app-ts)|
-|  [next-page](https://github.com/andongmin94/frontron/tree/main/packages/create-frontron/template-next-page)  |  [next-page-ts](https://github.com/andongmin94/frontron/tree/main/packages/create-frontron/template-next-page-ts)  |
+|  [next](https://github.com/andongmin94/frontron/tree/main/packages/create-frontron/template-next)|  [next-ts](https://github.com/andongmin94/frontron/tree/main/packages/create-frontron/template-next-ts)|
 
 
 ## Scaffolding Your First Frontron Project
@@ -72,7 +71,7 @@ pnpm create frontron my-react-app --template react
 bun create frontron my-react-app --template react
 ```
 
-See [create-frontron](https://github.com/andongmin94/frontron/tree/main/packages/create-frontron) for more details on each supported template: `react`, `react-ts`, `react-swc`, `react-swc-ts`, `next-page`, `next-paget-ts`, `next-app`, `next-app-ts`.
+See [create-frontron](https://github.com/andongmin94/frontron/tree/main/packages/create-frontron) for more details on each supported template: `react`, `react-ts`, `react-swc`, `react-swc-ts`, `next`, `next-ts`.
 
 ## How to Update Icons
 
@@ -99,6 +98,4 @@ If you want to use Frontron like `install frontron` in your current project, `in
 
 [React](/config/)
 
-[Next.js Page Router](/config/next-page)
-
-[Next.js App Router](/config/next-app)
+[Next.js](/config/next)

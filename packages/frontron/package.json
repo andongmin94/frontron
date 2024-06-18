@@ -1,6 +1,6 @@
 {
   "name": "frontron",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "license": "MIT",
   "author": "andongmin",
   "repository": {
@@ -12,15 +12,13 @@
   },
   "homepage": "https://frontron.vercel.app",
   "dependencies": {
-    "axios": "^1.7.2",
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
     "dotenv": "^16.4.5",
-    "electron": "^31.2.1",
+    "electron": "^31.3.1",
     "electron-builder": "^24.13.3",
     "electron-localshortcut": "^3.2.1",
     "express": "^4.19.2",
-    "https": "^1.0.0",
     "wait-on": "^7.2.0"
   }
 }

@@ -3,13 +3,9 @@ const path = require('node:path');
 const electronLocalshortcut = require("electron-localshortcut");
 const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } = require("electron");
 
-// Web Modules
-const axios = require("axios");
-const https = require("https");
-
 // Environment Variable Setup
 require('dotenv').config();
-const PORT = process.env.NODE_ENV === 'development' ? 3000 : 1994;
+let PORT = process.env.NODE_ENV === 'development' ? 3000 : 1994;
 
 // Local Web Server Modules
 const express = require('express');
@@ -77,7 +73,7 @@ app.whenReady().then(createWindow).then(() => {
   
   // Tray settings
   const tray = new Tray(nativeImage.createFromPath(path.join(__dirname, "../../public/icon.png")));
-  tray.setToolTip("frontron");
+  tray.setToolTip("Frontron");
   tray.on("double-click", () => mainWindow.show());
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: "Open", type: "normal", click: () => mainWindow.show() },

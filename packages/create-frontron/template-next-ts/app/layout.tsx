@@ -1,10 +1,7 @@
-import type { Viewport, Metadata } from "next";
-import { Inter } from "next/font/google";
-import TitleBar from "@/components/TitleBar";
+import type { Viewport, Metadata } from "next"
+import TitleBar from "@/components/TitleBar"
 
-import "./globals.css";
-
-const inter = Inter({ subsets: ["latin"] });
+import "./globals.css"
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -26,8 +23,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
+    <html>
+      <body>
         <TitleBar />
         {children}
       </body>

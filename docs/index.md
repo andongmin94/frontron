@@ -19,16 +19,3 @@ hero:
       text: View on GitHub
       link: https://github.com/andongmin94/frontron
 ---
-
-<script setup>
-import { onMounted } from 'vue'
-
-onMounted(() => {
-  const urlParams = new URLSearchParams(window.location.search)
-  if (urlParams.get('uwu') != null) {
-    const img = document.querySelector('.VPHero .VPImage.image-src')
-    img.src = '/icon.png'
-    img.alt = 'frontron'
-  }
-})
-</script>

@@ -96,6 +96,6 @@ After replacing the icon, you don't need to restart your application or clear th
 
 If you want to use Frontron like `install frontron` in your current project, `install` command needs some configuration in your package and directory.
 
-[React](/config/)
+[React](/guide/config/react)
 
-[Next.js](/config/next)
+[Next.js](/guide/config/next)

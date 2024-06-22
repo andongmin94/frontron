@@ -50,16 +50,16 @@ export default function TitleBar() {
   const [isElectron, setIsElectron] = useState(false);
 
   useEffect(() => {
-    setIsElectron(typeof frontron !== "undefined");
+    setIsElectron(typeof electron !== "undefined");
   }, []);
   const minimize = () => {
-    frontron.send("minimize");
+    electron.send("minimize");
   };
   const maximize = () => {
-    frontron.send("maximize");
+    electron.send("maximize");
   };
   const hidden = () => {
-    frontron.send("hidden");
+    electron.send("hidden");
   };
   return (
     <>

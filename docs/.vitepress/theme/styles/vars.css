@@ -1,4 +1,14 @@
 /**
+ * Fonts
+ * -------------------------------------------------------------------------- */
+
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/PretendardVariable.woff2') format('woff2');
+  font-feature-settings: "rlig" 1, "calt" 1;
+}
+
+/**
  * Colors
  * -------------------------------------------------------------------------- */
 

@@ -65,7 +65,7 @@ const FRAMEWORKS: Framework[] = [
   {
     name: 'next',
     display: 'Next.js',
-    color: lightBlue,
+    color: reset,
     variants: [
       {
         name: 'next',

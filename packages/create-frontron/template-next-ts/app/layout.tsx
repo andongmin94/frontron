@@ -1,20 +1,21 @@
-import type { Viewport, Metadata } from "next"
-import TitleBar from "@/components/TitleBar"
+import type { Metadata, Viewport } from "next";
 
-import "./globals.css"
+import TitleBar from "@/components/TitleBar";
+
+import "./globals.css";
 
 export const viewport: Viewport = {
-  width: 'device-width',
-  initialScale: 1
-}
+  width: "device-width",
+  initialScale: 1,
+};
 
 export const metadata: Metadata = {
   title: "Frontron",
-  openGraph: { title:"Frontron" },
+  openGraph: { title: "Frontron" },
   icons: [
     { rel: "icon", url: "/icon.png" },
-    { rel: "shortcut Icon", url: "/icon.png" }
-  ]
+    { rel: "shortcut Icon", url: "/icon.png" },
+  ],
 };
 
 export default function RootLayout({

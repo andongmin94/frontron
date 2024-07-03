@@ -299,6 +299,7 @@ async function init() {
   pkg.name = packageName || getProjectName()
   pkg.build.appId = pkg.name
   pkg.build.productName = pkg.name
+  pkg.build.nsis.uninstallDisplayName = pkg.name
 
   write('package.json', JSON.stringify(pkg, null, 2) + '\n')
 

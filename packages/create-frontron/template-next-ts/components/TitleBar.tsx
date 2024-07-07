@@ -105,6 +105,7 @@ export default function TitleBar() {
           </div>
         </div>
       )}
+      <div className="h-[30px]" />
     </>
   );
 }

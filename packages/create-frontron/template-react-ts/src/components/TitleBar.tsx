@@ -73,26 +73,26 @@ export default function TitleBar() {
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         >
           <div className="flex items-center pl-2">
-            <img src={frontronLogo} alt="Frontron" className="h-6 w-6" />
+            <img src={frontronLogo} alt="Frontron" className="size-6" />
             &nbsp;&nbsp;
             <span className="text-lg text-white">Frontron</span>
           </div>
           <div style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
             <Button onClick={minimize} size="icon">
-              <Minus className="h-6 w-6" />
+              <Minus className="size-6" />
             </Button>
             &nbsp;
             <Button onClick={maximize} size="icon">
-              <Square className="h-6 w-6" />
+              <Square className="size-6" />
             </Button>
             &nbsp;
             <Button onClick={hidden} size="icon">
-              <X className="h-6 w-6" />
+              <X className="size-6" />
             </Button>
           </div>
         </div>
       )}
-      <div className="h-[30px]" />
+      <div className="h-[40px]" />
     </>
   );
 }

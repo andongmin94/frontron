@@ -83,7 +83,6 @@ app.whenReady().then(createWindow).then(() => {
     if (process.platform !== "darwin") app.quit();
   });
   // macOS-specific settings
-  // macOS-specific settings
   if (process.platform === 'darwin') {
     app.on('before-quit', () => {
       tray.destroy();
@@ -93,11 +92,12 @@ app.whenReady().then(createWindow).then(() => {
       app.dock.show();
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
+  } else {
+    // 모든 플랫폼에 적용되는 activate 이벤트 핸들러 (macOS 제외)
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
   }
-
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
 
   // 타이틀 바 옵션
   ipcMain.on("hidden", () => mainWindow.hide());

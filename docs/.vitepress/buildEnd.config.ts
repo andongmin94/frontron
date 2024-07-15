@@ -3,7 +3,7 @@ import { writeFileSync } from 'fs'
 import { Feed } from 'feed'
 import { createContentLoader, type SiteConfig } from 'vitepress'
 
-const siteUrl = 'https://frontron.vercel.app'
+const siteUrl = 'https://frontron.andongmin.com'
 const blogUrl = `${siteUrl}/blog`
 
 export const buildEnd = async (config: SiteConfig) => {
@@ -13,8 +13,8 @@ export const buildEnd = async (config: SiteConfig) => {
     id: blogUrl,
     link: blogUrl,
     language: 'en',
-    image: 'https://frontron.vercel.app/frontron.svg',
-    favicon: 'https://frontron.vercel.app/frontron.svg',
+    image: 'https://frontron.andongmin.com/frontron.svg',
+    favicon: 'https://frontron.andongmin.com/frontron.svg',
     copyright: 'Copyright © 2024 andongmin',
   })
 

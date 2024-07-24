@@ -1,7 +1,3 @@
----
-title: Sheet
----
-
 # Sheet
 
 ::: tip Preview

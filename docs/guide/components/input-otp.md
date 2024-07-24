@@ -1,7 +1,3 @@
----
-title: Input Otp
----
-
 # Input Otp
 
 ::: tip Preview

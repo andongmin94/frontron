@@ -1,7 +1,3 @@
----
-title: Resizable
----
-
 # Resizable
 
 ::: tip Preview

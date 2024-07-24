@@ -1,7 +1,3 @@
----
-title: Data Table
----
-
 # Data Table
 
 ::: tip Preview

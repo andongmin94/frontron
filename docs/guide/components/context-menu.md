@@ -1,7 +1,3 @@
----
-title: Context Menu
----
-
 # Context Menu
 
 ::: tip Preview

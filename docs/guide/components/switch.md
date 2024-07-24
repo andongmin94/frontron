@@ -1,7 +1,3 @@
----
-title: Switch
----
-
 # Switch
 
 ::: tip Preview

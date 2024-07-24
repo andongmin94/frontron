@@ -1,7 +1,3 @@
----
-title: Toast
----
-
 # Toast
 
 ::: tip Preview

@@ -4,7 +4,7 @@
 
  :root {
   --vp-font-family-base: 'Pretendard';/* 일반 텍스트 폰트 */
-  --vp-font-family-mono: /* 코드 폰트 */
+  --vp-font-family-mono: 'Consolas'
 }
 
 @font-face {

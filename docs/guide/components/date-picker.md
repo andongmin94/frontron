@@ -1,7 +1,3 @@
----
-title: Date Picker
----
-
 # Date Picker
 
 ::: tip Preview

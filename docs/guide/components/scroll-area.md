@@ -1,7 +1,3 @@
----
-title: Scroll Area
----
-
 # Scroll Area
 
 ::: tip Preview

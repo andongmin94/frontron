@@ -1,7 +1,3 @@
----
-title: Slider
----
-
 # Slider
 
 ::: tip Preview

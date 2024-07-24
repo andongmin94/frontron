@@ -1,7 +1,3 @@
----
-title: Check Box
----
-
 # Check Box
 
 ::: tip Preview

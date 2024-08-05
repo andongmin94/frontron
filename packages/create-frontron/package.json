@@ -1,6 +1,6 @@
 {
   "name": "create-frontron",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "type": "module",
   "license": "MIT",
   "author": "andongmin",
@@ -33,7 +33,7 @@
   "dependencies": {
     "@types/minimist": "^1.2.5",
     "@types/prompts": "^2.4.9",
-    "cross-spawn": "^7.0.3",
+    "cross-spawn": "^7.0.6",
     "isexe": "^3.1.1",
     "kleur": "^4.1.5",
     "kolorist": "^1.8.0",

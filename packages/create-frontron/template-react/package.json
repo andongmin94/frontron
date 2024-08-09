@@ -69,7 +69,7 @@
     "cmdk": "^1.0.0",
     "date-fns": "^3.6.0",
     "embla-carousel-react": "^8.1.7",
-    "frontron": "^0.1.7",
+    "frontron": "^0.1.8",
     "input-otp": "^1.2.4",
     "lucide-react": "^0.414.0",
     "next-themes": "^0.3.0",

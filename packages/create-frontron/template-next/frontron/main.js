@@ -1,0 +1,1 @@
+const { mainWindow } = require('frontron/next');

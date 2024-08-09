@@ -64,34 +64,17 @@ const FRAMEWORKS: Framework[] = [
     ],
   },
   {
-    name: 'next-page',
-    display: 'Next  Page Router',
-    color: blue,
-    variants: [
-      {
-        name: 'next-page',
-        display: 'JavaScript',
-        color: yellow,
-      },
-      {
-        name: 'next-page-ts',
-        display: 'TypeScript',
-        color: lightBlue,
-      },
-    ],
-  },
-  {
-    name: 'next-app',
-    display: 'Next  App  Router',
+    name: 'next',
+    display: 'Next App Router',
     color: lightBlue,
     variants: [
       {
-        name: 'next-app',
+        name: 'next',
         display: 'JavaScript',
         color: yellow,
       },
       {
-        name: 'next-app-ts',
+        name: 'next-ts',
         display: 'TypeScript',
         color: lightBlue,
       },
@@ -413,7 +396,7 @@ function setupReactSwc(root: string, isTs: boolean) {
   editFile(path.resolve(root, 'package.json'), (content) => {
     return content.replace(
       /"@vitejs\/plugin-react": ".+?"/,
-      `"@vitejs/plugin-react-swc": "^3.6.0"`,
+      `"@vitejs/plugin-react-swc": "^3.7.0"`,
     )
   })
   editFile(

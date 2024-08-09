@@ -281,7 +281,7 @@ export default defineConfig({
               link: '/config/',
             },
             {
-              text: 'Next.js App Router',
+              text: 'Next.js',
               link: '/config/next',
             }
           ],

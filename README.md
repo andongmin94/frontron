@@ -78,10 +78,8 @@ Currently Supported Template Presets
 - `react-ts`
 - `react-swc`
 - `react-swc-ts`
-- `next-page`
-- `next-page-ts`
-- `next-app`
-- `next-app-ts`
+- `next`
+- `next-ts`
 
 You can use . for the project name to scaffold in the current directory.
 

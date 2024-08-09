@@ -1,8 +1,8 @@
 ---
-title: Configuring Frontron for Next.js App Router
+title: Configuring Frontron for Next.js
 ---
 
-# Configuring Frontron for Next.js App Router
+# Configuring Frontron for Next.js
 
 If you want to use Frontron in your current project, you can use npm install.
 

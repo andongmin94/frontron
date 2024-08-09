@@ -5,7 +5,6 @@ import spawn from 'cross-spawn'
 import minimist from 'minimist'
 import prompts from 'prompts'
 import {
-  blue,
   cyan,
   red,
   reset,
@@ -65,7 +64,7 @@ const FRAMEWORKS: Framework[] = [
   },
   {
     name: 'next',
-    display: 'Next App Router',
+    display: 'Next.js',
     color: lightBlue,
     variants: [
       {

@@ -79,7 +79,7 @@ Because the main process runs Node.js, you can import these as CommonJS
 modules at the top of your `main.js` file:
 
 ```js
-const { mainWindow } = require('frontron/next-app')
+const { mainWindow } = require('frontron/next')
 ```
 
 ### Access Node.js from the renderer with a preload script

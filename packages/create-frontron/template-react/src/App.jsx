@@ -1,8 +1,8 @@
-import { useState } from "react";
-import frontronLogo from "/icon.png";
-import viteLogo from "/vite.svg";
-import reactLogo from "./assets/react.svg";
-import "./App.css";
+import { useState } from "react"
+import frontronLogo from "/icon.png"
+import viteLogo from "/vite.svg"
+import reactLogo from "./assets/react.svg"
+import "./App.css"
 
 function App() {
   const [count, setCount] = useState(0);
@@ -14,7 +14,7 @@ function App() {
         <img src={reactLogo} className="logo react" alt="React logo" />
         <img src={viteLogo} className="logo" alt="Vite logo" />
       </div>
-      <h1>Frontron + React + Vite</h1>
+      <h1>Frontron React</h1>
       <div className="card">
         <button onClick={() => setCount((count) => count + 1)}>
           count is {count}

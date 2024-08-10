@@ -2,21 +2,22 @@
   "name": "frontron-react-ts",
   "version": "0.0.1",
   "type": "module",
-  "author": "Andongmin",
+  "author": "안동민",
   "main": "src/frontron/main.cjs",
   "build": {
-    "appId": "frontron",
+    "appId": "Frontron React TS",
     "mac": {
       "icon": "public/icon.png"
     },
     "win": {
       "icon": "public/icon.png"
     },
-    "productName": "Frontron",
+    "productName": "Frontron React TS",
     "copyright": "Copyright © andongmin",
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "uninstallDisplayName": "Frontron React TS"
     },
     "files": [
       "node_modules/**/*",
@@ -68,7 +69,7 @@
     "cmdk": "^1.0.0",
     "date-fns": "^3.6.0",
     "embla-carousel-react": "^8.1.8",
-    "frontron": "^0.1.9",
+    "frontron": "^0.1.10",
     "input-otp": "^1.2.4",
     "lucide-react": "^0.427.0",
     "next-themes": "^0.3.0",

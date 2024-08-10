@@ -2,21 +2,22 @@
   "name": "frontron-next",
   "version": "0.0.1",
   "license": "MIT",
-  "author": "Andongmin",
+  "author": "안동민",
   "main": "frontron/main.js",
   "build": {
-    "appId": "frontron",
+    "appId": "Frontron Next",
     "mac": {
       "icon": "public/icon.png"
     },
     "win": {
       "icon": "public/icon.png"
     },
-    "productName": "frontron",
+    "productName": "Frontron Next",
     "copyright": "Copyright © andongmin",
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "uninstallDisplayName": "Frontron Next"
     },
     "files": [
       "node_modules/**/*",
@@ -68,7 +69,7 @@
     "cmdk": "^1.0.0",
     "date-fns": "^3.6.0",
     "embla-carousel-react": "^8.1.8",
-    "frontron": "^0.1.9",
+    "frontron": "^0.1.10",
     "input-otp": "^1.2.4",
     "lucide-react": "^0.427.0",
     "next": "14.2.5",

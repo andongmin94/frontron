@@ -90,7 +90,7 @@ const renameFiles: Record<string, string | undefined> = {
   _gitignore: '.gitignore',
 }
 
-const defaultTargetDir = 'frontron-project'
+const defaultTargetDir = 'frontron'
 
 async function init() {
   const argTargetDir = formatTargetDir(argv._[0])
@@ -397,7 +397,7 @@ function setupReactSwc(root: string, isTs: boolean) {
   editFile(path.resolve(root, 'package.json'), (content) => {
     return content.replace(
       /"@vitejs\/plugin-react": ".+?"/,
-      `"@vitejs/plugin-react-swc": "^3.7.2"`,
+      `"@vitejs/plugin-react-swc": "^3.8.0"`,
     )
   })
   editFile(

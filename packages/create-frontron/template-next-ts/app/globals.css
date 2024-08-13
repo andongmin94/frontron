@@ -60,10 +60,21 @@
 }
 
 @layer base {
+  @font-face {
+    font-family: 'Pretendard';
+    src: url('/fonts/PretendardVariable.woff2') format('woff2');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+  }
+
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
+    font-family: 'Pretendard';
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
 }

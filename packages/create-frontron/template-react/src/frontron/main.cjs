@@ -1,1 +1,0 @@
-const { mainWindow } = require('frontron/react');

@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "license": "MIT",
   "author": "안동민",
-  "main": "frontron/main.js",
+  "main": "electron/main.js",
   "build": {
     "appId": "Frontron Next",
     "mac": {
@@ -21,7 +21,7 @@
     },
     "files": [
       "node_modules/**/*",
-      "frontron/**/*",
+      "electron/**/*",
       "public/**/*",
       "out/**/*"
     ],
@@ -36,7 +36,7 @@
     "build": "next build && electron-builder"
   },
   "dependencies": {
-    "frontron": "^0.1.12",
+    "frontron": "^0.1.13",
     "next": "14.2.5"
   },
   "devDependencies": {

@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "type": "module",
   "author": "안동민",
-  "main": "src/frontron/main.cjs",
+  "main": "src/electron/main.cjs",
   "build": {
     "appId": "Frontron React",
     "mac": {
@@ -21,7 +21,7 @@
     },
     "files": [
       "node_modules/**/*",
-      "src/frontron/**/*",
+      "src/electron/**/*",
       "public/**/*",
       "dist/**/*"
     ],
@@ -36,7 +36,7 @@
     "build": "vite build && electron-builder"
   },
   "dependencies": {
-    "frontron": "^0.1.12"
+    "frontron": "^0.1.13"
   },
   "devDependencies": {
     "@eslint/js": "^9.8.0",

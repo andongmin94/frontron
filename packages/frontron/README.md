@@ -8,12 +8,12 @@ Frontron is a powerful GUI library that streamlines the process of building desk
 - ⚡️ Using popular css frameworks like tailwind, shadcn.
 - 📦 Many common components.
 
-## Installation
+## How to use
 
-To get started with Frontron, you need to install it via npm:
+To get started with Frontron, you need to create it via npm:
 
 ```bash
-npm install frontron
+npm create frontron
 ```
 
 [Read the Docs to Learn More](https://frontron.vercel.app).

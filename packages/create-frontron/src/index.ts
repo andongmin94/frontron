@@ -5,11 +5,12 @@ import spawn from 'cross-spawn'
 import minimist from 'minimist'
 import prompts from 'prompts'
 import {
-  cyan,
+  lightBlue,
+  lightCyan,
   red,
   reset,
-  yellow,
-  lightBlue
+  white,
+  yellow
 } from 'kolorist'
 
 // Avoids autoconversion to number of the project name by defining that the args
@@ -38,7 +39,7 @@ const FRAMEWORKS: Framework[] = [
   {
     name: 'react',
     display: 'React',
-    color: cyan,
+    color: lightCyan,
     variants: [
       {
         name: 'react',
@@ -65,7 +66,7 @@ const FRAMEWORKS: Framework[] = [
   {
     name: 'next',
     display: 'Next.js',
-    color: reset,
+    color: white,
     variants: [
       {
         name: 'next',

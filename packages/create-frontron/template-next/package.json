@@ -36,7 +36,7 @@
     "build": "next build && electron-builder"
   },
   "dependencies": {
-    "frontron": "^0.2.1",
+    "frontron": "^0.2.2",
     "next": "14.2.5"
   },
   "devDependencies": {

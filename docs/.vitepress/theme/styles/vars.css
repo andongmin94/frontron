@@ -2,6 +2,11 @@
  * Fonts
  * -------------------------------------------------------------------------- */
 
+:root {
+  --vp-font-family-base: /* 일반 텍스트 폰트 */
+  --vp-font-family-mono: /* 코드 폰트 */
+}
+
 @font-face {
   font-family: 'Pretendard';
   src: url('/fonts/PretendardVariable.woff2') format('woff2');
@@ -41,11 +46,6 @@
 /**
  * Component: Home
  * -------------------------------------------------------------------------- */
-
-:root {
-  --vp-font-family-base: /* 일반 텍스트 폰트 */
-  --vp-font-family-mono: /* 코드 폰트 */
-}
 
 :root {
   --vp-home-hero-name-color: transparent;

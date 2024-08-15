@@ -23,7 +23,7 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": [ "src" ],
-  "references": [],
+  "include": ["src"],
+  "references": []
   // "exclude": ["*"]
 }

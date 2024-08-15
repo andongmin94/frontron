@@ -33,8 +33,6 @@ module.exports = {
   importOrderCombineTypeAndValueImports: true,
   plugins: [
     "@ianvs/prettier-plugin-sort-imports",
-    (function () {
-      return import("prettier-plugin-tailwindcss");
-    })(),
+    "prettier-plugin-tailwindcss",
   ],
 };

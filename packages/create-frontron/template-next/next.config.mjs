@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  assetPrefix: "./",
   output: "export",
   // Optional: Add a railing slash to all paths '/about' -> '/about/'
   // trailingSlash: true,

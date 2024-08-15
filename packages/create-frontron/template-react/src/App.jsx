@@ -1,8 +1,10 @@
-import { useState } from "react"
-import frontronLogo from "/icon.png"
-import viteLogo from "/vite.svg"
-import reactLogo from "./assets/react.svg"
-import "./App.css"
+import { useState } from "react";
+
+import reactLogo from "./assets/react.svg";
+import frontronLogo from "/icon.png";
+import viteLogo from "/vite.svg";
+
+import "./App.css";
 
 function App() {
   const [count, setCount] = useState(0);

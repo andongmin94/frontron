@@ -1,7 +1,8 @@
-import * as React from "react"
-import { Slot } from "@radix-ui/react-slot"
-import { cva, type VariantProps } from "class-variance-authority"
-import { cn } from "@/lib/utils"
+import * as React from "react";
+import { Slot } from "@radix-ui/react-slot";
+import { cva, type VariantProps } from "class-variance-authority";
+
+import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
   "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
@@ -29,7 +30,7 @@ const buttonVariants = cva(
       variant: "default",
       size: "default",
     },
-  }
+  },
 );
 
 interface ButtonProps
@@ -48,7 +49,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         {...props}
       />
     );
-  }
+  },
 );
 
 export default function TitleBar() {
@@ -63,20 +64,63 @@ export default function TitleBar() {
   };
   return (
     <>
-    {typeof electron !== "undefined" && 
-    <div className="fixed flex justify-end w-full bg-neutral-800" style={{ WebkitAppRegion: "drag" } as React.CSSProperties }>
-      <div style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties }>
-        <Button onClick={minimize} size="icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/></svg>  
-        </Button>&nbsp;
-        <Button onClick={maximize} size="icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
-        </Button>&nbsp;
-        <Button onClick={hidden} size="icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-        </Button>
-      </div>
-    </div>}
+      {typeof electron !== "undefined" && (
+        <div
+          className="fixed flex w-full justify-end bg-neutral-800"
+          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+        >
+          <div style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+            <Button onClick={minimize} size="icon">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M5 12h14" />
+              </svg>
+            </Button>
+            &nbsp;
+            <Button onClick={maximize} size="icon">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="18"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <rect width="18" height="18" x="3" y="3" rx="2" />
+              </svg>
+            </Button>
+            &nbsp;
+            <Button onClick={hidden} size="icon">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
+            </Button>
+          </div>
+        </div>
+      )}
     </>
   );
 }

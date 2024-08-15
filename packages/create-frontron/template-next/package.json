@@ -1,0 +1,115 @@
+{
+  "name": "frontron-next",
+  "version": "0.0.1",
+  "license": "MIT",
+  "author": "안동민",
+  "main": "electron/main.js",
+  "build": {
+    "appId": "Frontron Next",
+    "productName": "Frontron Next",
+    "copyright": "Copyright © andongmin",
+    "artifactName": "${productName}.${ext}",
+    "icon": "public/icon.png",
+    "compression": "store",
+    "mac": {
+      "target": [
+        "dir"
+      ]
+    },
+    "win": {
+      "target": [
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "uninstallDisplayName": "Frontron Next"
+    },
+    "files": [
+      "node_modules/**/*",
+      "electron/**/*",
+      "public/**/*",
+      "out/**/*"
+    ],
+    "directories": {
+      "buildResources": "assets",
+      "output": "dist_app"
+    }
+  },
+  "scripts": {
+    "dev": "next dev",
+    "app": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .\"",
+    "build": "next build && electron-builder",
+    "lint": "next lint --fix"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^4.1.1",
+    "@radix-ui/react-accordion": "^1.2.3",
+    "@radix-ui/react-alert-dialog": "^1.1.6",
+    "@radix-ui/react-aspect-ratio": "^1.1.2",
+    "@radix-ui/react-avatar": "^1.1.3",
+    "@radix-ui/react-checkbox": "^1.1.4",
+    "@radix-ui/react-collapsible": "^1.1.3",
+    "@radix-ui/react-context-menu": "^2.2.6",
+    "@radix-ui/react-dialog": "^1.1.6",
+    "@radix-ui/react-dropdown-menu": "^2.1.6",
+    "@radix-ui/react-hover-card": "^1.1.6",
+    "@radix-ui/react-label": "^2.1.2",
+    "@radix-ui/react-menubar": "^1.1.6",
+    "@radix-ui/react-navigation-menu": "^1.2.5",
+    "@radix-ui/react-popover": "^1.1.6",
+    "@radix-ui/react-progress": "^1.1.2",
+    "@radix-ui/react-radio-group": "^1.2.3",
+    "@radix-ui/react-scroll-area": "^1.2.3",
+    "@radix-ui/react-select": "^2.1.6",
+    "@radix-ui/react-separator": "^1.1.2",
+    "@radix-ui/react-slider": "^1.2.3",
+    "@radix-ui/react-slot": "^1.1.2",
+    "@radix-ui/react-switch": "^1.1.3",
+    "@radix-ui/react-tabs": "^1.1.3",
+    "@radix-ui/react-toast": "^1.2.6",
+    "@radix-ui/react-toggle": "^1.1.2",
+    "@radix-ui/react-toggle-group": "^1.1.2",
+    "@radix-ui/react-tooltip": "^1.1.8",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.0.4",
+    "date-fns": "^4.1.0",
+    "dotenv": "^16.4.7",
+    "embla-carousel-react": "^8.5.2",
+    "express": "^4.21.2",
+    "input-otp": "^1.4.2",
+    "lucide-react": "^0.475.0",
+    "next": "^15.1.7",
+    "next-themes": "^0.4.4",
+    "node-global-key-listener": "^0.3.0",
+    "react": "^19.0.0",
+    "react-day-picker": "^9.5.1",
+    "react-dom": "^19.0.0",
+    "react-hook-form": "^7.54.2",
+    "react-resizable-panels": "^2.1.7",
+    "recharts": "^2.15.1",
+    "sonner": "^2.0.1",
+    "tailwind-merge": "^3.0.1",
+    "tailwindcss-animate": "^1.0.7",
+    "vaul": "^1.1.2",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@ianvs/prettier-plugin-sort-imports": "^4.4.1",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8",
+    "eslint": "^9.21.0",
+    "eslint-config-next": "^15.1.7",
+    "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-react": "^7.37.4",
+    "eslint-plugin-tailwindcss": "^3.18.0",
+    "postcss": "^8.5.3",
+    "prettier": "^3.5.2",
+    "prettier-plugin-tailwindcss": "^0.6.11",
+    "tailwindcss": "^3.4.17",
+    "wait-on": "^8.0.2"
+  }
+}

@@ -1,12 +1,12 @@
 {
-  "name": "frontron-react-ts",
+  "name": "frontron",
   "version": "0.0.1",
   "type": "module",
   "author": "안동민",
   "main": "src/electron/main.cjs",
   "build": {
-    "appId": "Frontron React TS",
-    "productName": "Frontron React TS",
+    "appId": "Frontron",
+    "productName": "Frontron",
     "copyright": "Copyright © andongmin",
     "artifactName": "${productName}.${ext}",
     "icon": "public/icon.png",
@@ -23,7 +23,7 @@
     },
     "nsis": {
       "oneClick": true,
-      "uninstallDisplayName": "Frontron React TS"
+      "uninstallDisplayName": "Frontron"
     },
     "files": [
       "node_modules/**/*",

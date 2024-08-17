@@ -70,7 +70,7 @@ app.whenReady().then(createWindow).then(() => {
 
   // 트레이 세팅
   const tray = new Tray(nativeImage.createFromPath(path.join(__dirname, "../public/icon.png")));
-  tray.setToolTip("Next TS Electron Boilerplate");
+  tray.setToolTip("Frontron");
   tray.on("double-click", () => mainWindow.show());
   tray.setContextMenu(
     Menu.buildFromTemplate([

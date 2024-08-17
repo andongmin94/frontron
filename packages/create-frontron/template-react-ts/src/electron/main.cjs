@@ -13,11 +13,11 @@ const server = express();
 // 개발 모드가 아닐때 빌드 파일 서빙 로직
 if (process.env.NODE_ENV !== 'development') {
   // 빌드 파일 서빙
-  server.use(express.static(path.join(__dirname, '../out')));
+  server.use(express.static(path.join(__dirname, '../../dist')));
 
   // 루트 경로 요청 처리
   server.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, '../out', 'index.html'));
+    res.sendFile(path.join(__dirname, '../../dist', 'index.html'));
   });
 
   // 서버 시작
@@ -70,7 +70,7 @@ app.whenReady().then(createWindow).then(() => {
 
   // 트레이 세팅
   const tray = new Tray(nativeImage.createFromPath(path.join(__dirname, "../../public/icon.png")));
-  tray.setToolTip("React Electron Boilerplate");
+  tray.setToolTip("Frontron");
   tray.on("double-click", () => mainWindow.show());
   tray.setContextMenu(
     Menu.buildFromTemplate([

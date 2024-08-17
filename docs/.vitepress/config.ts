@@ -133,6 +133,10 @@ export default defineConfig({
               link: "/guide/components/carousel",
             },
             {
+              text: "Chart",
+              link: "/guide/components/chart",
+            },
+            {
               text: "Checkbox",
               link: "/guide/components/checkbox",
             },

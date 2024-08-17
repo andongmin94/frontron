@@ -6,7 +6,7 @@
 
 </div>
 
-# Frontron <a href="https://npmjs.com/package/frontron"><img src="https://img.shields.io/npm/v/frontron" alt="npm package"></a>
+# Frontron <a href="https://npmjs.com/package/create-frontron"><img src="https://img.shields.io/npm/v/frontron" alt="npm package"></a>
 
 > Simplified Desktop App Building with Electron
 

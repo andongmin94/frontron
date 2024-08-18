@@ -36,7 +36,9 @@ Frontron requires [Node.js](https://nodejs.org/en/) version 20+.
 ::: code-group
 
 ```bash [NPM]
-$ npm create frontron@latest
+npm create frontron
+
+npx create-frontron
 ```
 
 ```bash [Yarn]

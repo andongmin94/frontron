@@ -7,7 +7,9 @@ title: Configuring Frontron for React
 If you want to use Frontron in your current project, you can use npm install.
 
 ```bash
-npm install frontron
+npm create frontron
+
+npx create-frontron
 ```
 
 However, The `install` command needs some configuration in your package and directory.
@@ -51,50 +53,6 @@ npm run app
 
 > Note: This script tells Electron to run on your project's root folder. At this stage,
 > your app will immediately throw an error telling you that it cannot find an app to run.
-
-### Run the main process
-
-The entry point of any Frontron application is its `main` script. This script controls the
-**main process**, which runs in a full Node.js environment and is responsible for
-controlling your app's lifecycle, displaying native interfaces, performing privileged
-operations, and managing renderer processes (more on that later).
-
-During execution, Electron will look for this script in the `main`
-field of the app's `package.json` config, which you should have configured during the
-app scaffolding step.
-
-To use `frontron` components in the `main` script, create an empty file named `main.cjs` in the `frontron` folder
-of your project's src directory.
-
-> Note: If you run the `start` script again at this point, your app will no longer throw
-> any errors! However, it won't do anything yet because we haven't added any code into
-> `main.cjs`.
-
-### Opening your web page in a browser window
-
-Now that you have a web page, load it into an application window. To do so, you'll
-need a Frontron module:
-
-* The `mainWindow` module, which controls your application's All events lifecycle.
-
-Because the main process runs Node.js, you can import these as CommonJS
-modules at the top of your `main.cjs` file:
-
-```js
-const { mainWindow } = require('frontron/react')
-```
-
-### Access Node.js from the renderer with a preload script
-
-This is where attaching a **preload** script to your renderer comes in handy.
-A preload script runs before the renderer process is loaded, and has access to both
-renderer globals (e.g. `window` and `document`) and a Node.js environment.
-
-Create a new script named `preload.js` as such:
-
-```js
-const { contextBridge } = require('frontron/preload')
-```
 
 ## Package and distribute your application
 

@@ -2,8 +2,10 @@
 
 import * as React from "react";
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { Slot } from "@radix-ui/react-slot";
 import { cva } from "class-variance-authority";
+import { Minus, Square, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -68,57 +70,31 @@ export default function TitleBar() {
     <>
       {isElectron && (
         <div
-          className="fixed z-[999] flex w-full justify-end bg-neutral-800"
+          className="fixed flex w-full justify-between bg-neutral-800"
           style={{ WebkitAppRegion: "drag" }}
         >
+          <div className="flex items-center pl-2">
+            <Image
+              src="/frontron.svg"
+              alt="Frontron Logo"
+              width={30}
+              height={30}
+              priority
+            />
+            &nbsp;&nbsp;
+            <span className="text-lg text-white">Frontron</span>
+          </div>
           <div style={{ WebkitAppRegion: "no-drag" }}>
             <Button onClick={minimize} size="icon">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M5 12h14" />
-              </svg>
+              <Minus className="h-6 w-6" />
             </Button>
             &nbsp;
             <Button onClick={maximize} size="icon">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="18"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <rect width="18" height="18" x="3" y="3" rx="2" />
-              </svg>
+              <Square className="h-6 w-6" />
             </Button>
             &nbsp;
             <Button onClick={hidden} size="icon">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M18 6 6 18" />
-                <path d="m6 6 12 12" />
-              </svg>
+              <X className="h-6 w-6" />
             </Button>
           </div>
         </div>

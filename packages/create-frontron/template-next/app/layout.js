@@ -11,8 +11,8 @@ export const metadata = {
   title: "Frontron",
   openGraph: { title: "Frontron" },
   icons: [
-    { rel: "icon", url: "/icon.png" },
-    { rel: "shortcut Icon", url: "/icon.png" },
+    { rel: "icon", url: "/frontron.svg" },
+    { rel: "shortcut Icon", url: "/frontron.svg" },
   ],
 };
 

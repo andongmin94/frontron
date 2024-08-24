@@ -1,137 +1,92 @@
-// 일렉트론 모듈
-import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } from 'electron';
-import { createSplash, closeSplash } from './splash.js'; // splash.js 임포트
+import { app, Menu } from 'electron'; // 필요한 모듈만 남김
 
-// ESM에서 __dirname 사용하기 위한 설정
+// 모듈 임포트
+import { createSplash, closeSplash } from './splash.js';
+import { determinePort } from './serverSetup.js';
+import { createWindow, getMainWindow } from './windowManager.js';
+import { createTray, destroyTray } from './trayManager.js';
+import { setupIpcHandlers } from './ipcHandlers.js';
+import { setupDevMenu } from './devUtils.js';
+
+// --- 기본 설정 ---
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-let PORT;
 const isDev = process.env.NODE_ENV === 'development';
-if (!isDev) {
-  // 로컬 웹 서버 모듈
-  const express = (await import('express')).default;
-  const server = express();
-  
-  // 빌드 파일 서빙
-  server.use(express.static(path.join(__dirname, '../../dist')));
+let DEFAULT_PORT = 0; // 기본 포트 번호
 
-  // 루트 경로 요청 처리
-  server.get('/', (_, res) => res.sendFile(path.join(__dirname, '../../dist', 'index.html')));
+let PORT; // 포트 번호 저장
 
-  // 로컬 호스트로 연결
-  const listener = server.listen(0, 'localhost', () => PORT = listener.address().port);
+// --- 싱글 인스턴스 보장 ---
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  app.quit();
 } else {
-  const viteConfig = fs.readFileSync(path.join(__dirname, '../../vite.config.ts'), 'utf-8');
-  const portMatch = viteConfig.match(/port:\s*(\d+)/);
-  if (portMatch && portMatch[1]) PORT = parseInt(portMatch[1], 10);
-}
-
-// 일렉트론 생성 함수
-let mainWindow;
-const createWindow = () => {
-  // 브라우저 창 생성
-  mainWindow = new BrowserWindow({
-    show: false, // 스플래시 화면이 먼저 보이도록 false로 설정
-    width: 1600,
-    height: 900,
-    frame: false,
-    resizable: isDev,
-    icon: path.join(__dirname, "../../public/icon.png"),
-    webPreferences: {
-      nodeIntegration: true,    // Node.js API 활성화
-      contextIsolation: false,  // preload 스크립트와 렌더러 프로세스 간 격리 해제
-      webSecurity: false,       // 웹 보안 기능 비활성화
-    },
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    const mainWindow = getMainWindow();
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
   });
 
-  // 포트 연결
-  mainWindow.loadURL(`http://localhost:${PORT}`);
-
-  mainWindow.webContents.on('did-finish-load', () => {
-    closeSplash(); // 스플래시 화면 닫기
-    mainWindow.show(); // 메인 윈도우 표시
-  });
-
-  // 우클릭 메뉴 비활성화
-  mainWindow.hookWindowMessage(278, function(e) {
-    mainWindow.setEnabled(false);
-    setTimeout(() => mainWindow.setEnabled(true), 100);
-    return true;
-  });
-
-  // 종료 설정
-  if (process.platform === 'darwin') {
-    mainWindow.on('close', (e) => {
-      if (!app.isQuiting) {
-        e.preventDefault();
-        mainWindow.hide();
-        app.dock.hide();
+  // --- 앱 초기화 및 실행 ---
+  async function initializeApp() {
+    try {
+      PORT = await determinePort(isDev, __dirname, DEFAULT_PORT);
+      if (PORT === null) {
+        throw new Error('Failed to determine port.');
       }
-      return false;
-    });
-  } else {
-    mainWindow.on('close', () => app.quit());
-  }
-};
 
-// Electron의 초기화가 완료후 브라우저 윈도우 생성
-app.whenReady().then(() => {
-  createSplash(); // 스플래시 화면 생성
-  createWindow(); // 메인 윈도우 생성
-}).then(() => {
-  // 트레이 세팅
-  const tray = new Tray(nativeImage.createFromPath(path.join(__dirname, "../../public/icon.png")));
-  tray.setToolTip("Frontron");
-  tray.on("double-click", () => mainWindow.show());
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: "열기", type: "normal", click: () => mainWindow.show() },
-      { label: "종료", type: "normal", click: () => mainWindow.close() },
-    ])
-  );
+      await app.whenReady();
 
-  // 기본 생성 세팅
-  app.on("window-all-closed", () => process.platform !== "darwin" ? app.quit() : null);
+      createSplash();
+      createWindow(PORT, isDev, __dirname, closeSplash); // mainWindow 생성
+      createTray(getMainWindow, __dirname); // 트레이 생성
+      setupIpcHandlers(getMainWindow); // IPC 핸들러 설정
 
-  // macOS-특화 설정
-  if (process.platform === 'darwin') {
-    app.on('before-quit', () => tray.destroy());
+      if (isDev) {
+        setupDevMenu(getMainWindow); // 개발 메뉴 설정
+      } else {
+        Menu.setApplicationMenu(null); // 프로덕션 메뉴 제거
+      }
 
-    app.on('activate', () => {
-      app.dock.show();
-      BrowserWindow.getAllWindows().length === 0 ? createWindow() : null;
-    });
-  } else {
-    // 모든 플랫폼에 적용되는 activate 이벤트 핸들러 (macOS 제외)
-    app.on("activate", () => BrowserWindow.getAllWindows().length === 0 ? createWindow() : null);
+    } catch (error) {
+      console.error('Failed to initialize app:', error);
+      // 사용자에게 오류 알림 (예: dialog.showErrorBox)
+      app.quit(); // 초기화 실패 시 앱 종료
+    }
   }
 
-  // 타이틀 바 옵션
-  ipcMain.on("hidden", () => mainWindow.hide());
-  ipcMain.on("minimize", () => mainWindow.minimize());
-  ipcMain.on("maximize", () => mainWindow.isMaximized() ? mainWindow.restore() : mainWindow.maximize());
+  initializeApp();
 
-  // F5 새로고침, F12 개발자 도구 열기
-  if (isDev) {
-    const menu = Menu.buildFromTemplate([{
-      label: "File",
-      submenu: [
-        {
-          label: "Reload",
-          accelerator: "F5",
-          click: () => mainWindow.reload(),
-        },
-        {
-          label: "Toggle DevTools",
-          accelerator: "F12",
-          click: () => mainWindow.webContents.toggleDevTools(),
-        },
-      ],
-    }]);
-    Menu.setApplicationMenu(menu);
-  }
-});
+  // --- 앱 생명주기 이벤트 핸들러 ---
+  app.on('window-all-closed', () => {
+    // macOS 제외하고 모든 창 닫히면 앱 종료
+    if (process.platform !== 'darwin') {
+      app.quit();
+    }
+  });
+
+  app.on('activate', () => {
+    // macOS: Dock 아이콘 클릭 시 창이 없으면 새로 생성
+    const mainWindow = getMainWindow();
+    if (mainWindow === null) {
+      // PORT가 유효하다는 보장이 필요함. initializeApp 재실행 또는 상태 관리 필요.
+      // 여기서는 간단히 initializeApp을 다시 호출하는 대신,
+      // 이미 실행 중인 앱의 창을 보여주는 로직만 남기는 것이 안전할 수 있음.
+      // createWindow(PORT, isDev, __dirname, closeSplash); // 재실행 시 문제 발생 가능성
+      console.log('Activate event: No window found, consider re-initialization logic if needed.');
+    } else {
+        mainWindow.show(); // 숨겨진 창 보여주기
+    }
+  });
+
+  app.on('before-quit', () => {
+    // 앱 종료 전 처리 (예: 트레이 아이콘 제거)
+    destroyTray();
+  });
+
+} // 싱글 인스턴스 Lock 블록 끝

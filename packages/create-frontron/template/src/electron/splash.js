@@ -111,8 +111,3 @@ export function closeSplash() {
   }
   splashWindow = null;
 }
-
-// 메인 프로세스에서 스플래시 창 객체를 얻기 위한 함수 (선택 사항)
-export function getSplashWindow() {
-    return splashWindow;
-}

@@ -1,12 +1,6 @@
 // 일렉트론 모듈
 const path = require("path");
 const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } = require("electron");
-const fs = require('fs');
-
-// package.json 파일 읽기
-const templateDir = __dirname; // templateDir 경로 설정
-const packageJsonPath = path.join(templateDir, '../package.json');
-const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
 
 // 환경 변수 설정
 require("dotenv").config();
@@ -76,7 +70,7 @@ app.whenReady().then(createWindow).then(() => {
 
   // 트레이 세팅
   const tray = new Tray(nativeImage.createFromPath(path.join(__dirname, "../public/icon.png")));
-  tray.setToolTip(pkg.build.productName);
+  tray.setToolTip("Frontron Next");
   tray.on("double-click", () => mainWindow.show());
   tray.setContextMenu(
     Menu.buildFromTemplate([

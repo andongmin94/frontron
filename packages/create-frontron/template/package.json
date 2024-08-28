@@ -40,7 +40,7 @@
   "scripts": {
     "dev": "vite",
     "app": "concurrently \"npm run dev\" \"cross-env NODE_ENV=development electron .\"",
-    "build": "tsc && vite build && electron-builder",
+    "build": "vite build && electron-builder",
     "lint": "eslint . && npx prettier --write ."
   },
   "dependencies": {

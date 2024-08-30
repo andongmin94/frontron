@@ -9,9 +9,10 @@ let PORT = process.env.NODE_ENV === 'development' ? 3000 : 1994;
 // 로컬 웹 서버 모듈
 const express = require('express');
 const server = express();
+const isDev = process.env.NODE_ENV === 'development';
 
 // 개발 모드가 아닐때 빌드 파일 서빙 로직
-if (process.env.NODE_ENV !== 'development') {
+if (!isDev) {
   // 빌드 파일 서빙
   server.use(express.static(path.join(__dirname, '../out')));
 
@@ -40,9 +41,10 @@ const createWindow = () => {
     width: 1600,
     height: 900,
     frame: false,
+    resizable: isDev,
     icon: path.join(__dirname, "../public/icon.png"),
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: path.join(__dirname, "preload.cjs"),
       webSecurity: false,
     },
   });
@@ -57,6 +59,32 @@ app.whenReady().then(createWindow).then(() => {
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") app.quit();
   });
+  // macOS-specific settings
+  if (process.platform === 'darwin') {
+    app.on('before-quit', () => {
+      tray.destroy();
+    });
+
+    app.on('activate', () => {
+      app.dock.show();
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+
+    mainWindow.on('close', (e) => {
+      if (!app.isQuiting) {
+        e.preventDefault();
+        mainWindow.hide();
+        app.dock.hide();
+      }
+      return false;
+    });
+  } else {
+    // 윈도우가 닫힐 때 발생하는 이벤트
+    mainWindow.on('close', () => {
+      app.quit();
+    });
+  }
+
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -80,7 +108,7 @@ app.whenReady().then(createWindow).then(() => {
   );
 
   // F5 새로고침, F12 개발자 도구 열기
-  if (process.env.NODE_ENV === "development") {
+  if (isDev) {
     const menu = Menu.buildFromTemplate([
       {
         label: "File",

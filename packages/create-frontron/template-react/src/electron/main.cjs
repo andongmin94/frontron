@@ -80,9 +80,11 @@ app.whenReady().then(createWindow).then(() => {
     });
   } else {
     // 윈도우가 닫힐 때 발생하는 이벤트
-    mainWindow.on('close', () => {
-      app.quit();
-    });
+    if (mainWindow) {
+      mainWindow.on('close', () => {
+        app.quit();
+      });
+    }
   }
 
   app.on("activate", () => {

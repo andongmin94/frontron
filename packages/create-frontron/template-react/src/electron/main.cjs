@@ -51,6 +51,29 @@ const createWindow = () => {
 
   // 포트 연결
   mainWindow.loadURL(`http://localhost:${PORT}`);
+
+  // 우클릭 메뉴 비활성화
+  mainWindow.hookWindowMessage(278, function(e) {
+    mainWindow.setEnabled(false);
+    setTimeout(() => mainWindow.setEnabled(true), 100);
+    return true;
+  });
+
+  // 종료 설정
+  if (process.platform === 'darwin') {
+    mainWindow.on('close', (e) => {
+      if (!app.isQuiting) {
+        e.preventDefault();
+        mainWindow.hide();
+        app.dock.hide();
+      }
+      return false;
+    });
+  } else {
+    mainWindow.on('close', () => {
+      app.quit();
+    });
+  }
 };
 
 // Electron의 초기화가 완료후 브라우저 윈도우 생성
@@ -59,6 +82,7 @@ app.whenReady().then(createWindow).then(() => {
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") app.quit();
   });
+  // macOS-specific settings
   // macOS-specific settings
   if (process.platform === 'darwin') {
     app.on('before-quit', () => {
@@ -69,22 +93,6 @@ app.whenReady().then(createWindow).then(() => {
       app.dock.show();
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
-
-    mainWindow.on('close', (e) => {
-      if (!app.isQuiting) {
-        e.preventDefault();
-        mainWindow.hide();
-        app.dock.hide();
-      }
-      return false;
-    });
-  } else {
-    // 윈도우가 닫힐 때 발생하는 이벤트
-    if (mainWindow) {
-      mainWindow.on('close', () => {
-        app.quit();
-      });
-    }
   }
 
   app.on("activate", () => {
@@ -105,7 +113,7 @@ app.whenReady().then(createWindow).then(() => {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "Open", type: "normal", click: () => mainWindow.show() },
-      { label: "Quit", type: "normal", click: () => app.quit() },
+      { label: "Quit", type: "normal", click: () => mainWindow.close() },
     ])
   );
 

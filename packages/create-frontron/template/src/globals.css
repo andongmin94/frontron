@@ -116,6 +116,7 @@
   }
   body {
     @apply bg-background text-foreground;
+    user-select: none;
   }
   @font-face {
     font-family: "Pretendard";

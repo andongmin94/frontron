@@ -1,8 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import path from 'path';
 
-let mainWindow = null;
-
+let mainWindow: BrowserWindow | null;
 /**
  * 메인 윈도우 생성 및 설정
  * @param {number} port - 사용할 포트 번호
@@ -10,7 +9,7 @@ let mainWindow = null;
  * @param {string} __dirname - 현재 디렉토리 경로
  * @param {Function} closeSplash - 스플래시 창 닫기 함수
  */
-export function createWindow(port, isDev, __dirname, closeSplash) {
+export function createWindow(port: number, isDev: boolean, __dirname: string, closeSplash: () => void) {
   mainWindow = new BrowserWindow({
     show: false,
     width: 1600,
@@ -30,12 +29,12 @@ export function createWindow(port, isDev, __dirname, closeSplash) {
 
   mainWindow.webContents.on('did-finish-load', () => {
     closeSplash(); // 스플래시 닫기
-    mainWindow.show();
+    mainWindow?.show();
   });
 
   // --- 플랫폼별 우클릭 메뉴 비활성화 시도 ---
   if (process.platform === 'win32') {
-    mainWindow.hookWindowMessage(278, function(e) {
+    mainWindow.hookWindowMessage(278, function() {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.setEnabled(false);
         setTimeout(() => {
@@ -58,7 +57,7 @@ export function createWindow(port, isDev, __dirname, closeSplash) {
     if (process.platform === 'darwin') {
       // macOS: 사용자가 명시적으로 종료(Cmd+Q 등)하지 않으면 숨김
       e.preventDefault();
-      mainWindow.hide();
+      mainWindow?.hide();
       app.dock?.hide(); // Dock 에서도 숨김
     }
     // 다른 OS 에서는 window-all-closed 에서 앱 종료 처리

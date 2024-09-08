@@ -12,7 +12,7 @@ const express = require('express');
 const server = express();
 
 // 개발 모드가 아닐때 빌드 파일 서빙 로직
-if (isDev) {
+if (!isDev) {
   // 빌드 파일 서빙
   server.use(express.static(path.join(__dirname, '../../dist')));
 

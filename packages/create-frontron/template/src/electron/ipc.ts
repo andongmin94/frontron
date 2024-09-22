@@ -18,8 +18,10 @@ export function setupIpcHandlers(getMainWindow: MainWindowGetter) {
 
   ipcMain.on('maximize', () => {
     const mw = getMainWindow();
-    if (mw) {
-      mw.isMaximized() ? mw.restore() : mw.maximize();
+    if (mw && mw.isMinimized()) {
+      mw.restore();
+    } else {
+      mw?.maximize();
     }
   });
 

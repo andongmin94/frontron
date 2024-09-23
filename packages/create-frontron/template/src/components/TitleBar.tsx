@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Copy, Minus, Square, X } from "lucide-react";
@@ -58,16 +58,32 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
 export default function TitleBar() {
   const [isMaximized, setIsMaximized] = useState(false);
-  const minimize = () => {
-    electron.send("minimize");
-  };
-  const maximize = () => {
-    electron.send("maximize");
-    setIsMaximized(!isMaximized);
-  };
-  const hidden = () => {
-    electron.send("hidden");
-  };
+
+  // 메인 프로세스와 상태 동기화
+  useEffect(() => {
+    if (typeof electron === "undefined") return;
+
+    // 초기 상태 요청
+    electron
+      .invoke?.("get-window-state")
+      .then((s: { isMaximized: boolean }) => setIsMaximized(s.isMaximized))
+      .catch(() => {});
+
+    // 이벤트 구독
+    const off = electron.on?.(
+      "window-maximized-changed",
+      (_e: unknown, val: boolean) => setIsMaximized(val),
+    );
+
+    return () => {
+      if (typeof off === "function") off();
+    };
+  }, []);
+
+  const minimize = () => electron.send("minimize");
+  const toggleMaximize = () => electron.send("toggle-maximize");
+  const hidden = () => electron.send("hidden");
+
   return (
     <>
       {typeof electron !== "undefined" && (
@@ -75,33 +91,27 @@ export default function TitleBar() {
           className="fixed flex w-full justify-between bg-neutral-800"
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         >
-          <div className="flex items-center pl-2">
+          <div className="flex items-center pl-2 select-none">
             <img src={frontronLogo} alt="mini-cast" className="size-6" />
-            &nbsp;&nbsp;
-            <span className="text-lg text-white">프론트론</span>
+            <span className="ml-2 text-lg text-white">프론트론</span>
           </div>
           <div
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
             className="flex items-center"
           >
             <Button onClick={minimize} size="icon">
-              <Minus className="size-6" />
+              <Minus className="size-5" />
             </Button>
-            &nbsp;
-            <Button onClick={maximize} size="icon">
-              {isMaximized ? (
-                <Copy className="size-6" />
-              ) : (
-                <Square className="size-6" />
-              )}
+            <Button onClick={toggleMaximize} size="icon">
+              {isMaximized ? <Copy className="size-5" /> : <Square className="size-5" />}
             </Button>
-            &nbsp;
             <Button onClick={hidden} size="icon">
-              <X className="size-6" />
+              <X className="size-5" />
             </Button>
           </div>
         </div>
       )}
+      {/* 실제 콘텐츠가 타이틀바 뒤에 가리지 않도록 spacer */}
       <div className="h-[40px]" />
     </>
   );

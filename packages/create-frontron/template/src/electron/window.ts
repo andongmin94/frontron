@@ -4,7 +4,7 @@ import { app, BrowserWindow } from "electron";
 import { __dirname, isDev } from "./main.js"; // isDev를 main.ts에서 가져옴
 import { closeSplash } from "./splash.js";
 
-let mainWindow: BrowserWindow | null;
+export let mainWindow: BrowserWindow | null;
 
 export function createWindow(port: number) {
   mainWindow = new BrowserWindow({
@@ -62,8 +62,4 @@ export function createWindow(port: number) {
   mainWindow.on("closed", () => {
     mainWindow = null; // 창 참조 제거
   });
-}
-
-export function getMainWindow() {
-  return mainWindow;
 }

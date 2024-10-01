@@ -39,47 +39,59 @@ export default defineConfig({
 
     editLink: {
       pattern: "https://github.com/andongmin94/frontron/edit/main/docs",
-      text: "Suggest changes to this page",
+      text: "가이드 수정 제안하기",
     },
 
     socialLinks: [
       { icon: "github", link: "https://github.com/andongmin94/frontron" },
     ],
 
+    sidebarMenuLabel: "메뉴",
+
+    returnToTopLabel: "위로 가기",
+
+    darkModeSwitchLabel: "다크 모드",
+
+    docFooter: {
+      prev: "이전 페이지",
+      next: "다음 페이지",
+    },
+
     footer: {
       message: `Released under the MIT License`,
-      copyright: "Copyright © 2024 andongmin",
+      copyright: "Copyright © 2024 안동민",
     },
 
     nav: [
-      { text: "Guide", link: "/guide", activeMatch: "/guide" },
-      { text: "Maintainer", link: "/maintainer" },
+      { text: "프론트론 가이드", link: "/guide", activeMatch: "/guide" },
+      { text: "프론트론 개발자", link: "/maintainer" },
     ],
 
     sidebar: {
       "/guide/": [
         {
-          text: "Guide",
+          text: "프론트론 가이드",
           items: [
             {
-              text: "Getting Started",
+              text: "프론트론 시작하기",
               link: "/guide/",
             },
             {
-              text: "Features",
+              text: "프론트론 기능",
               link: "/guide/features",
             },
             {
-              text: "Configuration",
+              text: "프론트론 설정",
               link: "/guide/config",
-            }
+            },
           ],
-        }
+        },
       ],
     },
 
     outline: {
       level: [2, 3],
+      label: "목차"    // ← 추가: 원하는 한글로 변경
     },
   },
   transformPageData(pageData) {

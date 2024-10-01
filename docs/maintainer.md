@@ -1,7 +1,7 @@
 ---
 layout: page
-title: Meet the Maintainer
-description: The developers of Frontron.
+title: 프론트론 개발자
+description: 프론트론 개발자
 ---
 
 <script setup>
@@ -14,7 +14,7 @@ const developer = [
   {
     avatar: 'https://avatars.githubusercontent.com/u/110483588?v=4',
     name: '안동민',
-    title: 'Developer',
+    title: '개발자',
     desc: 'A knight of Information processing.',
     links: [
       { icon: 'github', link: 'https://github.com/andongmin94' },

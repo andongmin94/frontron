@@ -10,7 +10,7 @@
 
 > Electron 기반 데스크톱 앱 개발을 더 단순하고 빠르게
 
-Frontron은 Electron 위에서 React / Next.js 환경을 빠르게 셋업하고, Tailwind + Shadcn UI + 다수의 공통 컴포넌트/유틸을 포함한 개발 경험을 제공하는 템플릿 & CLI 도구입니다.
+Frontron은 Electron 위에서 React + TypeScript 환경을 빠르게 셋업하고, Tailwind + Shadcn UI + 다수의 공통 컴포넌트/유틸을 포함한 개발 경험을 제공하는 단일 템플릿 & CLI 도구입니다.
 
 - React 템플릿 지원
 - Tailwind CSS + Shadcn UI 스타일 구성
@@ -23,7 +23,7 @@ Frontron은 Electron 위에서 React / Next.js 환경을 빠르게 셋업하고,
 
 | 영역 | 내용 |
 | ---- | ---- |
-| CLI (`create-frontron`) | 다양한 템플릿(react, ts, swc, next) 스캐폴딩 |
+| CLI (`create-frontron`) | React + TypeScript 단일 템플릿 스캐폴딩 (추후 확장 예정) |
 | Electron Main | 단일 인스턴스 보장, Splash → 메인 윈도우 지연 생성, Tray, IPC 이벤트 핸들링 |
 | Preload | `contextIsolation` 하에서 안전한 bridge 제공 (`electron.send/on/get`) |
 | UI | Radix + Shadcn 패턴 컴포넌트 세트, Tailwind 4.x, utility helpers |
@@ -71,23 +71,13 @@ Bun:
 bun create frontron
 ```
 
-프롬프트에서 프로젝트명과 템플릿을 선택하면 구조가 생성됩니다. 현재 지원 템플릿:
-
-- `react`
-- `react-ts`
-- `react-swc`
-- `react-swc-ts`
-- `next`
-- `next-ts`
+현재는 React + TypeScript 단일 템플릿만 제공됩니다. `--template` 옵션을 넣더라도 현재 버전에서는 무시됩니다. (로드맵: 추가 템플릿)
 
 현재 디렉터리에 생성하려면 프로젝트명을 `.` 으로 지정할 수 있습니다.
 
-### 템플릿 직접 지정 (비대화식)
+### 비대화식 예시 (실제 동일 결과)
 ```bash
-npm create frontron@latest my-app -- --template react
-yarn create frontron my-app --template react
-pnpm create frontron my-app --template react
-bun create frontron my-app --template react
+npm create frontron@latest my-app
 ```
 
 ## 개발 흐름
@@ -162,7 +152,9 @@ const state = await window.electron.get('get-window-state') // handle 사용 예
 
 - [ ] 다중 창 템플릿 옵션
 - [ ] Auto Update (electron-updater) 통합
-- [ ] Next.js 템플릿 electron SSR 최적화
+  
+향후 계획 (로드맵 검토 중)
+- [ ] 추가 템플릿 (예: Next.js / SWC 변형)
 - [ ] 테스트(Playwright / Vitest) 기본 골격 제공
 - [ ] 다국어(i18n) 예제
 

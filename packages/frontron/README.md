@@ -10,4 +10,4 @@ npm create frontron@latest
 npx create-frontron@latest
 ```
 
-[Read the Docs to Learn More](https://frontron.vercel.app).
+[Read the Docs to Learn More](https://frontron.andongmin.com).

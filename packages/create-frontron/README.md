@@ -1,6 +1,6 @@
 <div align=center>
 
-<a href="https://frontron.vercel.app">
+<a href="https://frontron.andongmin.com">
 <img src="/docs/public/frontron.svg" alt="logo" height=200px>
 </a>
 

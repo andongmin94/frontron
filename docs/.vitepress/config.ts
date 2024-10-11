@@ -3,9 +3,9 @@ import { transformerTwoslash } from "@shikijs/vitepress-twoslash";
 import { buildEnd } from "./buildEnd.config";
 
 const ogDescription = "GUI Library for Desktop App Development";
-const ogImage = "https://frontron.vercel.app/frontron.svg";
+const ogImage = "https://frontron.andongmin.com/frontron.svg";
 const ogTitle = "Frontron";
-const ogUrl = "https://frontron.vercel.app";
+const ogUrl = "https://frontron.andongmin.com";
 
 export default defineConfig({
   title: "Frontron",

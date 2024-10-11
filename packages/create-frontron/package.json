@@ -29,7 +29,7 @@
   "bugs": {
     "url": "https://github.com/andongmin94/frontron/issues"
   },
-  "homepage": "https://frontron.vercel.app",
+  "homepage": "https://frontron.andongmin.com",
   "dependencies": {
     "@types/minimist": "^1.2.5",
     "@types/prompts": "^2.4.9",

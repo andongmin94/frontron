@@ -18,4 +18,14 @@ hero:
     - theme: alt
       text: GitHub
       link: https://github.com/andongmin94/frontron
+      
+features:
+  - icon:
+     dark: /npm.svg
+     light: /npm.svg
+     width: 150px
+    title: <img src="https://img.shields.io/npm/v/frontron">
+    linkText: README
+    link: https://npmjs.com/package/create-frontron
+
 ---

@@ -20,7 +20,7 @@
 :root {
   --vp-c-brand: #1170ff;
   --vp-c-brand-1: #1170ff;
-  --vp-c-brand-light: #1170ff;
+  --vp-c-brand-light: #0f62de;
   --vp-c-brand-lighter: #1170ff;
   --vp-c-brand-lightest: #1170ff;
   --vp-c-brand-dark: #1170ff;
@@ -31,7 +31,7 @@
 .dark {
   --vp-c-brand: #1875ff;
   --vp-c-brand-1: #1875ff;
-  --vp-c-brand-light: #1875ff;
+  --vp-c-brand-light: #3191ff;
   --vp-c-brand-lighter: #1875ff;
   --vp-c-brand-lightest: #1875ff;
   --vp-c-brand-dark: #1875ff;
@@ -44,7 +44,7 @@
  * -------------------------------------------------------------------------- */
 
 :root {
-  --vp-button-brand-border: var(--vp-c-brand-light);
+  --vp-button-brand-border: var(--vp-c-brand);
   --vp-button-brand-text: var(--vp-c-white);
   --vp-button-brand-bg: var(--vp-c-brand);
   --vp-button-brand-hover-border: var(--vp-c-brand-light);

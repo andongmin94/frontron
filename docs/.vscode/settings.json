@@ -1,0 +1,13 @@
+{
+    "files.exclude": {
+        ".gitignore": true,
+        ".prettierignore": true,
+        "eslint.config.js": true,
+        "postcss.config.js": true,
+        "prettier.config.cjs": true,
+        "tailwind.config.js": true,
+        "tsconfig.*": true,
+        "public/fonts": true,
+        "src/vite-env.d.ts": true,
+    }
+}

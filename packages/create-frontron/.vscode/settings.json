@@ -1,0 +1,11 @@
+{
+    "files.exclude": {
+        "__tests__": true,
+        ".gitignore": true,
+        "build.config.ts": true,
+        "index.js": true,
+        "LICENSE": true,
+        "README.md": true,
+        "tsconfig.json": true,
+    }
+}

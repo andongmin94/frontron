@@ -30,16 +30,8 @@ export function createWindow(port: number) {
 
   // --- 플랫폼별 우클릭 메뉴 비활성화 시도 ---
   if (process.platform === "win32") {
-    mainWindow.hookWindowMessage(278, function () {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.setEnabled(false);
-        setTimeout(() => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.setEnabled(true);
-          }
-        }, 100);
-      }
-      return true;
+    mainWindow.on("system-context-menu", (event:any) => {
+      event.preventDefault();
     });
   } else {
     mainWindow.webContents.on("context-menu", (event: any) => {

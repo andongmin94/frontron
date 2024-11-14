@@ -2,4 +2,4 @@ build
 dist
 electron
 node_modules
-components/ui/*
+src/components/ui/*

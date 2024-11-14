@@ -7,7 +7,7 @@ import globals from "globals";
 export default [
   {
     files: ["**/*.{js,jsx}"],
-    ignores: ["dist", "components/ui/*"],
+    ignores: ["dist", "src/components/ui/*"],
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,

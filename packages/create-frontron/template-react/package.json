@@ -33,7 +33,8 @@
   "scripts": {
     "dev": "vite",
     "app": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .\"",
-    "build": "vite build && electron-builder"
+    "build": "vite build && electron-builder",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

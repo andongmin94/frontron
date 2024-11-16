@@ -1,7 +1,3 @@
----
-title: Calendar
----
-
 # Calendar
 
 ::: tip Preview

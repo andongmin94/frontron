@@ -1,7 +1,3 @@
----
-title: Carousel
----
-
 # Carousel
 
 ::: tip Preview

@@ -1,7 +1,3 @@
----
-title: Configuring Frontron for React
----
-
 # Configuring Frontron for React
 
 If you want to use Frontron in your current project, you can use npm install.

@@ -1,7 +1,3 @@
----
-title: Separator
----
-
 # Separator
 
 ::: tip Preview

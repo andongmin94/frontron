@@ -1,7 +1,3 @@
----
-title: Pagination
----
-
 # Pagination
 
 ::: tip Preview

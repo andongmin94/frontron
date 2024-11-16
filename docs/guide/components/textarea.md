@@ -1,6 +1,3 @@
----
-title: Text Area
----
 
 # Text Area
 

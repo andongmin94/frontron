@@ -1,7 +1,3 @@
----
-title: Combo Box
----
-
 # Combo Box
 
 ::: tip Preview

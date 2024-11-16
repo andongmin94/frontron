@@ -1,7 +1,3 @@
----
-title: AleDropdown Menurt
----
-
 # Dropdown Menu
 
 ::: tip Preview

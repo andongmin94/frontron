@@ -1,7 +1,3 @@
----
-title:  Menu Bar
----
-
 # Menu Bar
 
 ::: tip Preview

@@ -1,7 +1,3 @@
----
-title: Label
----
-
 # Label
 
 ::: tip Preview

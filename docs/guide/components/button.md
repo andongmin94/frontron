@@ -1,7 +1,3 @@
----
-title: Button
----
-
 # Button
 
 ::: tip Preview

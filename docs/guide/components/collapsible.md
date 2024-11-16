@@ -1,7 +1,3 @@
----
-title: Collapsible
----
-
 # collapsible
 
 ::: tip Preview

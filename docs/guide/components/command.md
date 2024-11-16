@@ -1,7 +1,3 @@
----
-title: Command
----
-
 # Command
 
 ::: tip Preview

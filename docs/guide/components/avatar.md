@@ -1,7 +1,3 @@
----
-title: Avatar
----
-
 # Avatar
 
 ::: tip Preview

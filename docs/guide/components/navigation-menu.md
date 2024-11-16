@@ -1,7 +1,3 @@
----
-title: Navigation Menu
----
-
 # Navigation Menu
 
 ::: tip Preview

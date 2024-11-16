@@ -1,7 +1,3 @@
----
-title: Toggle
----
-
 # Toggle
 
 ::: tip Preview

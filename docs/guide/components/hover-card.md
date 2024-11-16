@@ -1,7 +1,3 @@
----
-title: Hover Card
----
-
 # Hover Card
 
 ::: tip Preview

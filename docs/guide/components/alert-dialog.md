@@ -1,7 +1,3 @@
----
-title: Alert Dialog
----
-
 # Alert Dialog
 
 ::: tip Preview

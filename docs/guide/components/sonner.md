@@ -1,7 +1,3 @@
----
-title: Sonner
----
-
 # Sonner
 
 ::: tip Preview

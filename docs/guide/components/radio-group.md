@@ -1,7 +1,3 @@
----
-title: Radio Group
----
-
 # Radio Group
 
 ::: tip Preview

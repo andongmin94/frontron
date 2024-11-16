@@ -1,7 +1,3 @@
----
-title: Card
----
-
 # Card
 
 ::: tip Preview

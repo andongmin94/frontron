@@ -1,7 +1,3 @@
----
-title: Badge
----
-
 # Badge
 
 ::: tip Preview

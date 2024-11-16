@@ -1,7 +1,3 @@
----
-title: Dialog
----
-
 # Dialog
 
 ::: tip Preview

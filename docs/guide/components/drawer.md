@@ -1,7 +1,3 @@
----
-title: Drawer
----
-
 # Drawer
 
 ::: tip Preview

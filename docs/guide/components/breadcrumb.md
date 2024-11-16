@@ -1,7 +1,3 @@
----
-title: Bread Crumb
----
-
 # Bread Crumb
 
 ::: tip Preview

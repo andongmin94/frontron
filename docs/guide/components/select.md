@@ -1,7 +1,3 @@
----
-title: Select
----
-
 # Select
 
 ::: tip Preview

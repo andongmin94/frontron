@@ -21,7 +21,7 @@ Your `package.json` file should look something like this:
 ```json
 "name": "my-frontron-app",
 "version": "0.0.1",
-"main": "src/frontron/main.cjs",
+"main": "src/electron/main.cjs",
 "author": "your developer name",
 ```
 

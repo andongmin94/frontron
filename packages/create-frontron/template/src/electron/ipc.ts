@@ -21,11 +21,8 @@ export function setupIpcHandlers() {
 
   // 토글 방식으로 변경
   ipcMain.on("toggle-maximize", () => {
-    if (mainWindow.isMaximized()) {
-      mainWindow.unmaximize();
-    } else {
-      mainWindow.maximize();
-    }
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+    else mainWindow.maximize();
     sendMaxState();
   });
 

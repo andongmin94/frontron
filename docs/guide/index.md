@@ -25,7 +25,7 @@ Frontron은 Electron 기반 데스크톱 애플리케이션을 웹 개발자 경
 npm create frontron@latest
 
 # Yarn
-
+yarn create frontron
 
 # PNPM
 pnpm create frontron

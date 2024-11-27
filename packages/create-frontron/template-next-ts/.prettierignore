@@ -3,3 +3,5 @@ build
 electron
 node_modules
 components/ui/*
+hooks/*
+lib/*

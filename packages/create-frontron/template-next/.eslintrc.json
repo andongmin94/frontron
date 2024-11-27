@@ -28,5 +28,5 @@
       "parser": "@typescript-eslint/parser"
     }
   ],
-  "ignorePatterns": ["components/ui/*", "hooks/*","lib/*"]
+  "ignorePatterns": ["components/ui/*", "hooks/*", "lib/*"]
 }

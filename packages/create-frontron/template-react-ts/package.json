@@ -6,14 +6,12 @@
   "main": "src/electron/main.cjs",
   "build": {
     "appId": "Frontron React TS",
-    "mac": {
-      "icon": "public/icon.png"
-    },
-    "win": {
-      "icon": "public/icon.png"
-    },
     "productName": "Frontron React TS",
     "copyright": "Copyright © andongmin",
+    "artifactName": "${productName}.${ext}",
+    "icon": "public/icon.png",
+    "mac": { "target": [ "dir" ] },
+    "win": { "target": [ "portable" ] },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,

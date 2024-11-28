@@ -6,14 +6,12 @@
   "main": "electron/main.js",
   "build": {
     "appId": "Frontron Next",
-    "mac": {
-      "icon": "public/icon.png"
-    },
-    "win": {
-      "icon": "public/icon.png"
-    },
     "productName": "Frontron Next",
     "copyright": "Copyright © andongmin",
+    "artifactName": "${productName}.${ext}",
+    "icon": "public/icon.png",
+    "mac": { "target": [ "dir" ] },
+    "win": { "target": [ "portable" ] },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,

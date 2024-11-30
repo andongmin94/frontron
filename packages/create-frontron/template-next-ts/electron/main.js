@@ -22,12 +22,12 @@ if (!isDev) {
   });
 
   // 서버 시작
-  server.listen(PORT, () => {}).on('error', (err) => {
+  server.listen(PORT, 'localhost', () => {}).on('error', (err) => {
     // 포트가 이미 사용 중인 경우 다른 포트로 재시도
     if (err.code === 'EADDRINUSE') {
       PORT += 1; // 포트 번호 증가
       setTimeout(() => {
-        server.listen(PORT);
+        server.listen(PORT, 'localhost');
       }, 1000); // 1초 후에 다시 시도
     }
   });

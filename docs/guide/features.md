@@ -44,7 +44,7 @@ Frontron은 단순한 Electron + React 초기화 이상의 개발 경험을 제�
 
 - 프론트: `vite build`
 - 메인/프리로드: `tsc -p tsconfig.electron.json`
-- 배포: electron-builder (`dist_app/` 산출)
+- 배포: electron-builder (`output/` 산출)
 - Windows portable / macOS dir 기본, 필요 시 dmg/installer 형식 추가 가능
 
 ## IPC & 브리지 보안

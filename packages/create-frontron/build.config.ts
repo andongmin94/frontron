@@ -1,7 +1,8 @@
 import path from 'node:path'
 import url from 'node:url'
 import { defineBuildConfig } from 'unbuild'
-import licensePlugin from '../vite/rollupLicensePlugin'
+import licensePlugin from 'rollup-plugin-license'
+// import licensePlugin from '../vite/rollupLicensePlugin'
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url))
 
@@ -11,7 +12,7 @@ export default defineBuildConfig({
   rollup: {
     inlineDependencies: true,
     esbuild: {
-      target: 'node20',
+      target: 'node22',
       minify: true,
     },
   },

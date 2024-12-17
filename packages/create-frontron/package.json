@@ -40,10 +40,11 @@
     "minimist": "^1.2.8",
     "path-key": "^4.0.0",
     "prompts": "^2.4.2",
+    "rollup-plugin-license": "^3.5.3",
     "shebang-command": "^2.0.0",
     "shebang-regex": "^4.0.0",
     "sisteransi": "^1.0.5",
-    "unbuild": "^2.0.0",
+    "unbuild": "^3.0.1",
     "which": "^5.0.0"
   },
   "devDependencies": {

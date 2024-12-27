@@ -1,0 +1,146 @@
+import path from 'node:path';
+import { BrowserWindow, ipcMain } from 'electron';
+import { W as WINDOW_CHANNELS, L as LEGACY_WINDOW_CHANNELS } from './frontron.CDRXnvFQ.mjs';
+
+function getWindowState(window) {
+  return {
+    isMaximized: window.isMaximized(),
+    isMinimized: window.isMinimized()
+  };
+}
+function createMainWindow(options) {
+  const {
+    isDev,
+    preloadPath,
+    iconPath,
+    rendererDistPath,
+    devServerHost = "127.0.0.1",
+    devServerPort = 3e3,
+    width = 1200,
+    height = 800,
+    frame = false,
+    showOnReady = true,
+    resizableInDev = true,
+    disableContextMenu = true,
+    hideOnCloseForMac = true,
+    onDidFinishLoad
+  } = options;
+  const mainWindow = new BrowserWindow({
+    show: false,
+    width,
+    height,
+    frame,
+    resizable: isDev ? resizableInDev : true,
+    icon: iconPath,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: preloadPath
+    }
+  });
+  if (isDev) {
+    void mainWindow.loadURL(`http://${devServerHost}:${devServerPort}`);
+  } else {
+    const entryHtml = path.join(rendererDistPath, "index.html");
+    void mainWindow.loadFile(entryHtml);
+  }
+  mainWindow.webContents.on("did-finish-load", () => {
+    if (showOnReady) {
+      mainWindow.show();
+    }
+    onDidFinishLoad?.(mainWindow);
+  });
+  if (disableContextMenu) {
+    if (process.platform === "win32") {
+      mainWindow.on("system-context-menu", (event) => {
+        event.preventDefault();
+      });
+    } else {
+      mainWindow.webContents.on("context-menu", (event) => {
+        event.preventDefault();
+      });
+    }
+  }
+  mainWindow.on("close", (event) => {
+    if (hideOnCloseForMac && process.platform === "darwin") {
+      event.preventDefault();
+      mainWindow.hide();
+    }
+  });
+  return mainWindow;
+}
+function registerWindowControlIpcHandlers(options) {
+  const { window, ipcMainInstance = ipcMain, includeLegacyChannels = true } = options;
+  const channels = {
+    hide: options.channels?.hide ?? WINDOW_CHANNELS.hide,
+    minimize: options.channels?.minimize ?? WINDOW_CHANNELS.minimize,
+    toggleMaximize: options.channels?.toggleMaximize ?? WINDOW_CHANNELS.toggleMaximize,
+    state: options.channels?.state ?? WINDOW_CHANNELS.state,
+    maximizedChanged: options.channels?.maximizedChanged ?? WINDOW_CHANNELS.maximizedChanged
+  };
+  const hideChannels = includeLegacyChannels ? [channels.hide, LEGACY_WINDOW_CHANNELS.hide] : [channels.hide];
+  const minimizeChannels = includeLegacyChannels ? [channels.minimize, LEGACY_WINDOW_CHANNELS.minimize] : [channels.minimize];
+  const toggleChannels = includeLegacyChannels ? [channels.toggleMaximize, LEGACY_WINDOW_CHANNELS.toggleMaximize] : [channels.toggleMaximize];
+  const stateChannels = includeLegacyChannels ? [channels.state, LEGACY_WINDOW_CHANNELS.state] : [channels.state];
+  const stateEventChannels = includeLegacyChannels ? [channels.maximizedChanged, LEGACY_WINDOW_CHANNELS.maximizedChanged] : [channels.maximizedChanged];
+  const sendWindowState = () => {
+    const payload = window.isMaximized();
+    for (const channel of stateEventChannels) {
+      window.webContents.send(channel, payload);
+    }
+  };
+  const onMinimize = () => {
+    if (!window.isDestroyed()) {
+      window.minimize();
+    }
+  };
+  const onHide = () => {
+    if (!window.isDestroyed()) {
+      window.hide();
+    }
+  };
+  const onToggleMaximize = () => {
+    if (window.isDestroyed()) {
+      return;
+    }
+    if (window.isMaximized()) {
+      window.unmaximize();
+    } else {
+      window.maximize();
+    }
+    sendWindowState();
+  };
+  for (const channel of minimizeChannels) {
+    ipcMainInstance.on(channel, onMinimize);
+  }
+  for (const channel of hideChannels) {
+    ipcMainInstance.on(channel, onHide);
+  }
+  for (const channel of toggleChannels) {
+    ipcMainInstance.on(channel, onToggleMaximize);
+  }
+  for (const channel of stateChannels) {
+    ipcMainInstance.removeHandler(channel);
+    ipcMainInstance.handle(channel, () => getWindowState(window));
+  }
+  window.on("maximize", sendWindowState);
+  window.on("unmaximize", sendWindowState);
+  return () => {
+    window.removeListener("maximize", sendWindowState);
+    window.removeListener("unmaximize", sendWindowState);
+    for (const channel of minimizeChannels) {
+      ipcMainInstance.removeListener(channel, onMinimize);
+    }
+    for (const channel of hideChannels) {
+      ipcMainInstance.removeListener(channel, onHide);
+    }
+    for (const channel of toggleChannels) {
+      ipcMainInstance.removeListener(channel, onToggleMaximize);
+    }
+    for (const channel of stateChannels) {
+      ipcMainInstance.removeHandler(channel);
+    }
+  };
+}
+
+export { createMainWindow as c, registerWindowControlIpcHandlers as r };

@@ -1,8 +1,10 @@
 {
   "name": "frontron",
   "version": "0.8.2",
+  "type": "module",
   "license": "MIT",
   "author": "andongmin",
+  "description": "Runtime toolkit for Electron apps scaffolded by create-frontron.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/andongmin94/frontron.git"
@@ -10,5 +12,72 @@
   "bugs": {
     "url": "https://github.com/andongmin94/frontron/issues"
   },
-  "homepage": "https://frontron.andongmin.com"
+  "homepage": "https://frontron.andongmin.com",
+  "bin": {
+    "frontron": "cli.js"
+  },
+  "files": [
+    "dist",
+    "cli.js",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.mjs"
+    },
+    "./window": {
+      "types": "./dist/window/index.d.ts",
+      "import": "./dist/window/index.mjs"
+    },
+    "./tray": {
+      "types": "./dist/tray/index.d.ts",
+      "import": "./dist/tray/index.mjs"
+    },
+    "./store": {
+      "types": "./dist/store/index.d.ts",
+      "import": "./dist/store/index.mjs"
+    },
+    "./bootstrap": {
+      "types": "./dist/bootstrap/index.d.ts",
+      "import": "./dist/bootstrap/index.mjs"
+    },
+    "./updater": {
+      "types": "./dist/updater/index.d.ts",
+      "import": "./dist/updater/index.mjs"
+    },
+    "./migrate": {
+      "types": "./dist/migrate/index.d.ts",
+      "import": "./dist/migrate/index.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "dev": "unbuild --stub",
+    "build": "unbuild",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build && npm run typecheck && npm run test"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "dependencies": {
+    "minimist": "^1.2.8"
+  },
+  "peerDependencies": {
+    "electron": ">=30.0.0"
+  },
+  "devDependencies": {
+    "@types/minimist": "^1.2.5",
+    "@types/node": "^24.10.0",
+    "electron": "^40.1.0",
+    "typescript": "^5.9.3",
+    "unbuild": "^3.6.1",
+    "vitest": "^3.2.4"
+  }
 }

@@ -1,3 +1,4 @@
+type TemplateKind = "react" | "next";
 interface MigrateOptions {
     projectDir?: string;
     dryRun?: boolean;
@@ -10,6 +11,7 @@ interface MigrateResult {
     writtenFiles: string[];
     removedFiles: string[];
     dependencyUpdated: boolean;
+    template: TemplateKind;
 }
 declare function migrateProject(options?: MigrateOptions): MigrateResult;
 

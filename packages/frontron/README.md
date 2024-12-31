@@ -52,8 +52,11 @@ npx frontron migrate ./path/to/project --dry-run
 What migration does:
 
 - adds/updates `frontron` dependency in `package.json`
-- writes `src/electron/main.ts`, `src/electron/preload.ts`, `src/electron/frontron.config.ts`
-- writes `src/electron.d.ts`
+- detects template layout (`react` or `next`)
+- writes runtime entry files:
+  - `react`: `src/electron/main.ts`, `src/electron/preload.ts`, `src/electron/frontron.config.ts`, `src/electron.d.ts`
+  - `next`: `electron/main.ts`, `electron/preload.mts`, `electron/frontron.config.ts`, `electron/next-server.ts`, `electron.d.ts`
+- normalizes `tsconfig.electron.json` to `module = ESNext` and `moduleResolution = Bundler`
 - removes legacy template runtime files (`window.ts`, `ipc.ts`, `tray.ts`, `serve.ts`, ...)
 - creates backup under `.frontron-migrate-backup/*` (unless `--force`)
 

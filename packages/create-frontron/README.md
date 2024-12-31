@@ -6,7 +6,7 @@
 
 # create-frontron
 
-CLI to scaffold an Electron + React + TypeScript desktop app powered by the `frontron` runtime package.
+CLI to scaffold Electron desktop apps powered by the `frontron` runtime package.
 
 ## Quick Start
 
@@ -21,6 +21,7 @@ Non-interactive:
 ```bash
 npm create frontron@latest my-app
 npm create frontron@latest my-app --template react
+npm create frontron@latest my-app --template next
 ```
 
 Other package managers:
@@ -31,9 +32,13 @@ pnpm create frontron
 bun create frontron
 ```
 
-## What Gets Generated
+## Templates
 
-- React + Vite + TypeScript app
+- `react`: React + Vite + TypeScript
+- `next`: Next.js App Router + TypeScript
+
+Both templates include:
+
 - Electron `main` + `preload` entrypoints
 - `frontron` runtime integration (`core/window/tray/store/bootstrap/updater`)
 - Tailwind + shadcn-style UI setup
@@ -41,14 +46,10 @@ bun create frontron
 ## Generated App Scripts
 
 ```bash
-npm run app    # Vite + Electron
+npm run app    # Framework dev server + Electron
 npm run build  # renderer build + electron compile + package
 npm run lint
 ```
-
-## Template Status
-
-Only the `react` template is available in the current release.
 
 ## License
 

@@ -8,7 +8,7 @@
 
 Frontron is an Electron app scaffolding ecosystem.
 
-- `create-frontron`: scaffolds production-ready Electron + React + TypeScript projects
+- `create-frontron`: scaffolds production-ready Electron apps (`react` or `next` templates)
 - `frontron`: reusable runtime package used by generated projects
 
 ## Packages
@@ -23,6 +23,8 @@ packages/
 
 ```bash
 npm create frontron@latest
+npm create frontron@latest my-app --template react
+npm create frontron@latest my-app --template next
 ```
 
 ## Runtime Architecture

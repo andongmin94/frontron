@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { BrowserWindow, app, dialog, Menu } from 'electron';
 import { c as createTrayController } from './frontron.BnuOy2Eo.mjs';
-import { c as createMainWindow, r as registerWindowControlIpcHandlers } from './frontron.DMGoGMve.mjs';
+import { c as createMainWindow, r as registerWindowControlIpcHandlers } from './frontron.CisTJd5f.mjs';
 import fs from 'node:fs';
 import net from 'node:net';
 
@@ -171,6 +171,7 @@ async function startFrontronApp(options) {
   const isDev = options.isDev ?? process.env.NODE_ENV === "development";
   const includeLegacyWindowChannels = options.includeLegacyWindowChannels ?? true;
   const devServerHost = options.devServerHost ?? "127.0.0.1";
+  const waitForDevServer = options.waitForDevServer ?? true;
   if (!app.requestSingleInstanceLock()) {
     app.quit();
     return {
@@ -202,9 +203,22 @@ async function startFrontronApp(options) {
     }
     let resolvedDevPort = null;
     if (isDev) {
-      resolvedDevPort = options.devServerPort ?? (options.viteConfigPath ? getPortFromViteConfig(options.viteConfigPath) : null) ?? 3e3;
-      await waitForPortReady(resolvedDevPort, { host: devServerHost });
+      if (options.resolveDevServerPort) {
+        resolvedDevPort = await options.resolveDevServerPort({ app, isDev });
+      } else {
+        resolvedDevPort = options.devServerPort ?? (options.viteConfigPath ? getPortFromViteConfig(options.viteConfigPath) : null) ?? 3e3;
+      }
+      if (waitForDevServer) {
+        await waitForPortReady(resolvedDevPort, { host: devServerHost });
+      }
     }
+    const resolvedLoadTarget = options.resolveRendererLoadTarget ? await options.resolveRendererLoadTarget({
+      app,
+      isDev,
+      devServerPort: resolvedDevPort,
+      devServerHost,
+      rendererDistPath: options.rendererDistPath
+    }) : void 0;
     const windowInstance = createMainWindow({
       isDev,
       preloadPath: options.preloadPath,
@@ -212,6 +226,7 @@ async function startFrontronApp(options) {
       rendererDistPath: options.rendererDistPath,
       devServerHost,
       devServerPort: resolvedDevPort ?? 3e3,
+      loadTarget: resolvedLoadTarget,
       ...options.window,
       onDidFinishLoad(window) {
         closeSplashWindow(splashWindow);

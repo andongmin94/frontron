@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import { useEffect, useState } from "react";
@@ -37,22 +37,8 @@ const buttonVariants = cva(
 );
 
 interface ButtonProps
-  extends
-    React.ButtonHTMLAttributes<HTMLButtonElement>,
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {}
-
-type ElectronApi = {
-  send: (channel: string, data?: unknown) => void;
-  invoke?: (channel: string, ...args: unknown[]) => Promise<any>;
-  on?: (
-    channel: string,
-    listener: (...args: unknown[]) => void,
-  ) => (() => void) | void;
-};
-
-type WindowWithElectron = Window & {
-  electron?: ElectronApi;
-};
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, ...props }, ref) => {
@@ -69,67 +55,64 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 Button.displayName = "Button";
 
 export default function TitleBar() {
+  const bridge = typeof window !== "undefined" ? window.electron : undefined;
   const [isMaximized, setIsMaximized] = useState(false);
-  const [electronApi, setElectronApi] = useState<ElectronApi | null>(null);
 
   useEffect(() => {
-    setElectronApi((window as WindowWithElectron).electron ?? null);
-  }, []);
+    if (!bridge) {
+      return;
+    }
 
-  useEffect(() => {
-    if (!electronApi) return;
+    bridge
+      .invoke<{ isMaximized: boolean }>("window:state")
+      .then((state) => setIsMaximized(state.isMaximized))
+      .catch(() => {
+        // ignore boot race in early renderer lifecycle
+      });
 
-    electronApi
-      .invoke?.("get-window-state")
-      .then((state: { isMaximized: boolean }) =>
-        setIsMaximized(state.isMaximized),
-      )
-      .catch(() => {});
-
-    const off = electronApi.on?.("window-maximized-changed", (val: unknown) => {
-      setIsMaximized(Boolean(val));
+    const off = bridge.on("window:maximized-changed", (value) => {
+      setIsMaximized(Boolean(value));
     });
 
     return () => {
-      if (typeof off === "function") off();
+      off();
     };
-  }, [electronApi]);
+  }, [bridge]);
 
-  const minimize = () => electronApi?.send("minimize");
-  const toggleMaximize = () => electronApi?.send("toggle-maximize");
-  const hidden = () => electronApi?.send("hidden");
+  if (!bridge) {
+    return null;
+  }
 
   return (
     <>
-      {electronApi && (
-        <div
-          className="fixed top-0 left-0 right-0 flex w-full justify-between bg-neutral-800"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-        >
-          <div className="flex items-center pl-2 select-none">
-            <img src="/logo.svg" alt="mini-cast" className="size-6" />
-            <span className="ml-2 text-lg text-white">Frontron</span>
-          </div>
-          <div
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-            className="flex items-center"
-          >
-            <Button onClick={minimize} size="icon">
-              <Minus className="size-5" />
-            </Button>
-            <Button onClick={toggleMaximize} size="icon">
-              {isMaximized ? (
-                <Copy className="size-5" />
-              ) : (
-                <Square className="size-5" />
-              )}
-            </Button>
-            <Button onClick={hidden} size="icon">
-              <X className="size-5" />
-            </Button>
-          </div>
+      <div
+        className="fixed top-0 left-0 right-0 flex w-full justify-between bg-neutral-800"
+        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+      >
+        <div className="flex items-center pl-2 select-none">
+          <img src="/logo.svg" alt="frontron" className="size-6" />
+          <span className="ml-2 text-lg text-white">Frontron</span>
         </div>
-      )}
+        <div
+          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+          className="flex items-center"
+        >
+          <Button onClick={() => bridge.send("window:minimize")} size="icon">
+            <Minus className="size-5" />
+          </Button>
+          <Button onClick={() => bridge.send("window:toggle-maximize")} size="icon">
+            {isMaximized ? (
+              <Copy className="size-5" />
+            ) : (
+              <Square className="size-5" />
+            )}
+          </Button>
+          <Button onClick={() => bridge.send("window:hide")} size="icon">
+            <X className="size-5" />
+          </Button>
+        </div>
+      </div>
+      <div className="h-[40px]" />
     </>
   );
 }

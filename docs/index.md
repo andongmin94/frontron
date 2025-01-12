@@ -20,11 +20,12 @@ hero:
       link: https://github.com/andongmin94/frontron
       
 features:
-  - title: <img src="https://img.shields.io/npm/v/create-frontron">
-    details: create-frontron 최신 배포 버전
-    linkText: npm 페이지
+  - icon:
+     dark: /npm.svg
+     light: /npm.svg
+     width: 150px
+    title: <img src="https://img.shields.io/npm/v/frontron">
+    linkText: README
     link: https://npmjs.com/package/create-frontron
-  - title: 템플릿 2종 제공
-    details: "react(Vite) / next(Next.js App Router) 중 선택 가능"
 
 ---

@@ -6,8 +6,8 @@ titleTemplate: Electron 앱 템플릿
 
 hero:
   name: Frontron
-  text: React / Next.js Electron 템플릿
-  tagline: CLI 한 번으로 React 또는 Next.js 기반 Electron 앱을 생성하세요.
+  text: 프론트 Electron 템플릿
+  tagline: CLI 한 번으로 프론트 프레임워크 기반 Electron 앱 생성
   image:
     src: /logo.svg
     alt: Frontron

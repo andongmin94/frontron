@@ -3,33 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import minimist from 'minimist'
 import prompts from 'prompts'
-import { cyan, red, reset, white } from 'kolorist'
-
-type ColorFn = (str: string | number) => string
-
-type Framework = {
-  name: string
-  display: string
-  color: ColorFn
-  templateDir: string
-}
-
-const FRAMEWORKS: Framework[] = [
-  {
-    name: 'react',
-    display: 'React',
-    color: cyan,
-    templateDir: 'template-react',
-  },
-  {
-    name: 'next',
-    display: 'Next.js',
-    color: white,
-    templateDir: 'template-next',
-  },
-]
-
-const TEMPLATE_NAMES = new Set(FRAMEWORKS.map((framework) => framework.name))
+import { red, reset } from 'kolorist'
 
 // Avoids autoconversion to number of the project name by defining that the args
 // non associated with an option ( _ ) needs to be parsed as a string. See #4606
@@ -44,26 +18,31 @@ const renameFiles: Record<string, string | undefined> = {
 }
 
 const defaultTargetDir = 'frontron'
+const TEMPLATE_DIR = 'template'
 
-function parseTemplateArg(value: string | boolean | undefined) {
-  if (typeof value !== 'string') {
-    return undefined
+function ensureRemovedTemplateOption(
+  template: string | boolean | undefined,
+  alias: string | boolean | undefined,
+) {
+  if (typeof template === 'undefined' && typeof alias === 'undefined') {
+    return
   }
-  const normalized = value.trim().toLowerCase()
-  return normalized.length > 0 ? normalized : undefined
+
+  throw new Error(
+    red('x') +
+      ' Template selection has been removed. create-frontron now generates the React template by default.',
+  )
 }
 
 async function init() {
   const argTargetDir = formatTargetDir(argv._[0])
-  const argTemplate = parseTemplateArg(argv.template ?? argv.t)
+  ensureRemovedTemplateOption(argv.template, argv.t)
 
   let targetDir = argTargetDir || defaultTargetDir
   const getProjectName = () =>
     targetDir === '.' ? path.basename(path.resolve()) : targetDir
 
-  let result: prompts.Answers<
-    'projectName' | 'overwrite' | 'packageName' | 'framework'
-  >
+  let result: prompts.Answers<'projectName' | 'overwrite' | 'packageName'>
 
   prompts.override({
     overwrite: argv.overwrite,
@@ -123,21 +102,6 @@ async function init() {
           validate: (dir) =>
             isValidPackageName(dir) || 'Invalid package.json name',
         },
-        {
-          type: argTemplate && TEMPLATE_NAMES.has(argTemplate) ? null : 'select',
-          name: 'framework',
-          message:
-            typeof argTemplate === 'string' && !TEMPLATE_NAMES.has(argTemplate)
-              ? reset(
-                  `"${argTemplate}" isn't a valid template. Please choose from below:`,
-                )
-              : reset('Select a framework:'),
-          initial: 0,
-          choices: FRAMEWORKS.map((framework) => ({
-            title: framework.color(framework.display),
-            value: framework.name,
-          })),
-        },
       ],
       {
         onCancel: () => {
@@ -151,14 +115,7 @@ async function init() {
   }
 
   // user choice associated with prompts
-  const { framework, overwrite, packageName } = result
-
-  const selectedTemplate =
-    framework ||
-    (argTemplate && TEMPLATE_NAMES.has(argTemplate) ? argTemplate : undefined) ||
-    FRAMEWORKS[0].name
-  const selectedFramework =
-    FRAMEWORKS.find((item) => item.name === selectedTemplate) || FRAMEWORKS[0]
+  const { overwrite, packageName } = result
 
   const root = path.join(cwd, targetDir)
 
@@ -176,13 +133,11 @@ async function init() {
   const templateDir = path.resolve(
     fileURLToPath(import.meta.url),
     '../..',
-    selectedFramework.templateDir,
+    TEMPLATE_DIR,
   )
 
   if (!fs.existsSync(templateDir)) {
-    throw new Error(
-      `Template directory not found: "${selectedFramework.templateDir}"`,
-    )
+    throw new Error(`Template directory not found: "${TEMPLATE_DIR}"`)
   }
 
   const write = (file: string, content?: string) => {
@@ -298,5 +253,6 @@ function pkgFromUserAgent(userAgent: string | undefined) {
 }
 
 init().catch((e) => {
-  console.error(e)
+  console.error(e instanceof Error ? e.message : e)
+  process.exitCode = 1
 })

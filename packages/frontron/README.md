@@ -12,9 +12,8 @@ npm create frontron@latest
 npx create-frontron@latest
 ```
 
-현재 CLI 템플릿:
+현재 CLI 기본 템플릿:
 - `react` (Vite + React)
-- `next` (Next.js App Router)
 
 문서: https://frontron.andongmin.com
 

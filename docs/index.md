@@ -21,11 +21,12 @@ hero:
       
 features:
   - icon:
-     dark: /npm.svg
-     light: /npm.svg
-     width: 150px
-    title: <img src="https://img.shields.io/npm/v/frontron">
-    linkText: README
+      dark: /npm.svg
+      light: /npm.svg
+      width: 150px
+    title: create-frontron
+    details: create-frontron으로 바로 실행 가능한 React + Electron 프로젝트를 생성합니다.
+    linkText: npm
     link: https://npmjs.com/package/create-frontron
 
 ---

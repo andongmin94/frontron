@@ -61,18 +61,18 @@ export default function TitleBar() {
 
   // 메인 프로세스와 상태 동기화
   useEffect(() => {
-    if (typeof electron === "undefined") return;
+    const electronApi = window.electron;
+    if (!electronApi) return;
 
     // 초기 상태 요청
-    electron
+    electronApi
       .invoke?.("get-window-state")
       .then((s: { isMaximized: boolean }) => setIsMaximized(s.isMaximized))
       .catch(() => {});
 
     // 이벤트 구독
-    const off = electron.on?.(
-      "window-maximized-changed",
-      (_e: unknown, val: boolean) => setIsMaximized(val),
+    const off = electronApi.on?.("window-maximized-changed", (val: unknown) =>
+      setIsMaximized(Boolean(val)),
     );
 
     return () => {
@@ -80,13 +80,13 @@ export default function TitleBar() {
     };
   }, []);
 
-  const minimize = () => electron.send("minimize");
-  const toggleMaximize = () => electron.send("toggle-maximize");
-  const hidden = () => electron.send("hidden");
+  const minimize = () => window.electron?.send("minimize");
+  const toggleMaximize = () => window.electron?.send("toggle-maximize");
+  const hidden = () => window.electron?.send("hidden");
 
   return (
     <>
-      {typeof electron !== "undefined" && (
+      {window.electron && (
         <div
           className="fixed top-0 left-0 right-0 flex w-full justify-between bg-neutral-800"
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
@@ -103,7 +103,11 @@ export default function TitleBar() {
               <Minus className="size-5" />
             </Button>
             <Button onClick={toggleMaximize} size="icon">
-              {isMaximized ? <Copy className="size-5" /> : <Square className="size-5" />}
+              {isMaximized ? (
+                <Copy className="size-5" />
+              ) : (
+                <Square className="size-5" />
+              )}
             </Button>
             <Button onClick={hidden} size="icon">
               <X className="size-5" />

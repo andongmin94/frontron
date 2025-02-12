@@ -1,54 +1,39 @@
-# 시작하기
+# 빠른 시작
 
-Frontron에 오신 것을 환영합니다! 🎉
+이 페이지는 Frontron을 처음 쓰는 사람이 가장 짧은 경로로 결과를 보는 데 맞춰져 있습니다.
 
-Frontron은 Electron 데스크톱 앱을 빠르게 만들 수 있도록 도와주는 CLI 도구입니다.
+설명을 모두 완벽히 이해하지 못해도 괜찮습니다. 먼저 프로젝트를 만들고, 실행해 보고, 눈에 보이는 것 몇 가지를 바꾸고, 마지막으로 빌드 결과까지 확인해 보겠습니다.
 
-복잡한 Electron 설정을 직접 구성할 필요 없이, 명령어 하나로 바로 개발을 시작할 수 있습니다.
+## 1. 먼저 준비할 것
 
-현재는 React 템플릿을 제공합니다.
+아래 두 가지만 준비되어 있으면 시작할 수 있습니다.
 
-| 템플릿 | 렌더러 |
-| ---- | ---- |
-| React | Vite + React 19 |
-
-익숙한 웹 프레임워크로 데스크톱 앱을 개발할 수 있으니, 기존 웹 개발 경험을 그대로 활용하실 수 있습니다.
-
-## 요구사항
-
-시작하기 전에 아래 환경이 준비되어 있는지 확인해 주세요.
-
-- Node.js `22+` (CLI `engines.node >= 22`)
-- npm / yarn / pnpm / bun 중 아무거나 사용 가능
+- Node.js `22+`
+- npm / yarn / pnpm / bun 중 하나
 
 ::: tip
-패키지 매니저는 자유롭게 선택하셔도 괜찮습니다. 이 문서에서는 npm 기준으로 안내하지만, 다른 패키지 매니저도 동일하게 동작합니다.
+이 문서에서는 명령어를 `npm` 기준으로 적습니다. 다른 패키지 매니저를 써도 흐름은 거의 같습니다.
 :::
 
-## 프로젝트 생성
+## 2. 프로젝트 만들기
 
-가장 간단한 방법은 대화형 프롬프트를 사용하는 것입니다.
-
-실행하면 프로젝트 이름을 확인한 뒤 바로 React 템플릿이 생성됩니다:
-
-```bash
-npm create frontron@latest
-```
-
-프로젝트 이름까지 한 번에 지정해서 비대화식으로 생성할 수도 있습니다.
+가장 간단한 시작점은 아래 명령어입니다.
 
 ```bash
 npx create-frontron@latest my-app
 ```
 
-::: tip
-- 프로젝트명을 생략하면 기본 디렉터리 이름은 `frontron`이 됩니다.
-- 현재 디렉터리에 바로 생성하고 싶으면 프로젝트명을 `.`으로 입력하세요.
-:::
+이 명령은 `my-app` 폴더를 만들고, 그 안에 Electron + React + Vite 기반 기본 프로젝트를 넣어 줍니다.
 
-## 생성 후 실행
+프로젝트 이름을 아직 정하지 않았다면 아래처럼 대화형으로 시작해도 됩니다.
 
-프로젝트가 생성되었으면, 아래 명령어로 바로 실행해 볼 수 있습니다.
+```bash
+npm create frontron@latest
+```
+
+## 3. 의존성 설치하고 실행해 보기
+
+프로젝트가 만들어졌다면 폴더 안으로 들어간 뒤 필요한 패키지를 설치하고 앱을 실행합니다.
 
 ```bash
 cd my-app
@@ -56,103 +41,79 @@ npm install
 npm run app
 ```
 
-`npm run app`을 실행하면 렌더러 dev 서버와 Electron이 동시에 시작됩니다.
+`npm run app`은 두 가지를 함께 시작합니다.
 
-브라우저 대신 데스크톱 창이 열리는 것을 확인하실 수 있을 것입니다!
+- Vite 개발 서버
+- Electron 데스크톱 앱
 
-## 기본 스크립트
+브라우저 대신 데스크톱 창이 열리는 것이 정상입니다. 여기까지 왔다면 이미 첫 번째 목표는 달성한 것입니다.
 
-생성된 React 템플릿은 아래 스크립트를 기본으로 제공합니다.
+## 4. 눈에 보이는 두 가지를 먼저 바꿔 보기
 
-| 스크립트 | 동작 |
-| ---- | ---- |
-| `dev` | `vite` |
-| `app` | `dev + tsc(electron) + electron` 동시 실행 |
-| `build` | `vite build` -> `tsc -p tsconfig.electron.json` -> `electron-builder` |
-| `lint` | `eslint .` |
+처음부터 모든 설정을 알 필요는 없습니다. 대신 지금은 초보자에게 가장 체감이 큰 두 가지를 먼저 바꿔 보겠습니다.
 
-## 기본 구조
+### 아이콘 바꾸기
 
-프로젝트가 어떤 구조로 생성되는지 미리 파악하면 개발할 때 훨씬 수월합니다.
+기본 아이콘 파일은 `public/icon.ico`에 있습니다.
 
-```text
-my-app/
-  public/
-  src/
-    electron/
-    components/
-    hooks/
-    lib/
-  dist/electron/   # Electron TS 빌드 결과
-  output/          # electron-builder 산출물
-```
-
-## Electron 브리지 빠른 예시
-
-렌더러(웹 페이지)에서 Electron 기능에 접근할 때는 `window.electron` 브리지를 사용합니다.
-
-preload 스크립트를 통해 안전하게 노출된 API이므로, 보안 걱정 없이 사용하실 수 있습니다.
-
-```ts
-window.electron.send("toggle-maximize");
-
-const off = window.electron.on?.("window-maximized-changed", (isMaximized) => {
-  console.log(isMaximized);
-});
-
-const state = await window.electron.invoke?.("get-window-state");
-off?.();
-```
-
-::: tip
-- 기본적으로 `send` / `on` 패턴을 사용할 수 있습니다.
-- 필요하면 preload에서 `invoke` 같은 헬퍼를 직접 확장해 주세요.
-:::
-
-## 아이콘 교체
-
-기본 앱 아이콘은 `public/icon.ico` 경로에 있습니다.
-
-내 앱 아이콘으로 바꾸고 싶다면 이 파일을 교체해 주세요.
+이 파일을 내 아이콘 파일로 바꾸면, 이후 빌드할 때 패키징 결과물에 반영됩니다.
 
 ```text
 public/
   icon.ico
 ```
 
-## 기본 보안 설정
+### 앱 이름 바꾸기
 
-Frontron 템플릿은 Electron 보안 모범 사례를 기본으로 적용하고 있습니다.
+앱 이름은 한 군데만 바꾸는 것이 아닙니다. 지금은 아래 두 곳만 먼저 기억하면 충분합니다.
 
-- `contextIsolation: true` — 렌더러와 메인 프로세스의 컨텍스트를 분리합니다.
-- `nodeIntegration: false` — 렌더러에서 Node.js API에 직접 접근할 수 없습니다.
-- preload 스크립트를 통해 꼭 필요한 API만 안전하게 노출합니다.
+- `package.json`의 `build.productName`: 설치 프로그램과 빌드 결과 이름에 가까운 값
+- `src/components/TitleBar.tsx`: 창 상단에 직접 보이는 제목 텍스트
 
-## 문제 해결
+둘의 역할이 다르기 때문에, 초보자라면 "설치 이름"과 "화면에 보이는 이름"을 따로 본다고 생각하면 이해가 쉽습니다.
 
-개발하다 보면 예상치 못한 문제를 만날 수 있습니다.
+## 5. 빌드하기
 
-아래는 자주 발생하는 상황과 해결 방법입니다.
+이제 실제 배포용 결과물을 만들어 보겠습니다.
 
-당황하지 마시고 하나씩 점검해 보세요!
+```bash
+npm run build
+```
 
-**개발 중 흰 화면이 나타나는 경우**
+이 명령은 한 번에 여러 단계를 실행합니다.
 
-가장 흔한 원인은 포트 설정이 맞지 않는 것입니다.
-- `vite.config.ts`의 `server.port` 값을 확인해 주세요.
+1. React 화면을 빌드합니다.
+2. Electron 메인/프리로드 코드를 컴파일합니다.
+3. 패키징 결과물을 만듭니다.
 
-**창 버튼(최소화/최대화)이 반응하지 않는 경우**
+## 6. 결과물 확인하기
 
-preload 브리지 API에서 사용하는 IPC 채널 이름과, 메인 프로세스에서 등록한 채널 이름이 정확히 일치하는지 확인해 주세요.
+빌드가 끝나면 아래 폴더들을 확인해 보세요.
 
-**아이콘이 반영되지 않는 경우**
+```text
+dist/
+dist/electron/
+output/
+```
 
-이전 빌드 캐시가 남아 있을 수 있습니다.
+각 폴더의 역할은 다음처럼 이해하면 됩니다.
 
-`output/` 폴더를 삭제한 뒤 다시 빌드해 보세요.
+- `dist/`: 렌더러(React 화면) 빌드 결과
+- `dist/electron/`: Electron 메인 프로세스와 프리로드 코드 빌드 결과
+- `output/`: 실제 패키징 결과물
 
-## 참조 링크
+Windows 기본 설정에서는 `output/` 아래에 설치 파일(`.msi`)과 휴대용 실행 파일이 생성될 수 있습니다. 파일 이름은 앱 이름과 버전에 따라 달라질 수 있으니, 처음에는 "어떤 종류의 파일이 생겼는지"만 확인해도 충분합니다.
 
-- Repo: https://github.com/andongmin94/frontron
-- Issues: https://github.com/andongmin94/frontron/issues
-- Electron Builder: https://www.electron.build
+## 7. 여기까지 했다면 다음에 볼 것
+
+이제 Frontron으로 프로젝트를 만들고, 실행하고, 빌드 결과까지 확인해 본 상태입니다.
+
+다음 단계에서는 아래 내용을 차례로 읽으면 좋습니다.
+
+- 앱 이름과 아이콘을 더 자세히 바꾸는 방법
+- 생성된 `src/electron` 폴더가 어떤 역할을 하는지
+- 빌드가 잘 되지 않을 때 어디부터 확인하면 되는지
+
+::: tip
+처음에는 모든 파일을 이해하려고 하지 마세요. 눈에 보이는 결과와 연결되는 파일부터 익히는 편이 훨씬 빠릅니다.
+:::

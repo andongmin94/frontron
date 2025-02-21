@@ -18,7 +18,7 @@ const run = (
 beforeAll(() => fs.remove(genPath))
 afterEach(() => fs.remove(genPath))
 
-test('generated template matches the beginner docs contract', () => {
+test('generated template keeps the starter sample while preserving hard fixes', () => {
   run([projectName], { cwd: __dirname })
 
   const preload = fs.readFileSync(
@@ -35,7 +35,8 @@ test('generated template matches the beginner docs contract', () => {
   expect(preload).toContain('invoke:')
   expect(preload).toContain('return () => ipcRenderer.removeListener')
   expect(titleBar).toContain('window.electron')
-  expect(app).toContain('window.electron')
-  expect(app).not.toContain('process?.versions')
+  expect(app).toContain('count is {count}')
+  expect(app).toContain('Edit <code>src/App.tsx</code> and save to test HMR')
+  expect(app).toContain('process?.versions')
   expect(viteConfig).not.toContain('}),,')
 })

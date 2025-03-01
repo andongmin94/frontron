@@ -1,8 +1,8 @@
 # 빠른 시작
 
-이 페이지는 Frontron을 처음 쓰는 사람이 가장 짧은 경로로 결과를 보는 데 맞춰져 있습니다.
+이 페이지는 Frontron의 공식 목표 계약과 현재 제품 상태를 가장 짧게 설명합니다.
 
-설명을 모두 완벽히 이해하지 못해도 괜찮습니다. 먼저 프로젝트를 만들고, 실행해 보고, 눈에 보이는 것 몇 가지를 바꾸고, 마지막으로 빌드 결과까지 확인해 보겠습니다.
+legacy starter guide는 이전 앱 참고용으로만 남아 있고, 공식 방향은 framework-first, config-driven 구조입니다.
 
 ## 1. 먼저 준비할 것
 
@@ -15,105 +15,59 @@
 이 문서에서는 명령어를 `npm` 기준으로 적습니다. 다른 패키지 매니저를 써도 흐름은 거의 같습니다.
 :::
 
-## 2. 프로젝트 만들기
+## 2. 공식 목표 계약
 
-가장 간단한 시작점은 아래 명령어입니다.
-
-```bash
-npx create-frontron@latest my-app
-```
-
-이 명령은 `my-app` 폴더를 만들고, 그 안에 Electron + React + Vite 기반 기본 프로젝트를 넣어 줍니다.
-
-프로젝트 이름을 아직 정하지 않았다면 아래처럼 대화형으로 시작해도 됩니다.
+최종적으로 사용자는 아래 흐름으로 시작할 수 있어야 합니다.
 
 ```bash
-npm create frontron@latest
+npm install frontron
 ```
 
-## 3. 의존성 설치하고 실행해 보기
+```ts
+// frontron.config.ts
+import { defineConfig } from 'frontron'
 
-프로젝트가 만들어졌다면 폴더 안으로 들어간 뒤 필요한 패키지를 설치하고 앱을 실행합니다.
+export default defineConfig({
+  app: {
+    name: 'My App',
+    id: 'com.example.myapp',
+  },
+})
+```
 
 ```bash
-cd my-app
-npm install
-npm run app
+npm run app:dev
+npm run app:build
 ```
 
-`npm run app`은 두 가지를 함께 시작합니다.
-
-- Vite 개발 서버
-- Electron 데스크톱 앱
-
-브라우저 대신 데스크톱 창이 열리는 것이 정상입니다. 여기까지 왔다면 이미 첫 번째 목표는 달성한 것입니다.
-
-## 4. 눈에 보이는 두 가지를 먼저 바꿔 보기
-
-처음부터 모든 설정을 알 필요는 없습니다. 대신 지금은 초보자에게 가장 체감이 큰 두 가지를 먼저 바꿔 보겠습니다.
-
-### 아이콘 바꾸기
-
-기본 아이콘 파일은 `public/icon.ico`에 있습니다.
-
-이 파일을 내 아이콘 파일로 바꾸면, 이후 빌드할 때 패키징 결과물에 반영됩니다.
+## 3. 공식 구조
 
 ```text
-public/
-  icon.ico
+my-app/
+  src/
+  public/
+  package.json
+  vite.config.ts
+  frontron.config.ts
+  frontron/
 ```
 
-### 앱 이름 바꾸기
+이 구조는 manual install 사용자와 starter 사용자 모두가 공유해야 하는 공식 shape입니다.
 
-앱 이름은 한 군데만 바꾸는 것이 아닙니다. 지금은 아래 두 곳만 먼저 기억하면 충분합니다.
+## 4. 현재 저장소 상태
 
-- `package.json`의 `build.productName`: 설치 프로그램과 빌드 결과 이름에 가까운 값
-- `src/components/TitleBar.tsx`: 창 상단에 직접 보이는 제목 텍스트
+- `frontron`은 이미 `defineConfig`, config discovery, `frontron dev`, `frontron build`, `frontron/client`를 제공합니다.
+- `create-frontron`은 `frontron.config.ts`, `frontron/`, `app:dev`, `app:build`를 생성합니다.
+- `bridge`, `menu`, `tray`, `hooks`는 이미 공식 config surface에서 로드됩니다.
+- 공식 `frontron/rust` 슬롯도 이제 config와 starter 구조에서 고정되었습니다.
+- `app:dev`와 `app:build` smoke check도 이미 정리되었습니다.
+- 핵심 framework-first migration work는 완료되었습니다.
 
-둘의 역할이 다르기 때문에, 초보자라면 "설치 이름"과 "화면에 보이는 이름"을 따로 본다고 생각하면 이해가 쉽습니다.
+## 5. 다음에 볼 문서
 
-## 5. 빌드하기
-
-이제 실제 배포용 결과물을 만들어 보겠습니다.
-
-```bash
-npm run build
-```
-
-이 명령은 한 번에 여러 단계를 실행합니다.
-
-1. React 화면을 빌드합니다.
-2. Electron 메인/프리로드 코드를 컴파일합니다.
-3. 패키징 결과물을 만듭니다.
-
-## 6. 결과물 확인하기
-
-빌드가 끝나면 아래 폴더들을 확인해 보세요.
-
-```text
-dist/
-dist/electron/
-output/
-```
-
-각 폴더의 역할은 다음처럼 이해하면 됩니다.
-
-- `dist/`: 렌더러(React 화면) 빌드 결과
-- `dist/electron/`: Electron 메인 프로세스와 프리로드 코드 빌드 결과
-- `output/`: 실제 패키징 결과물
-
-Windows 기본 설정에서는 `output/` 아래에 설치 파일(`.msi`)과 휴대용 실행 파일이 생성될 수 있습니다. 파일 이름은 앱 이름과 버전에 따라 달라질 수 있으니, 처음에는 "어떤 종류의 파일이 생겼는지"만 확인해도 충분합니다.
-
-## 7. 여기까지 했다면 다음에 볼 것
-
-이제 Frontron으로 프로젝트를 만들고, 실행하고, 빌드 결과까지 확인해 본 상태입니다.
-
-다음 단계에서는 아래 내용을 차례로 읽으면 좋습니다.
-
-- 앱 이름과 아이콘을 더 자세히 바꾸는 방법
-- 생성된 `src/electron` 폴더가 어떤 역할을 하는지
-- 빌드가 잘 되지 않을 때 어디부터 확인하면 되는지
+- [공식 구조와 계약](/guide/framework-first)
+- legacy starter flow를 참고해야 한다면 sidebar의 `Legacy Starter Guides`
 
 ::: tip
-처음에는 모든 파일을 이해하려고 하지 마세요. 눈에 보이는 결과와 연결되는 파일부터 익히는 편이 훨씬 빠릅니다.
+old starter docs는 참고용일 뿐이고, 공식 contract는 항상 `frontron.config.ts` 중심 구조입니다.
 :::

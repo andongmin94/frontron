@@ -6,76 +6,86 @@
 
 </div>
 
-# Frontron <a href="https://npmjs.com/package/create-frontron"><img src="https://img.shields.io/npm/v/create-frontron" alt="npm package"></a>
+# Frontron
 
-Electron 기반 데스크톱 앱을 빠르게 시작할 수 있도록 도와주는 CLI 스캐폴딩 도구입니다.
+기존 웹 프론트엔드 프로젝트를 config-driven 데스크톱 앱으로 확장하는 framework-first 제품 저장소입니다.
 
 ## 개요
 
-`create-frontron`은 하나의 명령어만으로 바로 실행 가능한 Electron 앱 프로젝트를 생성해 줍니다. 복잡한 초기 설정 없이 개발에만 집중할 수 있습니다.
+이 저장소의 역할은 아래 두 패키지로 분리됩니다.
 
-- React 기반 템플릿을 바로 생성할 수 있습니다.
-- TypeScript 기반의 Electron main/preload 아키텍처가 기본으로 구성됩니다.
-- Tailwind CSS, Shadcn UI 스타일 패턴과 다양한 UI 컴포넌트가 함께 포함됩니다.
-- Splash 화면, 시스템 트레이, IPC 통신, 커스텀 TitleBar가 기본 탑재되어 있습니다.
+- `frontron`: 실제 제품. config, CLI, runtime/build ownership, bridge, app-layer 확장 구조를 소유합니다.
+- `create-frontron`: 얇은 starter generator. `frontron`이 연결된 공식 구조만 생성합니다.
 
-## 기본 템플릿
+공식 계약은 [specs/framework-first.md](C:/Users/Andongmin/Desktop/repository/frontron/specs/framework-first.md)에 고정됩니다.
 
-`create-frontron`은 현재 React 템플릿을 기본으로 생성합니다.
+## 공식 목표 계약
 
-| 템플릿 | 렌더러 | Electron 출력 경로 | 패키징 출력 경로 |
-| ---- | ---- | ---- | ---- |
-| React | Vite + React | `dist/electron` | `output/` |
+최종적으로 사용자는 아래 흐름으로 시작할 수 있어야 합니다.
+
+```bash
+npm install frontron
+```
+
+```ts
+// frontron.config.ts
+import { defineConfig } from 'frontron'
+
+export default defineConfig({
+  app: {
+    name: 'My App',
+    id: 'com.example.myapp',
+  },
+  web: {
+    dev: {
+      command: 'npm run web:dev',
+      url: 'http://localhost:5173',
+    },
+    build: {
+      command: 'npm run web:build',
+      outDir: 'dist',
+    },
+  },
+  windows: {
+    main: {
+      route: '/',
+      width: 1280,
+      height: 800,
+    },
+  },
+})
+```
+
+```json
+{
+  "scripts": {
+    "app:dev": "frontron dev",
+    "app:build": "frontron build"
+  }
+}
+```
+
+## 현재 상태
+
+- `packages/frontron`은 `defineConfig`, config discovery, `frontron dev`, `frontron build`, `frontron/client`, framework-owned runtime/build staging을 제공합니다.
+- `packages/create-frontron`은 root `frontron.config.ts`, `frontron/`, `app:dev`, `app:build`를 생성하는 thin starter generator입니다.
+- 문서와 예제는 framework-first 구조를 기준으로 정리되어 있습니다.
 
 ## 요구사항
 
 - Node.js `22+` 버전이 필요합니다.
-
-## 빠른 시작
-
-아래 명령어를 실행하면 프로젝트 이름만 확인한 뒤 바로 React 기반 프로젝트를 생성할 수 있습니다.
-
-```bash
-npm create frontron@latest
-```
-
-이름까지 한 번에 지정해서 생성할 수도 있습니다.
-
-```bash
-npx create-frontron@latest my-app
-```
-
-## 생성 후 실행
-
-프로젝트가 생성되면 아래 명령어로 바로 실행해 볼 수 있습니다.
-
-```bash
-cd my-app
-npm install
-npm run app
-```
-
-## 주요 명령어
-
-생성된 프로젝트에서 사용할 수 있는 주요 명령어입니다.
-
-| 명령어 | 설명 |
-| ---- | ---- |
-| `npm run dev` | 렌더러 개발 서버를 실행합니다 (`vite`) |
-| `npm run app` | 렌더러와 Electron을 동시에 실행합니다 |
-| `npm run build` | 렌더러 빌드, Electron 컴파일, 패키징을 순차적으로 수행합니다 |
-| `npm run lint` | ESLint를 실행하여 코드 품질을 검사합니다 |
 
 ## 저장소 구조
 
 ```text
 frontron/
   docs/                        # VitePress 문서 사이트
+  specs/                       # architecture contract and fixtures
   packages/
-    create-frontron/           # CLI 및 템플릿 소스
+    create-frontron/           # thin starter generator CLI
       src/                     # CLI 로직
-      template/                # React 템플릿
-    frontron/                  # 런타임 패키지(placeholder)
+      template/                # framework-first starter 템플릿
+    frontron/                  # real product surface 패키지
 ```
 
 ## 문서
@@ -84,6 +94,7 @@ frontron/
 
 - 공식 문서: https://frontron.andongmin.com
 - 가이드: https://frontron.andongmin.com/guide/
+- 아키텍처 명세: [specs/framework-first.md](C:/Users/Andongmin/Desktop/repository/frontron/specs/framework-first.md)
 - 이슈: https://github.com/andongmin94/frontron/issues
 
 ## 라이선스

@@ -9,8 +9,9 @@
 먼저 아래를 확인해 보세요.
 
 - `npm install`이 정상적으로 끝났는지
-- `npm run app` 실행 중 터미널에 에러가 없는지
+- `npm run app:dev` 실행 중 터미널에 에러가 없는지
 - Node.js 버전이 `22+`인지
+- root `frontron.config.ts`가 존재하는지
 
 ## 흰 화면이 보이는 경우
 
@@ -19,13 +20,30 @@
 가장 먼저 아래를 확인해 보세요.
 
 - `vite.config.ts`의 `server.port`
+- `frontron/config.ts`의 `web.dev.url`
 - 같은 포트를 이미 쓰는 다른 프로세스가 있는지
 
-## 창 버튼이 반응하지 않는 경우
+## 창 버튼이나 브리지가 반응하지 않는 경우
 
-최소화/최대화 같은 버튼은 Electron 브리지와 IPC 채널 이름이 맞아야 동작합니다.
+최소화/최대화 같은 버튼은 `frontron/client`와 framework runtime이 연결되어야 동작합니다.
 
-초보자라면 먼저 "문서에서 설명한 브리지 계약과 실제 템플릿 파일이 같은지"를 확인해 보세요.
+초보자라면 먼저 아래를 확인해 보세요.
+
+1. `npm run dev`가 아니라 `npm run app:dev`를 실행했는지
+2. 렌더러 코드가 `window.electron`이 아니라 `frontron/client`를 쓰는지
+3. 터미널에 preload/runtime 에러가 없는지
+
+old generated app을 그대로 실행 중이라면 여기서 자주 막힙니다.
+
+- `window.electron` adapter는 더 이상 지원되지 않습니다.
+- renderer 코드는 `frontron/client`로 옮겨야 합니다.
+- old `src/electron/*` 구조나 template-owned runtime/build model은 다시 공식화하지 않습니다.
+
+가능하면 가장 먼저 아래를 확인해 보세요.
+
+1. 렌더러 import가 `frontron/client`인지
+2. `bridge.window.*`와 `bridge.system.*` 호출로 바뀌었는지
+3. 직접 preload global을 읽는 코드가 남아 있지 않은지
 
 ## 아이콘이 바뀌지 않는 경우
 
@@ -40,7 +58,8 @@
 가장 먼저 빌드가 끝까지 성공했는지 확인하세요.
 
 - `dist/`가 생성되었는지
-- `dist/electron/`가 생성되었는지
+- `.frontron/`가 생성되었는지
+- `.frontron/runtime/build/app/` 안에 `manifest.json`, `main.mjs`, `preload.mjs`, `web/`가 있는지
 - 터미널 마지막 줄에 에러가 없는지
 
 Windows에서는 기본적으로 `output/` 아래에 `win-unpacked/`, 설치 파일(`.msi`), 휴대용 실행 파일(`.exe`)이 생성될 수 있습니다. 파일 이름이 다르더라도 확장자와 역할부터 확인하는 것이 좋습니다.

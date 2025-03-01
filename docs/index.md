@@ -6,8 +6,8 @@ titleTemplate: Electron 앱 빠른 시작
 
 hero:
   name: Frontron
-  text: 처음 만드는 Electron 앱도 여기서 시작
-  tagline: create-frontron 하나로 프로젝트 생성부터 빌드 결과 확인까지 직접 따라할 수 있습니다.
+  text: 기존 웹 앱을 데스크톱 앱으로 확장하는 framework-first 전환
+  tagline: 공식 목표는 `frontron + frontron.config.ts + app:dev/app:build` 입니다.
   image:
     src: /logo.svg
     alt: Frontron
@@ -24,8 +24,21 @@ features:
       dark: /npm.svg
       light: /npm.svg
       width: 150px
-    title: 바로 시작 가능한 CLI
+    title: Framework-First Contract
     linkText: npm
     link: https://npmjs.com/package/create-frontron
 
 ---
+
+::: tip Official contract
+Frontron uses a framework-first, config-driven product model.
+
+The official contract now works in the repo as:
+
+- install `frontron` in an existing web project
+- add root `frontron.config.ts`
+- use `app:dev` and `app:build`
+- grow into `frontron/` only when app-layer code gets larger
+
+`create-frontron` generates that same official shape.
+:::

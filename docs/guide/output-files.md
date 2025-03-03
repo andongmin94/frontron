@@ -1,51 +1,56 @@
-# 빌드 결과물 이해하기
+# Understand the Output Files
 
-빌드가 끝났다면, 이제 어떤 폴더가 어떤 역할을 하는지 확인할 차례입니다.
+After a build, the next step is to understand which folder is responsible for what.
 
-처음에는 파일이 많이 보여도 당황하지 마세요. 역할별로 나누어 보면 이해가 쉬워집니다.
+Even if there are many files, the structure is easier to read when you group it by role.
 
 ## 1. `dist/`
 
-이 폴더는 렌더러 쪽 빌드 결과입니다.
+This is the built renderer output.
 
-쉽게 말해 React 화면이 배포용으로 정리된 결과물이라고 생각하면 됩니다.
+You can think of it as the production-ready result of the web frontend.
 
-## 2. `dist/electron/`
+## 2. `.frontron/`
 
-이 폴더는 Electron 메인 프로세스와 preload 코드의 컴파일 결과입니다.
+This is the staging area that Frontron manages.
 
-초보자에게 중요한 감각은 "웹 화면 결과와 Electron 실행 코드 결과가 따로 있다"는 점입니다.
+It includes things such as:
+
+- generated bridge types
+- staged runtime files
+- staged build app files
+- runtime manifests
+
+If you are checking whether the framework prepared the desktop layer correctly, this is the first folder to inspect.
 
 ## 3. `output/`
 
-이 폴더는 실제 패키징 결과가 모이는 곳입니다.
+This is where the packaged desktop app is written.
 
-Windows 기본 설정에서는 아래 같은 항목을 볼 수 있습니다.
+On Windows, you will usually see things such as:
 
 - `win-unpacked/`
-- 설치 파일(`.msi`)
-- 휴대용 실행 파일(`.exe`)
+- an installer `.exe`
 
-처음에는 `win-unpacked/` 폴더만 보여도 놀라지 마세요. 이것은 패키징이 진행된 결과이고, 이어서 설치 파일이나 휴대용 실행 파일이 만들어질 수 있습니다.
+This is the most direct proof that the project was packaged into a desktop app.
 
-이 폴더를 보면 "정말 배포 가능한 형태로 묶였는지"를 가장 직접적으로 확인할 수 있습니다.
+## 4. Why file names can differ
 
-## 4. 파일 이름이 조금 달라도 괜찮은 이유
+File names can change based on:
 
-파일 이름은 아래 요소에 따라 달라질 수 있습니다.
+- the app name
+- the app version
+- the target platform
 
-- 앱 이름
-- 버전
-- 빌드 대상
+So it is better to focus on file role and file extension first, not on an exact file name.
 
-그래서 초보자 입장에서는 파일명을 외우기보다 "확장자와 역할"을 먼저 구분하는 편이 훨씬 좋습니다.
+## 5. The simplest success checklist
 
-## 5. 가장 쉬운 확인 방법
+At the beginning, these questions are enough:
 
-처음에는 아래 질문만 해도 충분합니다.
+- Was `dist/` created?
+- Was `.frontron/` created?
+- Was `output/` created?
+- Does `output/` contain `win-unpacked/` or an installer file?
 
-- `dist/`가 생겼는가?
-- `dist/electron/`가 생겼는가?
-- `output/` 안에 `win-unpacked/`, `.msi`, `.exe` 같은 결과물이 생겼는가?
-
-이 세 가지가 맞으면, 빌드 흐름은 대체로 성공한 것입니다.
+If those checks pass, the build flow is usually healthy.

@@ -1,24 +1,24 @@
-# 설정
+# Config
 
-이 페이지는 Frontron 프로젝트에서 자주 바꾸는 설정이 어디에 있는지 정리한 레퍼런스입니다.
+This page is a reference for the settings people change most often in a Frontron project.
 
-처음 쓰는 사람이라면 모든 값을 한 번에 이해할 필요는 없습니다. 아래에서 "먼저 바꾸면 체감이 큰 것"부터 보는 것이 좋습니다.
+You do not need to understand every value at once. Start with the values that have the biggest visible effect.
 
-## 먼저 보면 좋은 변경 지점
+## Good first places to change
 
-대부분의 초보자는 아래 순서만 알아도 충분합니다.
+For most people, this order is enough:
 
 1. `public/icon.ico`
-2. `frontron/config.ts`의 `app.name`
-3. `frontron/config.ts`의 `app.id`
+2. `frontron/config.ts` → `app.name`
+3. `frontron/config.ts` → `app.id`
 4. `frontron/windows/index.ts`
 5. `vite.config.ts`
 
-## 1. 실행 명령 설정
+## 1. Commands
 
-실행과 빌드 관련 명령은 `package.json`의 `scripts`에 있습니다.
+The main run and build commands live in `package.json`.
 
-대표적으로 많이 쓰는 값은 아래와 같습니다.
+The starter uses this shape:
 
 ```json
 {
@@ -34,51 +34,60 @@
 }
 ```
 
-## 2. 앱 이름과 앱 ID
+For a standard Vite project, `frontron dev` and `frontron build` can infer the web command and target from `package.json` and `vite.config.*`.
 
-앱 이름과 식별자는 `frontron/config.ts`에서 바꿉니다.
+In development mode, Frontron can also read common script hints such as `--port 3001`, `PORT=3001`, and several common frontend defaults.
 
-특히 초보자에게 중요한 값은 아래 두 가지입니다.
+Add `web.dev` and `web.build` only when your project needs explicit custom values that Frontron cannot infer safely.
+
+## 2. App metadata
+
+The main metadata values live in `frontron/config.ts`.
+
+The first values most people edit are:
 
 - `app.name`
 - `app.id`
+- `app.icon`
 
-화면에 보이는 제목은 `frontron/windows/index.ts`나 `src/components/TitleBar.tsx`에서도 함께 바꿀 수 있습니다.
+If `app.icon` is omitted, Frontron uses its default packaged icon.
 
-## 3. 아이콘 경로
+## 3. Window config
 
-기본 아이콘은 `public/icon.ico`를 사용하고, `frontron/config.ts`의 `app.icon`에서 연결합니다.
+Window definitions live in `frontron/windows/index.ts`.
 
-처음에는 이 파일 하나만 바꿔도 패키징 결과에서 큰 차이를 느낄 수 있습니다.
+The starter uses a route-based window shape:
 
-## 4. 개발 서버 포트
+```ts
+const windows = {
+  main: {
+    route: '/',
+    width: 1280,
+    height: 800,
+    frame: false,
+  },
+}
+```
 
-`vite.config.ts`의 `server.port`는 `frontron/config.ts`의 `web.dev.url`과 맞아야 합니다.
+## 4. Development server alignment
 
-포트가 맞지 않으면 흰 화면이 보일 수 있습니다.
+If you set `web.dev.url` explicitly, the development server port in `vite.config.ts` must match it.
 
-## 5. Frontron 브리지
+If they do not match, the desktop window can open with a blank page.
 
-렌더러에서 데스크톱 기능을 쓸 때는 `frontron/client`만 사용합니다.
+## 5. The desktop bridge
 
-기본적으로 아래 형태를 기억하면 충분합니다.
+Renderer code should use only `frontron/client`.
 
 ```ts
 import { bridge } from 'frontron/client'
 
 const version = await bridge.system.getVersion()
 const state = await bridge.window.getState()
-const off = bridge.window.onMaximizedChanged((value) => {
-  console.log(value)
-})
-
-await bridge.window.toggleMaximize()
-off()
+const nativeStatus = await bridge.native.getStatus()
 ```
 
-즉, 초보자는 "데스크톱 기능은 `frontron/client` 브리지로 호출한다"는 한 문장만 제대로 기억해도 많은 혼란을 줄일 수 있습니다.
-
-custom namespace는 `frontron/bridge/`에서 등록합니다.
+Custom namespaces are registered from `frontron/bridge/`.
 
 ```ts
 // frontron/bridge/index.ts
@@ -97,13 +106,13 @@ import { bridge } from 'frontron/client'
 const greeting = await bridge.app.getGreeting()
 ```
 
-`frontron dev`, `frontron build`, `frontron --check`는 `.frontron/types/frontron-client.d.ts`도 함께 생성합니다.
+`frontron dev`, `frontron build`, `frontron dev --check`, and `frontron build --check` generate `.frontron/types/frontron-client.d.ts`.
 
-이 파일은 custom bridge namespace 이름뿐 아니라, config source에서 읽은 메서드 시그니처도 TypeScript 자동완성에 연결합니다.
+That file gives TypeScript autocomplete for custom bridge namespaces and generated method signatures.
 
-## 6. 빌드 결과가 쌓이는 경로
+## 6. Output paths
 
-아래 세 경로를 함께 기억하면 좋습니다.
+The main generated paths are:
 
 ```text
 dist/
@@ -111,13 +120,13 @@ output/
 .frontron/
 ```
 
-- `dist/`: 화면 빌드 결과
-- `output/`: 패키징 결과물
-- `.frontron/`: framework-owned runtime/build staging
+- `dist/`: built web output
+- `output/`: packaged desktop output
+- `.frontron/`: Frontron staging, manifests, and generated types
 
-## 7. menu / tray / hooks
+## 7. Menu, tray, and hooks
 
-app-layer 확장은 `frontron/` 아래에서 이어집니다.
+App-layer desktop extensions live under `frontron/`.
 
 ```ts
 import menu from './frontron/menu'
@@ -125,13 +134,13 @@ import tray from './frontron/tray'
 import hooks from './frontron/hooks'
 ```
 
-- `frontron/menu.ts`: 앱 메뉴 정의
-- `frontron/tray.ts`: 시스템 트레이 정의
-- `frontron/hooks/`: `beforeDev`, `beforeBuild`, `afterPack` hook 정의
+- `frontron/menu.ts`: application menu definition
+- `frontron/tray.ts`: system tray definition
+- `frontron/hooks/`: `beforeDev`, `beforeBuild`, `afterPack`
 
-## 8. Rust 슬롯
+## 8. Rust slot
 
-Rust를 쓰려면 `frontron/config.ts`에서 공식 슬롯을 켭니다.
+The official Rust slot is enabled from `frontron/config.ts`.
 
 ```ts
 export default defineConfig({
@@ -141,24 +150,23 @@ export default defineConfig({
 })
 ```
 
-기본 scaffold는 `frontron/rust/` 아래에 있습니다.
+The starter scaffold lives under `frontron/rust/`.
 
-- `npm run app:dev`: `cargo build`
-- `npm run app:build`: `cargo build --release`
+- `npm run app:dev`: runs `cargo build`
+- `npm run app:build`: runs `cargo build --release`
 
-렌더러에서는 `frontron/client`를 통해 상태만 확인합니다.
-렌더러에서는 `frontron/client`를 통해 built-in 상태 API와 config-driven Rust bridge를 사용합니다.
+Renderer code still goes through `frontron/client`.
 
 ```ts
 import { bridge } from 'frontron/client'
 
-const nativeStatus = await bridge.system.getNativeStatus()
-const isReady = await bridge.system.isNativeReady()
-const sum = await bridge.math.add(2, 3)
+const nativeStatus = await bridge.native.getStatus()
+const isReady = await bridge.native.isReady()
 ```
 
-첫 config-driven Rust bridge 예제는 `frontron/config.ts`의 `rust.bridge`입니다.
-이 바인딩은 TypeScript 타입뿐 아니라 런타임에서도 인자 개수와 기본 값 타입을 확인합니다.
+The starter scaffold also includes config-driven Rust bridge examples.
+
+Those example methods are not built-in framework APIs. They come from `rust.bridge` in `frontron/config.ts`.
 
 ```ts
 export default defineConfig({
@@ -177,10 +185,19 @@ export default defineConfig({
 })
 ```
 
-## 9. 이 페이지의 역할
+```ts
+import { bridge } from 'frontron/client'
 
-이 페이지는 설정을 "순서대로 따라 하는 튜토리얼"이 아니라, 필요한 값을 다시 찾아보는 참조 문서입니다.
+const sum = await bridge.math.add(2, 3)
+const cpuCount = await bridge.system.cpuCount()
+```
+
+These bindings are validated both in TypeScript and at runtime.
+
+## 9. How to use this page
+
+This page is a reference page, not a tutorial.
 
 ::: tip
-실제로 아이콘과 이름을 바꾸는 순서를 먼저 보고 싶다면 `앱 이름과 아이콘 바꾸기` 튜토리얼을 먼저 읽어 보세요.
+If you want a slower walkthrough before changing values, start with the “Change App Name and Icon” guide first.
 :::

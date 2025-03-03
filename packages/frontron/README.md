@@ -21,8 +21,9 @@
 이 패키지는 이미 framework-first product surface의 기본 동작을 소유합니다.
 
 - `defineConfig`, config discovery, `frontron dev`, `frontron build`, `frontron/client`를 제공합니다.
-- `frontron dev`는 configured web dev command와 framework-owned Electron runtime을 함께 실행합니다.
-- `frontron build`는 configured web build command 이후 `.frontron/` 아래에 runtime/build staging을 만들고 desktop packaging을 수행합니다.
+- `frontron init`은 기존 웹 프로젝트에 기본 `frontron.config.ts`와 `app:dev` / `app:build` 스크립트를 안전하게 추가할 수 있습니다.
+- `frontron dev`는 configured web dev command를 실행하며, 표준 Vite 프로젝트에서는 `package.json`과 `vite.config.*`에서 웹 명령과 포트를 자동 추론할 수 있고 `--port`나 `PORT=` 같은 스크립트 힌트도 읽을 수 있습니다.
+- `frontron build`는 configured web build command 이후 `.frontron/` 아래에 runtime/build staging을 만들고 desktop packaging을 수행하며, 표준 Vite 프로젝트에서는 build command와 outDir도 자동 추론할 수 있습니다.
 - config-driven custom bridge namespace는 `frontron.config.ts`에서 로드되며, build 시 공식 app-layer 파일과 함께 staging 됩니다.
 - `frontron` CLI는 `.frontron/types/frontron-client.d.ts`를 생성해서 custom bridge namespace와 메서드 시그니처를 TypeScript에 연결합니다.
 - `menu`, `tray`, `hooks`도 같은 config surface에서 로드되며, starter와 manual install이 같은 구조를 공유합니다.
@@ -32,6 +33,7 @@
 - 첫 config-driven Rust bridge 예제로 `rust.bridge.math.add -> bridge.math.add` 흐름도 지원합니다.
 - config-driven Rust bridge는 런타임에서도 인자 개수와 `int` / `double` / `bool` / `string` 타입을 검증합니다.
 - public renderer API는 이제 `frontron/client`만 지원합니다.
+- `app.icon`을 생략하면 Frontron 기본 아이콘이 자동으로 사용됩니다.
 
 ## Migration Note
 

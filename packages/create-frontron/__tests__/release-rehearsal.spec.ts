@@ -75,7 +75,7 @@ afterEach(() => {
   for (const tempDir of tempDirs.splice(0)) {
     rmSync(tempDir, { recursive: true, force: true })
   }
-})
+}, 60000)
 
 test('package versions stay in sync between create-frontron and frontron', () => {
   const createPackage = JSON.parse(
@@ -136,6 +136,7 @@ test(
 
     const frontronCliPath = join(rehearsalRoot, 'node_modules', 'frontron', 'index.js')
     runNode([frontronCliPath, 'dev', '--cwd', generatedAppRoot, '--check'], rehearsalRoot)
+    runNpm(['install', '--ignore-scripts', frontronTarball], generatedAppRoot)
     runNpm(['install'], generatedAppRoot)
     runNpm(['run', 'lint'], generatedAppRoot)
 

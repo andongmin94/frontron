@@ -14,29 +14,36 @@ You should have:
 - a working web project
 - a root `package.json`
 
-## 2. Install Frontron
+## 2. Fastest bootstrap
 
-Add `frontron` to the project:
-
-```bash
-npm install frontron
-```
-
-## 3. Bootstrap the basic files
-
-If you want Frontron to add the minimum setup for you, run:
+For the shortest setup, run:
 
 ```bash
 npx frontron init
 ```
 
-That command adds these basics when they are missing:
+When `frontron` is missing, that command installs it automatically and then adds these basics when they are missing:
 
 - `app:dev` in `package.json`
 - `app:build` in `package.json`
 - a root `frontron.config.ts`
 
 It does not overwrite existing scripts or config files.
+
+If you want to manage the dependency yourself, use:
+
+```bash
+npx frontron init --skip-install
+```
+
+## 3. Manual install if needed
+
+If you prefer to install the dependency yourself first, this is still valid:
+
+```bash
+npm install frontron
+npx frontron init --skip-install
+```
 
 ## 4. Add desktop scripts manually if needed
 
@@ -70,6 +77,15 @@ export default defineConfig({
   app: {
     name: 'My App',
     id: 'com.example.myapp',
+    description: 'My desktop app',
+    author: 'My Team',
+  },
+  build: {
+    outputDir: 'release',
+    artifactName: '${productName}-${version}-${target}.${ext}',
+    windows: {
+      targets: ['portable', 'dir'],
+    },
   },
   windows: {
     main: {
@@ -88,7 +104,11 @@ For a standard Vite project, Frontron can infer these values from your project:
 - the build command from `package.json`
 - the build output folder from `vite.config.*` or the Vite default
 
-It can also follow common frontend defaults such as React Scripts, Next, Nuxt, Astro, Angular CLI, and Vue CLI when the dev script makes the port obvious.
+It can also follow common frontend defaults such as React Scripts, Astro, Angular CLI, Vue CLI, standard VitePress `docs:dev` / `docs:build` scripts, and well-known namespaced scripts such as `frontend:dev`, `frontend:build`, `client:dev`, `client:build`, `ui:dev`, and `renderer:build`.
+
+For Next.js, Frontron can infer the packaged build output when `next.config.*` uses `output: 'export'`.
+
+For Nuxt, Frontron can infer the packaged build output when your project uses a static `nuxt generate` / `nuxi generate` flow or another prerendered static output.
 
 If your project uses a custom or non-standard setup, add `web.dev` and `web.build` explicitly.
 
@@ -131,11 +151,52 @@ Package the app with:
 npm run app:build
 ```
 
-Frontron stages the runtime under `.frontron/` and writes packaged output under `output/`.
+Frontron stages the runtime under `.frontron/` and writes packaged output under `output/` by default.
+
+In packaged production, Frontron serves the built frontend through its own local loopback server instead of `file://`.
 
 If `app.icon` is not set, Frontron uses its default icon automatically.
 
-## 8. What you do not need to create by hand
+You can move or reshape the packaged output from `frontron.config.ts`.
+
+Common user-owned build settings are:
+
+- `app.description`
+- `app.author`
+- `app.copyright`
+- `build.outputDir`
+- `build.artifactName`
+- `build.windows.targets`
+
+## 8. Common product settings
+
+Use `app` for normal product metadata, and the top-level `build` block for packaged output policy.
+
+`web.build` is still the frontend build step.
+
+The top-level `build` block is for desktop packaging decisions such as output folder, artifact naming, publish mode, and Windows targets.
+
+```ts
+export default defineConfig({
+  app: {
+    name: 'My App',
+    id: 'com.example.myapp',
+    description: 'Desktop shell for My App',
+    author: 'Example Team',
+    copyright: 'Copyright (c) 2026 Example Team',
+  },
+  build: {
+    outputDir: 'artifacts',
+    artifactName: '${productName}-${version}.${ext}',
+    publish: 'onTag',
+    windows: {
+      targets: ['nsis', 'portable', 'dir'],
+    },
+  },
+})
+```
+
+## 9. What you do not need to create by hand
 
 With this flow, you do not need to add:
 
@@ -146,7 +207,7 @@ With this flow, you do not need to add:
 
 Frontron owns those parts.
 
-## 9. What to do next
+## 10. What to do next
 
 After the first run, the most useful next pages are:
 

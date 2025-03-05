@@ -6,8 +6,8 @@ titleTemplate: Framework-First 데스크톱 앱
 
 hero:
   name: Frontron
-  text: 기존 웹 앱을 framework-first 계약으로 데스크톱 앱처럼 실행하세요
-  tagline: "`frontron` 을 설치하고 `frontron.config.ts` 를 만든 뒤 `app:dev` 와 `app:build` 를 실행하세요."
+  text: 기존 웹앱을 framework-first 계약으로 데스크톱 앱처럼 실행하세요
+  tagline: "`npx frontron init` 을 실행한 뒤 `app:dev` 와 `app:build` 를 실행하세요."
   image:
     src: /logo.svg
     alt: Frontron
@@ -24,7 +24,7 @@ hero:
 
 features:
   - title: 기존 프로젝트에 설치하기
-    details: 이미 있는 웹 앱에 Frontron 을 넣고 루트 config 를 만든 뒤 데스크톱 모드로 실행합니다.
+    details: 이미 있는 웹앱에 Frontron 을 추가하고 루트 config 를 만든 뒤 데스크톱 모드로 실행합니다.
     link: /ko/guide/install-existing-project
     linkText: 매뉴얼 열기
   - title: 브리지 흐름 이해하기
@@ -32,11 +32,11 @@ features:
     link: /ko/guide/understand-bridge-flow
     linkText: 설명 열기
   - title: 새 프로젝트 시작하기
-    details: 공식 스타터를 생성하고 데스크톱 앱을 실행한 뒤 첫 화면 변경까지 진행합니다.
+    details: 공식 스타터를 생성하고 데스크톱 앱을 실행한 뒤 첫 번째 변경까지 진행합니다.
     link: /ko/guide/create-project
     linkText: 스타터 가이드 열기
   - title: 빌드와 패키징
-    details: "`app:build` 가 무엇을 준비하는지와 결과물이 어디에 생기는지 확인합니다."
+    details: "`app:build` 가 무엇을 준비하고 결과물이 어디에 생기는지 확인합니다."
     link: /ko/guide/build-and-package
     linkText: 빌드 가이드 열기
 
@@ -51,7 +51,7 @@ features:
 1. [브리지 흐름 이해하기](/ko/guide/understand-bridge-flow)
 2. [데스크톱 브리지 사용하기](/ko/guide/use-bridge)
 
-### 이미 웹 앱이 있다면
+### 이미 웹앱이 있다면
 
 1. [기존 프로젝트에 설치하기](/ko/guide/install-existing-project)
 2. [브리지 흐름 이해하기](/ko/guide/understand-bridge-flow)

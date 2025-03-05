@@ -1,176 +1,153 @@
-import * as React from "react";
-import { useEffect, useState } from "react";
-import { Slot } from "radix-ui";
-import { cva, type VariantProps } from "class-variance-authority";
-import { Copy, Minus, Square, X } from "lucide-react";
+import type { CSSProperties } from "react"
+import { useEffect, useState } from "react"
+import { Copy, Minus, Square, X } from "lucide-react"
 
-import { bridge } from "frontron/client";
+import { bridge } from "frontron/client"
 
-import { cn, hasDesktopBridgeRuntime } from "@/lib/utils";
+import { Button } from "@/components/ui/button"
+import { hasDesktopBridgeRuntime } from "@/lib/utils"
 
-import frontronLogo from "/logo.svg";
+import appLogo from "/logo.svg"
 
-const WEB_PREVIEW_TEXT = "Web preview";
-const BRIDGE_CHECKING_TEXT = "Connecting desktop bridge...";
-const BRIDGE_ERROR_TEXT = "Desktop bridge unavailable";
-
-const buttonVariants = cva(
-  "inline-flex items-center hover:cursor-pointer justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
-  {
-    variants: {
-      variant: {
-        default: "bg-neutral-800 text-primary-foreground hover:bg-neutral-700",
-        destructive:
-          "bg-destructive text-destructive-foreground hover:bg-red-600",
-        outline:
-          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
-        secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
-        link: "text-primary underline-offset-4 hover:underline",
-      },
-      size: {
-        default: "h-10 px-4 py-2",
-        sm: "h-9 rounded-md px-3",
-        lg: "h-11 rounded-md px-8",
-        icon: "h-10 w-10",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
-    },
-  },
-);
-
-interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
-  asChild?: boolean;
-}
-
-const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
-    const Comp = asChild ? Slot : "button";
-    return (
-      <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
-        ref={ref}
-        {...props}
-      />
-    );
-  },
-);
+const TITLE_BAR_HEIGHT = 40
+const DRAG_STYLE = { WebkitAppRegion: "drag" } as CSSProperties
+const NO_DRAG_STYLE = {
+  WebkitAppRegion: "no-drag",
+  cursor: "pointer",
+} as CSSProperties
+const WEB_PREVIEW_TEXT = "Web preview"
+const BRIDGE_CHECKING_TEXT = "Connecting desktop bridge..."
+const BRIDGE_ERROR_TEXT = "Desktop bridge unavailable"
 
 export default function TitleBar() {
-  const hasDesktopBridge = hasDesktopBridgeRuntime();
-  const [bridgeMode, setBridgeMode] = useState<"checking" | "desktop" | "preview" | "error">(
-    hasDesktopBridge ? "checking" : "preview",
-  );
-  const [isMaximized, setIsMaximized] = useState(false);
+  const hasDesktopBridge = hasDesktopBridgeRuntime()
+  const [bridgeMode, setBridgeMode] = useState<
+    "checking" | "desktop" | "preview" | "error"
+  >(hasDesktopBridge ? "checking" : "preview")
+  const [isMaximized, setIsMaximized] = useState(false)
 
   useEffect(() => {
     if (!hasDesktopBridge) {
-      return undefined;
+      return undefined
     }
 
-    let cancelled = false;
-    let unsubscribe: (() => void) | undefined;
+    let cancelled = false
+    let unsubscribe: (() => void) | undefined
 
     async function connectWindowBridge() {
       try {
-        unsubscribe = bridge.window.onMaximizedChanged((value: unknown) => {
+        unsubscribe = bridge.window.onMaximizedChanged((value) => {
           if (cancelled) {
-            return;
+            return
           }
 
-          setBridgeMode("desktop");
-          setIsMaximized(Boolean(value));
-        }) as (() => void) | undefined;
+          setBridgeMode("desktop")
+          setIsMaximized(Boolean(value))
+        })
 
-        const state = await bridge.window.getState();
-        const nextState = state as { isMaximized?: boolean };
+        const state = await bridge.window.getState()
 
         if (cancelled) {
-          return;
+          return
         }
 
-        setBridgeMode("desktop");
-        setIsMaximized(Boolean(nextState.isMaximized));
+        setBridgeMode("desktop")
+        setIsMaximized(Boolean(state.isMaximized))
       } catch (error) {
         if (cancelled) {
-          return;
+          return
         }
 
-        console.error("[Frontron] Failed to connect the desktop bridge.", error);
-        setBridgeMode("error");
+        console.error("[Frontron] Failed to connect the desktop bridge.", error)
+        setBridgeMode("error")
       }
     }
 
-    void connectWindowBridge();
+    void connectWindowBridge()
 
     return () => {
-      cancelled = true;
+      cancelled = true
       if (typeof unsubscribe === "function") {
-        unsubscribe();
+        unsubscribe()
       }
-    };
-  }, [hasDesktopBridge]);
+    }
+  }, [hasDesktopBridge])
+
+  const title =
+    typeof document === "undefined" || !document.title
+      ? "Frontron App"
+      : document.title
 
   const runWindowAction = (label: string, action: () => Promise<unknown>) => {
     void action().catch((error: unknown) => {
-      console.error(`[Frontron] Failed to ${label}.`, error);
-      setBridgeMode("error");
-    });
-  };
-
-  const minimize = () => {
-    runWindowAction("minimize the window", () => bridge.window.minimize());
-  };
-
-  const toggleMaximize = () => {
-    runWindowAction("toggle maximize", () => bridge.window.toggleMaximize());
-  };
-
-  const hideWindow = () => {
-    runWindowAction("hide the window", () => bridge.window.hide());
-  };
+      console.error(`[Frontron] Failed to ${label}.`, error)
+      setBridgeMode("error")
+    })
+  }
 
   return (
     <>
       <div
-        className={cn(
-          "fixed top-0 left-0 right-0 flex w-full justify-between",
-          bridgeMode === "error" ? "bg-red-700" : "bg-neutral-800",
-        )}
-        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+        className="fixed inset-x-0 top-0 z-50 flex h-10 items-center justify-between border-b border-white/10 bg-zinc-950 px-2.5 text-zinc-50 shadow-sm"
+        style={DRAG_STYLE}
       >
-        <div className="flex items-center pl-2 select-none">
-          <img src={frontronLogo} alt="Frontron" className="size-6" />
-          <span className="ml-2 text-lg text-white">Frontron</span>
+        <div className="flex items-center gap-2.5 overflow-hidden px-1.5 select-none">
+          <img src={appLogo} alt="" className="size-[18px] shrink-0" />
+          <span className="truncate text-sm font-medium">{title}</span>
         </div>
-        <div
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-          className="flex items-center"
-        >
+        <div className="flex items-center gap-1.5 pr-1" style={NO_DRAG_STYLE}>
           {bridgeMode === "desktop" ? (
             <>
-              <Button onClick={minimize} size="icon">
-                <Minus className="size-5" />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Minimize window"
+                className="size-8 cursor-pointer rounded-md text-zinc-50 hover:bg-white/10 hover:text-white disabled:cursor-default disabled:opacity-40"
+                style={NO_DRAG_STYLE}
+                onClick={() =>
+                  runWindowAction("minimize the window", () =>
+                    bridge.window.minimize(),
+                  )
+                }
+              >
+                <Minus className="size-3.5" />
               </Button>
-              <Button onClick={toggleMaximize} size="icon">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={isMaximized ? "Restore window" : "Maximize window"}
+                className="size-8 cursor-pointer rounded-md text-zinc-50 hover:bg-white/10 hover:text-white disabled:cursor-default disabled:opacity-40"
+                style={NO_DRAG_STYLE}
+                onClick={() =>
+                  runWindowAction("toggle maximize", () =>
+                    bridge.window.toggleMaximize(),
+                  )
+                }
+              >
                 {isMaximized ? (
-                  <Copy className="size-5" />
+                  <Copy className="size-3.5" />
                 ) : (
-                  <Square className="size-5" />
+                  <Square className="size-3.5" />
                 )}
               </Button>
-              <Button onClick={hideWindow} size="icon">
-                <X className="size-5" />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Hide window"
+                className="size-8 cursor-pointer rounded-md text-zinc-50 hover:bg-red-500/80 hover:text-white disabled:cursor-default disabled:opacity-40"
+                style={NO_DRAG_STYLE}
+                onClick={() =>
+                  runWindowAction("hide the window", () => bridge.window.hide())
+                }
+              >
+                <X className="size-3.5" />
               </Button>
             </>
           ) : (
-            <span className="px-3 text-xs font-medium text-white">
+            <span className="px-3 text-xs font-medium text-zinc-50">
               {bridgeMode === "preview"
                 ? WEB_PREVIEW_TEXT
                 : bridgeMode === "checking"
@@ -180,7 +157,7 @@ export default function TitleBar() {
           )}
         </div>
       </div>
-      <div className="h-[40px]" />
+      <div style={{ height: TITLE_BAR_HEIGHT }} />
     </>
-  );
+  )
 }

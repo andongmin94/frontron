@@ -17,6 +17,7 @@ const previousSmokeEnv = new Map<string, string | undefined>()
 const require = createRequire(import.meta.url)
 const packageRoot = dirname(fileURLToPath(new URL('../package.json', import.meta.url)))
 const buildLockPath = join(packageRoot, '.test-build.lock')
+let hasEnsuredBuiltRuntime = false
 
 function sleepSync(timeoutMs: number) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, timeoutMs)
@@ -159,7 +160,7 @@ function waitForExit(child: ReturnType<typeof spawn>, timeoutMs = 30_000) {
 
 function ensureBuiltRuntime() {
   withBuildLock(() => {
-    if (existsSync(join(packageRoot, 'dist', 'index.mjs'))) {
+    if (hasEnsuredBuiltRuntime) {
       return
     }
 
@@ -167,6 +168,7 @@ function ensureBuiltRuntime() {
       cwd: packageRoot,
       stdio: 'ignore',
     })
+    hasEnsuredBuiltRuntime = true
   })
 }
 
@@ -435,6 +437,22 @@ test.sequential('staged build runtime boots in Electron smoke mode', async () =>
   const fixtureDir = createFixtureProject()
   fixtureDirs.push(fixtureDir)
 
+  writeFileSync(
+    join(fixtureDir, 'frontron', 'windows', 'index.ts'),
+    [
+      'const windows = {',
+      '  main: {',
+      "    route: '/settings/profile',",
+      '    width: 1280,',
+      '    height: 800,',
+      '  },',
+      '}',
+      '',
+      'export default windows',
+      '',
+    ].join('\n'),
+  )
+
   const loadedConfig = await loadConfig({ cwd: fixtureDir })
   const stagedBuild = stageBuildApp(loadedConfig)
   const electronBinary = require('electron') as string
@@ -473,6 +491,12 @@ test.sequential('staged build runtime boots in Electron smoke mode', async () =>
       ready: boolean
     }
     windowRoute: string
+    loadedUrl?: string
+    renderState: {
+      title: string
+      bodyText: string
+      rootHtmlLength: number | null
+    } | null
   }
 
   expect(smokePayload.mode).toBe('production')
@@ -485,7 +509,9 @@ test.sequential('staged build runtime boots in Electron smoke mode', async () =>
     loaded: false,
     ready: false,
   })
-  expect(smokePayload.windowRoute).toBe('/')
+  expect(smokePayload.windowRoute).toBe('/settings/profile')
+  expect(smokePayload.loadedUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/settings\/profile$/)
+  expect(smokePayload.renderState?.bodyText).toContain('fixture')
 }, 30_000)
 
 test.sequential('runCli boots the development app flow in Electron smoke mode', async () => {
@@ -521,7 +547,9 @@ test.sequential('runCli boots the development app flow in Electron smoke mode', 
   expect(info.some((message) => message.includes('Launching web dev command'))).toBe(true)
   expect(info.some((message) => message.includes('Launching framework runtime'))).toBe(true)
   expect(existsSync(join(fixtureDir, '.before-dev-hook'))).toBe(true)
-  expect(existsSync(join(fixtureDir, '.frontron', 'runtime', 'dev', 'manifest.json'))).toBe(true)
+  expect(existsSync(join(fixtureDir, '.frontron', 'runtime', 'dev-app', 'manifest.json'))).toBe(
+    true,
+  )
   await waitForFile(smokeResultPath)
   expect(existsSync(smokeResultPath)).toBe(true)
 

@@ -1,7 +1,13 @@
-import { app, shell, type BrowserWindow } from 'electron'
+import { createRequire } from 'node:module'
 
 import type { FrontronDesktopContext } from '../types'
 import type { RuntimeManifest } from './manifest'
+
+const require = createRequire(import.meta.url)
+const electron = require('electron') as typeof import('electron')
+const { app, shell } = electron
+
+type ElectronBrowserWindow = import('electron').BrowserWindow
 
 function readOpenExternalUrl(input: string | { url: string }) {
   if (typeof input === 'string') {
@@ -13,7 +19,7 @@ function readOpenExternalUrl(input: string | { url: string }) {
 
 export function createDesktopContext(
   manifest: RuntimeManifest,
-  getMainWindow: () => BrowserWindow | null,
+  getMainWindow: () => ElectronBrowserWindow | null,
   onWindowStateChanged?: () => void,
 ): FrontronDesktopContext {
   return {

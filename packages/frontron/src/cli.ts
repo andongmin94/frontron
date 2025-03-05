@@ -16,6 +16,14 @@ import { writeBridgeTypes } from './bridge-types'
 import { runHook, type HookOutput } from './hooks'
 import { getRustTask } from './rust'
 import type { RuntimeManifest } from './runtime/manifest'
+import type {
+  FrontronPublishMode,
+  ResolvedFrontronBuildLinuxConfig,
+  ResolvedFrontronBuildMacConfig,
+  ResolvedFrontronBuildFilePattern,
+  ResolvedFrontronBuildNsisConfig,
+  ResolvedFrontronBuildWindowsConfig,
+} from './types'
 
 type CommandName = 'dev' | 'build'
 type CliCommand = CommandName | 'init'
@@ -26,11 +34,43 @@ interface ParsedCliArgs {
   configFile?: string
   check: boolean
   help: boolean
+  skipInstall: boolean
 }
 
 interface CliOutput {
   info(message: string): void
   error(message: string): void
+}
+
+type PackageManagerName = 'npm' | 'pnpm' | 'yarn' | 'bun'
+
+interface InitDependencyRequest {
+  rootDir: string
+  packageManager: PackageManagerName
+  packageName: string
+  versionRange: string
+  command: string
+}
+
+interface CliRuntimeOptions {
+  installDependency?(request: InitDependencyRequest): Promise<number> | number
+}
+
+interface ProjectPackageJson {
+  name?: string
+  version?: string
+  description?: string
+  author?: unknown
+  scripts?: Record<string, string>
+  dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
+}
+
+interface ProjectPackageMetadata {
+  name: string
+  version: string
+  description?: string
+  author?: unknown
 }
 
 type LoadedConfig = Awaited<ReturnType<typeof loadConfig>>
@@ -67,12 +107,71 @@ const VITE_CONFIG_FILES = [
   'vite.config.mjs',
   'vite.config.cjs',
 ]
+const VITEPRESS_CONFIG_FILES = [
+  join('docs', '.vitepress', 'config.ts'),
+  join('docs', '.vitepress', 'config.mts'),
+  join('docs', '.vitepress', 'config.cts'),
+  join('docs', '.vitepress', 'config.js'),
+  join('docs', '.vitepress', 'config.mjs'),
+  join('docs', '.vitepress', 'config.cjs'),
+  join('.vitepress', 'config.ts'),
+  join('.vitepress', 'config.mts'),
+  join('.vitepress', 'config.cts'),
+  join('.vitepress', 'config.js'),
+  join('.vitepress', 'config.mjs'),
+  join('.vitepress', 'config.cjs'),
+]
+const NEXT_CONFIG_FILES = [
+  'next.config.ts',
+  'next.config.mts',
+  'next.config.cts',
+  'next.config.js',
+  'next.config.mjs',
+  'next.config.cjs',
+]
+const NUXT_CONFIG_FILES = [
+  'nuxt.config.ts',
+  'nuxt.config.mts',
+  'nuxt.config.cts',
+  'nuxt.config.js',
+  'nuxt.config.mjs',
+  'nuxt.config.cjs',
+]
+const ASTRO_CONFIG_FILES = [
+  'astro.config.ts',
+  'astro.config.mts',
+  'astro.config.cts',
+  'astro.config.js',
+  'astro.config.mjs',
+  'astro.config.cjs',
+]
+const VUE_CLI_CONFIG_FILES = [
+  'vue.config.ts',
+  'vue.config.mts',
+  'vue.config.cts',
+  'vue.config.js',
+  'vue.config.mjs',
+  'vue.config.cjs',
+]
+const ANGULAR_WORKSPACE_FILE = 'angular.json'
+const COMMON_SCRIPT_PREFIXES = [
+  'web',
+  'docs',
+  'site',
+  'frontend',
+  'client',
+  'ui',
+  'renderer',
+] as const
+const DEFAULT_BUILD_OUTPUT_DIR = 'output'
+const DEFAULT_BUILD_PUBLISH_MODE: FrontronPublishMode = 'never'
 
 function parseArgs(argv: string[]): ParsedCliArgs {
   const parsed: ParsedCliArgs = {
     command: null,
     check: false,
     help: false,
+    skipInstall: false,
   }
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -85,6 +184,11 @@ function parseArgs(argv: string[]): ParsedCliArgs {
 
     if (value === '--check') {
       parsed.check = true
+      continue
+    }
+
+    if (value === '--skip-install') {
+      parsed.skipInstall = true
       continue
     }
 
@@ -112,10 +216,14 @@ function parseArgs(argv: string[]): ParsedCliArgs {
 }
 
 function printHelp(output: CliOutput) {
-  output.info('Usage: frontron <init|dev|build> [--cwd <path>] [--config <path>] [--check]')
+  output.info(
+    'Usage: frontron <init|dev|build> [--cwd <path>] [--config <path>] [--check] [--skip-install]',
+  )
   output.info('')
   output.info('Commands:')
-  output.info('  init    Add a basic frontron.config.ts and app:dev/app:build scripts to the current project.')
+  output.info(
+    '  init    Add a basic frontron.config.ts and app:dev/app:build scripts, and install frontron if it is missing.',
+  )
   output.info('  dev     Run the configured web dev command and launch the framework-owned Electron runtime.')
   output.info('  build   Run the configured web build command and package the framework-owned Electron runtime.')
 }
@@ -165,7 +273,7 @@ function resolveRuntimeSharedDir() {
   return null
 }
 
-function readPackageJsonVersion(rootDir: string) {
+function readProjectPackageMetadata(rootDir: string): ProjectPackageMetadata {
   const packageJsonPath = join(rootDir, 'package.json')
 
   if (!existsSync(packageJsonPath)) {
@@ -176,14 +284,13 @@ function readPackageJsonVersion(rootDir: string) {
   }
 
   try {
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
-      name?: string
-      version?: string
-    }
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as ProjectPackageJson
 
     return {
       version: packageJson.version ?? '0.0.0',
       name: packageJson.name ?? 'frontron-app',
+      description: typeof packageJson.description === 'string' ? packageJson.description : undefined,
+      author: packageJson.author,
     }
   } catch {
     return {
@@ -201,21 +308,31 @@ function readProjectPackageJson(rootDir: string) {
   }
 
   try {
-    return JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
-      name?: string
-      version?: string
-      scripts?: Record<string, string>
-      dependencies?: Record<string, string>
-      devDependencies?: Record<string, string>
-    }
+    return JSON.parse(readFileSync(packageJsonPath, 'utf8')) as ProjectPackageJson
   } catch {
     return null
   }
 }
 
+function readProjectScripts(rootDir: string) {
+  return readProjectPackageJson(rootDir)?.scripts ?? {}
+}
+
+function readConfigSource(rootDir: string, candidateFiles: readonly string[]) {
+  for (const candidate of candidateFiles) {
+    const configPath = join(rootDir, candidate)
+
+    if (existsSync(configPath)) {
+      return readFileSync(configPath, 'utf8')
+    }
+  }
+
+  return null
+}
+
 function writeProjectPackageJson(
   rootDir: string,
-  packageJson: Record<string, unknown>,
+  packageJson: ProjectPackageJson,
 ) {
   writeFileSync(join(rootDir, 'package.json'), `${JSON.stringify(packageJson, null, 2)}\n`)
 }
@@ -223,6 +340,196 @@ function writeProjectPackageJson(
 function resolveDefaultAppIconPath() {
   const candidate = resolvePackageFile('../assets/default-icon.ico')
   return existsSync(candidate) ? candidate : undefined
+}
+
+function resolveBuildOutputDir(loadedConfig: LoadedConfig) {
+  return loadedConfig.config.build?.outputDir ?? join(loadedConfig.rootDir, DEFAULT_BUILD_OUTPUT_DIR)
+}
+
+function resolveBuildPublishMode(loadedConfig: LoadedConfig) {
+  return loadedConfig.config.build?.publish ?? DEFAULT_BUILD_PUBLISH_MODE
+}
+
+function createBuilderFilePattern(pattern: ResolvedFrontronBuildFilePattern) {
+  if (typeof pattern === 'string') {
+    return pattern
+  }
+
+  const fileSet: Record<string, unknown> = {
+    from: pattern.from,
+  }
+
+  if (pattern.to) {
+    fileSet.to = pattern.to
+  }
+
+  if (pattern.filter?.length) {
+    fileSet.filter = pattern.filter
+  }
+
+  return fileSet
+}
+
+function createBuilderFiles(
+  patterns: readonly ResolvedFrontronBuildFilePattern[] | undefined,
+) {
+  const files: Array<string | Record<string, unknown>> = ['**/*']
+
+  for (const pattern of patterns ?? []) {
+    files.push(createBuilderFilePattern(pattern))
+  }
+
+  return files
+}
+
+function createBuilderExtraEntries(
+  patterns: readonly ResolvedFrontronBuildFilePattern[] | undefined,
+) {
+  if (!patterns?.length) {
+    return undefined
+  }
+
+  return patterns.map((pattern) => createBuilderFilePattern(pattern))
+}
+
+function createBuilderWindowsConfig(
+  windows: ResolvedFrontronBuildWindowsConfig | undefined,
+) {
+  if (!windows) {
+    return undefined
+  }
+
+  const builderWindows: Record<string, unknown> = {}
+
+  if (windows.targets?.length) {
+    builderWindows.target = windows.targets
+  }
+
+  if (windows.icon) {
+    builderWindows.icon = windows.icon
+  }
+
+  if (windows.publisherName?.length) {
+    builderWindows.publisherName = windows.publisherName
+  }
+
+  if (typeof windows.signAndEditExecutable !== 'undefined') {
+    builderWindows.signAndEditExecutable = windows.signAndEditExecutable
+  }
+
+  if (windows.requestedExecutionLevel) {
+    builderWindows.requestedExecutionLevel = windows.requestedExecutionLevel
+  }
+
+  if (windows.artifactName) {
+    builderWindows.artifactName = windows.artifactName
+  }
+
+  return Object.keys(builderWindows).length > 0 ? builderWindows : undefined
+}
+
+function createBuilderNsisConfig(nsis: ResolvedFrontronBuildNsisConfig | undefined) {
+  if (!nsis) {
+    return undefined
+  }
+
+  const builderNsis: Record<string, unknown> = {}
+
+  if (typeof nsis.oneClick !== 'undefined') {
+    builderNsis.oneClick = nsis.oneClick
+  }
+
+  if (typeof nsis.perMachine !== 'undefined') {
+    builderNsis.perMachine = nsis.perMachine
+  }
+
+  if (typeof nsis.allowToChangeInstallationDirectory !== 'undefined') {
+    builderNsis.allowToChangeInstallationDirectory = nsis.allowToChangeInstallationDirectory
+  }
+
+  if (typeof nsis.deleteAppDataOnUninstall !== 'undefined') {
+    builderNsis.deleteAppDataOnUninstall = nsis.deleteAppDataOnUninstall
+  }
+
+  if (nsis.installerIcon) {
+    builderNsis.installerIcon = nsis.installerIcon
+  }
+
+  if (nsis.uninstallerIcon) {
+    builderNsis.uninstallerIcon = nsis.uninstallerIcon
+  }
+
+  return Object.keys(builderNsis).length > 0 ? builderNsis : undefined
+}
+
+function createBuilderMacConfig(mac: ResolvedFrontronBuildMacConfig | undefined) {
+  if (!mac) {
+    return undefined
+  }
+
+  const builderMac: Record<string, unknown> = {}
+
+  if (mac.targets?.length) {
+    builderMac.target = mac.targets
+  }
+
+  if (mac.icon) {
+    builderMac.icon = mac.icon
+  }
+
+  if (mac.category) {
+    builderMac.category = mac.category
+  }
+
+  if (mac.artifactName) {
+    builderMac.artifactName = mac.artifactName
+  }
+
+  return Object.keys(builderMac).length > 0 ? builderMac : undefined
+}
+
+function createBuilderLinuxConfig(linux: ResolvedFrontronBuildLinuxConfig | undefined) {
+  if (!linux) {
+    return undefined
+  }
+
+  const builderLinux: Record<string, unknown> = {}
+
+  if (linux.targets?.length) {
+    builderLinux.target = linux.targets
+  }
+
+  if (linux.icon) {
+    builderLinux.icon = linux.icon
+  }
+
+  if (linux.category) {
+    builderLinux.category = linux.category
+  }
+
+  if (linux.packageCategory) {
+    builderLinux.packageCategory = linux.packageCategory
+  }
+
+  if (linux.artifactName) {
+    builderLinux.artifactName = linux.artifactName
+  }
+
+  return Object.keys(builderLinux).length > 0 ? builderLinux : undefined
+}
+
+function resolveAppDescription(
+  loadedConfig: LoadedConfig,
+  projectPackage: ProjectPackageMetadata,
+) {
+  return loadedConfig.config.app.description ?? projectPackage.description ?? loadedConfig.config.app.name
+}
+
+function resolveAppAuthor(
+  loadedConfig: LoadedConfig,
+  projectPackage: ProjectPackageMetadata,
+) {
+  return loadedConfig.config.app.author ?? projectPackage.author
 }
 
 function stripPackageScope(packageName: string | undefined) {
@@ -273,7 +580,7 @@ function createInitConfigSource(packageName: string | undefined) {
   ].join('\n')
 }
 
-function detectPackageManager(rootDir: string) {
+function detectPackageManager(rootDir: string): PackageManagerName {
   const userAgent = process.env.npm_config_user_agent ?? ''
 
   if (userAgent.startsWith('pnpm/')) {
@@ -303,9 +610,82 @@ function detectPackageManager(rootDir: string) {
   return 'npm'
 }
 
-function createRunScriptCommand(rootDir: string, scriptName: string) {
-  const packageManager = detectPackageManager(rootDir)
+function detectBootstrapPackageManager(rootDir: string): PackageManagerName {
+  if (existsSync(join(rootDir, 'pnpm-lock.yaml'))) {
+    return 'pnpm'
+  }
 
+  if (existsSync(join(rootDir, 'yarn.lock'))) {
+    return 'yarn'
+  }
+
+  if (existsSync(join(rootDir, 'bun.lock')) || existsSync(join(rootDir, 'bun.lockb'))) {
+    return 'bun'
+  }
+
+  return detectPackageManager(rootDir)
+}
+
+function readDependencyVersion(
+  packageJson: ReturnType<typeof readProjectPackageJson>,
+  dependencyName: string,
+) {
+  return packageJson?.dependencies?.[dependencyName] ?? packageJson?.devDependencies?.[dependencyName]
+}
+
+function readCurrentPackageVersionRange() {
+  const packageJson = JSON.parse(readFileSync(resolvePackageFile('../package.json'), 'utf8')) as {
+    version?: string
+  }
+
+  return `^${packageJson.version ?? '0.0.0'}`
+}
+
+function createPackageManagerAddCommand(
+  packageManager: PackageManagerName,
+  packageSpec: string,
+) {
+  if (packageManager === 'npm') {
+    return `npm install ${packageSpec}`
+  }
+
+  if (packageManager === 'pnpm') {
+    return `pnpm add ${packageSpec}`
+  }
+
+  if (packageManager === 'yarn') {
+    return `yarn add ${packageSpec}`
+  }
+
+  return `bun add ${packageSpec}`
+}
+
+function createInitDependencyRequest(rootDir: string): InitDependencyRequest {
+  const packageName = 'frontron'
+  const packageManager = detectBootstrapPackageManager(rootDir)
+  const versionRange = readCurrentPackageVersionRange()
+  const command = createPackageManagerAddCommand(
+    packageManager,
+    `${packageName}@${versionRange}`,
+  )
+
+  return {
+    rootDir,
+    packageManager,
+    packageName,
+    versionRange,
+    command,
+  }
+}
+
+function createRunScriptCommand(rootDir: string, scriptName: string) {
+  return createRunScriptCommandForPackageManager(detectPackageManager(rootDir), scriptName)
+}
+
+function createRunScriptCommandForPackageManager(
+  packageManager: PackageManagerName,
+  scriptName: string,
+) {
   if (packageManager === 'yarn') {
     return `yarn ${scriptName}`
   }
@@ -331,21 +711,53 @@ function isRecursiveFrontronScript(commandText: string, commandName: CommandName
   )
 }
 
-function readScriptCandidates(rootDir: string, commandName: CommandName) {
-  const packageJson = readProjectPackageJson(rootDir)
-  const scripts = packageJson?.scripts ?? {}
-
-  if (commandName === 'dev') {
-    return [
-      ['web:dev', scripts['web:dev']],
-      ['dev', scripts.dev],
-    ] as const
+function isNuxtStaticGenerateCommand(commandText: string | undefined) {
+  if (!commandText) {
+    return false
   }
 
-  return [
-    ['web:build', scripts['web:build']],
-    ['build', scripts.build],
-  ] as const
+  return (
+    /\b(?:nuxi|nuxt)\s+generate\b/.test(commandText) ||
+    (/\b(?:nuxi|nuxt)\s+build\b/.test(commandText) &&
+      /\s--prerender(?:\s|$|=)/.test(commandText))
+  )
+}
+
+function readScriptCandidates(
+  rootDir: string,
+  commandName: CommandName,
+): Array<[string, string | undefined]> {
+  const scripts = readProjectScripts(rootDir)
+  const candidateScripts: Array<[string, string | undefined]> = []
+
+  if (commandName === 'build' && looksLikeNuxtProject(rootDir)) {
+    for (const prefix of COMMON_SCRIPT_PREFIXES) {
+      const scriptName = `${prefix}:generate`
+      const scriptBody = scripts[scriptName]
+      candidateScripts.push([
+        scriptName,
+        isNuxtStaticGenerateCommand(scriptBody) ? scriptBody : undefined,
+      ])
+    }
+
+    candidateScripts.push([
+      'generate',
+      isNuxtStaticGenerateCommand(scripts.generate) ? scripts.generate : undefined,
+    ])
+  }
+
+  for (const prefix of COMMON_SCRIPT_PREFIXES) {
+    const scriptName = `${prefix}:${commandName}`
+    candidateScripts.push([scriptName, scripts[scriptName]])
+  }
+
+  if (commandName === 'dev') {
+    candidateScripts.push(['dev', scripts.dev])
+    return candidateScripts
+  }
+
+  candidateScripts.push(['build', scripts.build])
+  return candidateScripts
 }
 
 function inferScriptCommand(rootDir: string, commandName: CommandName) {
@@ -446,15 +858,68 @@ function parseEnvAssignment(commandText: string, envNames: string[]) {
 }
 
 function readViteConfigSource(rootDir: string) {
-  for (const candidate of VITE_CONFIG_FILES) {
-    const configPath = join(rootDir, candidate)
+  return readConfigSource(rootDir, VITE_CONFIG_FILES)
+}
 
-    if (existsSync(configPath)) {
-      return readFileSync(configPath, 'utf8')
-    }
+function readVitePressConfigSource(rootDir: string) {
+  return readConfigSource(rootDir, VITEPRESS_CONFIG_FILES)
+}
+
+function readNextConfigSource(rootDir: string) {
+  return readConfigSource(rootDir, NEXT_CONFIG_FILES)
+}
+
+function readNuxtConfigSource(rootDir: string) {
+  return readConfigSource(rootDir, NUXT_CONFIG_FILES)
+}
+
+function readAstroConfigSource(rootDir: string) {
+  return readConfigSource(rootDir, ASTRO_CONFIG_FILES)
+}
+
+function readVueCliConfigSource(rootDir: string) {
+  return readConfigSource(rootDir, VUE_CLI_CONFIG_FILES)
+}
+
+function tokenizeCommand(commandText: string) {
+  const matches = commandText.match(/"[^"]*"|'[^']*'|\S+/g) ?? []
+  return matches.map(stripWrappingQuotes)
+}
+
+function readFirstCommandPositionalArg(commandText: string, commandNames: string[]) {
+  const tokens = tokenizeCommand(commandText)
+  const commandIndex = tokens.findIndex((token) => commandNames.includes(token))
+
+  if (commandIndex < 0) {
+    return undefined
   }
 
-  return null
+  for (let index = commandIndex + 1; index < tokens.length; index += 1) {
+    const token = tokens[index]
+
+    if (!token) {
+      continue
+    }
+
+    if (token.startsWith('-')) {
+      if (!token.includes('=')) {
+        index += 1
+      }
+      continue
+    }
+
+    return token
+  }
+
+  return undefined
+}
+
+function commandIncludesToken(commandText: string | undefined, token: string) {
+  if (!commandText) {
+    return false
+  }
+
+  return tokenizeCommand(commandText).includes(token)
 }
 
 function inferVitePort(rootDir: string, commandText?: string) {
@@ -489,6 +954,30 @@ function inferViteOutDir(rootDir: string, commandText?: string) {
   return viteOutDir ?? 'dist'
 }
 
+function looksLikeVitePressProject(rootDir: string, commandText?: string) {
+  return Boolean(
+    commandIncludesToken(commandText, 'vitepress') ||
+      readVitePressConfigSource(rootDir) ||
+      hasPackageDependency(rootDir, 'vitepress'),
+  )
+}
+
+function inferVitePressContentDir(rootDir: string, commandText?: string) {
+  const contentDir = commandText
+    ? readFirstCommandPositionalArg(commandText, ['dev', 'build', 'preview'])
+    : undefined
+
+  if (contentDir) {
+    return contentDir
+  }
+
+  if (existsSync(join(rootDir, '.vitepress'))) {
+    return '.'
+  }
+
+  return 'docs'
+}
+
 function hasPackageDependency(rootDir: string, dependencyName: string) {
   const packageJson = readProjectPackageJson(rootDir)
 
@@ -497,9 +986,50 @@ function hasPackageDependency(rootDir: string, dependencyName: string) {
   )
 }
 
+function readAngularWorkspace(rootDir: string) {
+  const workspacePath = join(rootDir, ANGULAR_WORKSPACE_FILE)
+
+  if (!existsSync(workspacePath)) {
+    return null
+  }
+
+  try {
+    return JSON.parse(readFileSync(workspacePath, 'utf8')) as {
+      defaultProject?: string
+      projects?: Record<
+        string,
+        {
+          architect?: {
+            build?: {
+              builder?: string
+              options?: {
+                outputPath?: string | { base?: string; browser?: string }
+              }
+            }
+          }
+          targets?: {
+            build?: {
+              builder?: string
+              options?: {
+                outputPath?: string | { base?: string; browser?: string }
+              }
+            }
+          }
+        }
+      >
+    }
+  } catch {
+    return null
+  }
+}
+
 function looksLikeViteProject(rootDir: string, commandText?: string) {
+  if (looksLikeVitePressProject(rootDir, commandText)) {
+    return false
+  }
+
   return Boolean(
-    commandText?.includes('vite') ||
+    commandIncludesToken(commandText, 'vite') ||
       readViteConfigSource(rootDir) ||
       hasPackageDependency(rootDir, 'vite'),
   )
@@ -510,13 +1040,18 @@ function looksLikeReactScriptsProject(commandText?: string) {
 }
 
 function looksLikeNextProject(rootDir: string, commandText?: string) {
-  return Boolean(commandText?.includes('next dev') || hasPackageDependency(rootDir, 'next'))
+  return Boolean(
+    commandText?.includes('next dev') ||
+      readNextConfigSource(rootDir) ||
+      hasPackageDependency(rootDir, 'next'),
+  )
 }
 
 function looksLikeNuxtProject(rootDir: string, commandText?: string) {
   return Boolean(
     commandText?.includes('nuxi dev') ||
       commandText?.includes('nuxt dev') ||
+      readNuxtConfigSource(rootDir) ||
       hasPackageDependency(rootDir, 'nuxt'),
   )
 }
@@ -536,6 +1071,112 @@ function looksLikeVueCliProject(rootDir: string, commandText?: string) {
     commandText?.includes('vue-cli-service serve') ||
       hasPackageDependency(rootDir, '@vue/cli-service'),
   )
+}
+
+function inferNextStaticOutDir(rootDir: string, commandText?: string) {
+  const exportOutDir = commandText
+    ? parseStringFlag(commandText, ['--outdir', '-o'])
+    : undefined
+
+  if (commandText?.includes('next export')) {
+    return exportOutDir ?? 'out'
+  }
+
+  const nextConfigSource = readNextConfigSource(rootDir)
+
+  if (nextConfigSource?.match(/\boutput\s*:\s*['"]export['"]/)) {
+    return 'out'
+  }
+
+  return null
+}
+
+function inferNuxtStaticOutDir(commandText?: string) {
+  if (isNuxtStaticGenerateCommand(commandText)) {
+    return '.output/public'
+  }
+
+  return null
+}
+
+function inferAstroOutDir(rootDir: string, commandText?: string) {
+  const commandOutDir = commandText
+    ? parseStringFlag(commandText, ['--outDir'])
+    : undefined
+
+  if (commandOutDir) {
+    return commandOutDir
+  }
+
+  const astroConfigSource = readAstroConfigSource(rootDir)
+  const astroOutDir =
+    astroConfigSource?.match(/\boutDir\s*:\s*['"]([^'"]+)['"]/)?.[1]
+
+  return astroOutDir ?? 'dist'
+}
+
+function inferVueCliOutDir(rootDir: string) {
+  const vueCliConfigSource = readVueCliConfigSource(rootDir)
+  const vueCliOutDir =
+    vueCliConfigSource?.match(/\boutputDir\s*:\s*['"]([^'"]+)['"]/)?.[1]
+
+  return vueCliOutDir ?? 'dist'
+}
+
+function resolveAngularOutputPath(
+  outputPath: string | { base?: string; browser?: string } | undefined,
+) {
+  if (!outputPath) {
+    return null
+  }
+
+  if (typeof outputPath === 'string') {
+    return outputPath
+  }
+
+  if (outputPath.base && outputPath.browser) {
+    return join(outputPath.base, outputPath.browser)
+  }
+
+  return outputPath.base ?? outputPath.browser ?? null
+}
+
+function inferAngularOutDir(rootDir: string, commandText?: string) {
+  const angularWorkspace = readAngularWorkspace(rootDir)
+
+  if (!angularWorkspace?.projects) {
+    return 'dist'
+  }
+
+  const requestedProject = commandText
+    ? readFirstCommandPositionalArg(commandText, ['build'])
+    : undefined
+  const projectName =
+    requestedProject ?? angularWorkspace.defaultProject ?? Object.keys(angularWorkspace.projects)[0]
+
+  if (!projectName) {
+    return 'dist'
+  }
+
+  const project = angularWorkspace.projects[projectName]
+  const buildTarget = project?.architect?.build ?? project?.targets?.build
+  const outputPath = buildTarget?.options?.outputPath
+  const builder = buildTarget?.builder
+  const resolvedOutputPath = resolveAngularOutputPath(outputPath)
+
+  if (resolvedOutputPath) {
+    if (builder?.endsWith(':application') && !resolvedOutputPath.replace(/\\/g, '/').endsWith('/browser')) {
+      return join(resolvedOutputPath, 'browser')
+    }
+
+    return resolvedOutputPath
+  }
+
+  if (builder?.endsWith(':application')) {
+    return join('dist', projectName, 'browser')
+  }
+
+  return join('dist', projectName)
 }
 
 function normalizeDevHost(hostValue: string | undefined) {
@@ -591,6 +1232,13 @@ function inferDevUrl(rootDir: string, commandText?: string) {
     }
   }
 
+  if (looksLikeVitePressProject(rootDir, commandText)) {
+    return {
+      url: `http://${commandHost}:5173`,
+      source: 'framework-default' as const,
+    }
+  }
+
   if (looksLikeReactScriptsProject(commandText)) {
     return {
       url: `http://${commandHost}:3000`,
@@ -630,6 +1278,13 @@ function inferDevUrl(rootDir: string, commandText?: string) {
 }
 
 function inferBuildOutDir(rootDir: string, commandText?: string) {
+  if (looksLikeVitePressProject(rootDir, commandText)) {
+    return {
+      outDir: join(inferVitePressContentDir(rootDir, commandText), '.vitepress', 'dist'),
+      source: 'framework-default' as const,
+    }
+  }
+
   if (looksLikeViteProject(rootDir, commandText)) {
     return {
       outDir: inferViteOutDir(rootDir, commandText),
@@ -641,6 +1296,49 @@ function inferBuildOutDir(rootDir: string, commandText?: string) {
     return {
       outDir: 'build',
       source: 'react-scripts-default' as const,
+    }
+  }
+
+  if (looksLikeNextProject(rootDir, commandText)) {
+    const nextOutDir = inferNextStaticOutDir(rootDir, commandText)
+
+    if (nextOutDir) {
+      return {
+        outDir: nextOutDir,
+        source: 'framework-default' as const,
+      }
+    }
+  }
+
+  if (looksLikeNuxtProject(rootDir, commandText)) {
+    const nuxtOutDir = inferNuxtStaticOutDir(commandText)
+
+    if (nuxtOutDir) {
+      return {
+        outDir: nuxtOutDir,
+        source: 'framework-default' as const,
+      }
+    }
+  }
+
+  if (looksLikeAstroProject(rootDir, commandText)) {
+    return {
+      outDir: inferAstroOutDir(rootDir, commandText),
+      source: 'framework-default' as const,
+    }
+  }
+
+  if (looksLikeAngularProject(rootDir, commandText)) {
+    return {
+      outDir: inferAngularOutDir(rootDir, commandText),
+      source: 'framework-default' as const,
+    }
+  }
+
+  if (looksLikeVueCliProject(rootDir, commandText)) {
+    return {
+      outDir: inferVueCliOutDir(rootDir),
+      source: 'framework-default' as const,
     }
   }
 
@@ -669,12 +1367,23 @@ function sanitizePackageName(value: string) {
     .replace(/-+$/, '') || 'frontron-app'
 }
 
-function initializeProject(rootDir: string, output: CliOutput) {
+async function defaultInstallDependency(request: InitDependencyRequest) {
+  return await runShellCommand(request.command, request.rootDir)
+}
+
+async function initializeProject(
+  rootDir: string,
+  output: CliOutput,
+  runtimeOptions: CliRuntimeOptions,
+  skipInstall: boolean,
+) {
   const packageJson = readProjectPackageJson(rootDir)
 
   if (!packageJson) {
     throw new Error('[Frontron] "init" requires a project package.json in the working directory.')
   }
+
+  const existingDependencyVersion = readDependencyVersion(packageJson, 'frontron')
 
   const nextPackageJson = {
     ...packageJson,
@@ -697,7 +1406,7 @@ function initializeProject(rootDir: string, output: CliOutput) {
   }
 
   if (addedScripts.length > 0) {
-    writeProjectPackageJson(rootDir, nextPackageJson as Record<string, unknown>)
+    writeProjectPackageJson(rootDir, nextPackageJson)
     output.info(`[Frontron] Added package scripts: ${addedScripts.join(', ')}`)
   } else {
     output.info('[Frontron] Package scripts already include app:dev and app:build.')
@@ -712,7 +1421,42 @@ function initializeProject(rootDir: string, output: CliOutput) {
     output.info(`[Frontron] Config already exists: ${configPath}`)
   }
 
-  output.info('[Frontron] Next step: run `npm run app:dev`.')
+  const appDevCommand = createRunScriptCommandForPackageManager(
+    detectBootstrapPackageManager(rootDir),
+    'app:dev',
+  )
+
+  if (existingDependencyVersion) {
+    output.info(`[Frontron] Package already depends on frontron (${existingDependencyVersion}).`)
+    output.info(`[Frontron] Next step: run \`${appDevCommand}\`.`)
+    return
+  }
+
+  if (skipInstall) {
+    const installHint = createPackageManagerAddCommand(
+      detectBootstrapPackageManager(rootDir),
+      'frontron',
+    )
+    output.info('[Frontron] Skipped automatic frontron install (--skip-install).')
+    output.info(`[Frontron] Next step: run \`${installHint}\`, then \`${appDevCommand}\`.`)
+    return
+  }
+
+  const installRequest = createInitDependencyRequest(rootDir)
+  output.info(`[Frontron] Installing frontron: ${installRequest.command}`)
+
+  const installExitCode = await (runtimeOptions.installDependency ?? defaultInstallDependency)(
+    installRequest,
+  )
+
+  if (installExitCode !== 0) {
+    throw new Error(
+      '[Frontron] Failed to install frontron automatically. Re-run with "--skip-install" to scaffold without installing.',
+    )
+  }
+
+  output.info(`[Frontron] Installed dependency: frontron@${installRequest.versionRange}`)
+  output.info(`[Frontron] Next step: run \`${appDevCommand}\`.`)
 }
 
 function createRuntimeManifest(
@@ -720,7 +1464,7 @@ function createRuntimeManifest(
   mode: RuntimeManifest['mode'],
   configuredCommand?: ConfiguredCommand,
 ) {
-  const projectPackage = readPackageJsonVersion(loadedConfig.rootDir)
+  const projectPackage = readProjectPackageMetadata(loadedConfig.rootDir)
   const configFile = relative(loadedConfig.rootDir, loadedConfig.configPath).replace(/\\/g, '/')
   const appIcon = loadedConfig.config.app.icon ?? resolveDefaultAppIconPath()
 
@@ -880,6 +1624,31 @@ function stageRuntimeEntryFile(
   stageCompiledRuntimeModule(entryPath, targetPath, sharedDir)
 }
 
+function stageDevRuntimeApp(runtimeDir: string) {
+  const runtimeMainEntry = resolveRuntimeEntry('main')
+  const runtimePreloadEntry = resolveRuntimeEntry('preload')
+  const runtimeSharedDir = resolveRuntimeSharedDir()
+
+  stageRuntimeEntryFile(runtimeMainEntry, join(runtimeDir, 'main.mjs'), runtimeSharedDir)
+  stageRuntimeEntryFile(runtimePreloadEntry, join(runtimeDir, 'preload.mjs'), runtimeSharedDir)
+
+  writeFileSync(
+    join(runtimeDir, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'frontron-dev-runtime',
+        private: true,
+        type: 'module',
+        main: 'main.mjs',
+      },
+      null,
+      2,
+    ),
+  )
+
+  return runtimeDir
+}
+
 function writeRuntimeManifest(rootDir: string, manifest: RuntimeManifest, targetDir: string) {
   mkdirSync(targetDir, { recursive: true })
   const manifestPath = join(targetDir, 'manifest.json')
@@ -938,6 +1707,31 @@ function spawnCommand(
     env: options.env ?? process.env,
     shell: options.shell ?? false,
     stdio: 'inherit',
+  })
+}
+
+function createElectronChildEnv(extraEnv: NodeJS.ProcessEnv = {}) {
+  const env = {
+    ...process.env,
+    ...extraEnv,
+  }
+
+  delete env.ELECTRON_RUN_AS_NODE
+
+  return env
+}
+
+function spawnElectronRuntime(
+  electronBinary: string,
+  appDir: string,
+  cwd: string,
+  extraEnv: NodeJS.ProcessEnv = {},
+) {
+  const env = createElectronChildEnv(extraEnv)
+
+  return spawnCommand(electronBinary, [appDir], {
+    cwd,
+    env,
   })
 }
 
@@ -1037,7 +1831,7 @@ function getConfiguredCommand(
 
   if (!outDirValue || !targetSource) {
     throw new Error(
-      '[Frontron] "build" requires "web.build.outDir" or an inferable frontend build output such as a standard Vite setup.',
+      '[Frontron] "build" requires "web.build.outDir" or an inferable frontend build output such as a standard Vite build, a Next.js static export, or a Nuxt generate setup.',
     )
   }
 
@@ -1092,28 +1886,25 @@ async function runDevRuntime(
 
   const configuredCommand = getConfiguredCommand('dev', loadedConfig)
   const manifest = createRuntimeManifest(loadedConfig, 'development', configuredCommand)
-  const runtimeDir = ensureDotFrontronDir(loadedConfig.rootDir, 'runtime', 'dev')
+  const runtimeDir = ensureDotFrontronDir(loadedConfig.rootDir, 'runtime', 'dev-app')
   const manifestPath = writeRuntimeManifest(loadedConfig.rootDir, manifest, runtimeDir)
   const electronBinary = resolveElectronBinary()
-  const runtimeMainPath = resolveRuntimeEntry('main')
+  const stagedRuntimeAppDir = stageDevRuntimeApp(runtimeDir)
 
   output.info(`[Frontron] Launching web dev command: ${configuredCommand.command}`)
-  output.info(`[Frontron] Launching framework runtime: ${runtimeMainPath}`)
+  output.info(`[Frontron] Launching framework runtime: ${stagedRuntimeAppDir}`)
 
   const webChild = spawnCommand(configuredCommand.command, [], {
     cwd: loadedConfig.rootDir,
     shell: true,
   })
 
-  const electronChild = spawnCommand(
+  const electronChild = spawnElectronRuntime(
     electronBinary,
-    [runtimeMainPath],
+    stagedRuntimeAppDir,
+    loadedConfig.rootDir,
     {
-      cwd: loadedConfig.rootDir,
-      env: {
-        ...process.env,
-        FRONTRON_MANIFEST_PATH: manifestPath,
-      },
+      FRONTRON_MANIFEST_PATH: manifestPath,
     },
   )
 
@@ -1139,6 +1930,7 @@ export function stageBuildApp(loadedConfig: Awaited<ReturnType<typeof loadConfig
   const stageDir = ensureDotFrontronDir(loadedConfig.rootDir, 'runtime', 'build')
   const packagedAppDir = join(stageDir, 'app')
   const webOutDir = configuredCommand.target
+  const buildConfig = loadedConfig.config.build
   const runtimeMainEntry = resolveRuntimeEntry('main')
   const runtimePreloadEntry = resolveRuntimeEntry('preload')
   const runtimeSharedDir = resolveRuntimeSharedDir()
@@ -1178,7 +1970,11 @@ export function stageBuildApp(loadedConfig: Awaited<ReturnType<typeof loadConfig
     stagePackageDependency('koffi', packagedAppDir)
   }
 
-  const projectPackage = readPackageJsonVersion(loadedConfig.rootDir)
+  const projectPackage = readProjectPackageMetadata(loadedConfig.rootDir)
+  const appDescription = resolveAppDescription(loadedConfig, projectPackage)
+  const appAuthor = resolveAppAuthor(loadedConfig, projectPackage)
+  const outputDir = resolveBuildOutputDir(loadedConfig)
+  const publishMode = resolveBuildPublishMode(loadedConfig)
   const frontronPackage = JSON.parse(
     readFileSync(resolvePackageFile('../package.json'), 'utf8'),
   ) as {
@@ -1189,41 +1985,83 @@ export function stageBuildApp(loadedConfig: Awaited<ReturnType<typeof loadConfig
       ? frontronPackage.dependencies.electron
       : resolveInstalledPackageVersion('electron')
 
+  const stagedPackageJson: Record<string, unknown> = {
+    name: sanitizePackageName(projectPackage.name),
+    version: projectPackage.version,
+    type: 'module',
+    main: 'main.mjs',
+    description: appDescription,
+    devDependencies: {
+      electron: electronVersion,
+    },
+  }
+
+  if (typeof appAuthor !== 'undefined') {
+    stagedPackageJson.author = appAuthor
+  }
+
+  if (loadedConfig.config.app.copyright) {
+    stagedPackageJson.copyright = loadedConfig.config.app.copyright
+  }
+
   writeFileSync(
     join(packagedAppDir, 'package.json'),
     JSON.stringify(
-      {
-        name: sanitizePackageName(projectPackage.name),
-        version: projectPackage.version,
-        type: 'module',
-        main: 'main.mjs',
-        description: loadedConfig.config.app.name,
-        devDependencies: {
-          electron: electronVersion,
-        },
-      },
+      stagedPackageJson,
       null,
       2,
     ),
   )
 
   const builderConfigPath = join(stageDir, 'builder.json')
+  const builderConfig: Record<string, unknown> = {
+    appId: loadedConfig.config.app.id,
+    productName: loadedConfig.config.app.name,
+    directories: {
+      output: outputDir,
+    },
+    files: createBuilderFiles(buildConfig?.files),
+    asar: buildConfig?.asar,
+    compression: buildConfig?.compression,
+    extraResources: createBuilderExtraEntries(buildConfig?.extraResources),
+    extraFiles: createBuilderExtraEntries(buildConfig?.extraFiles),
+    icon: stagedIconName ? join(packagedAppDir, stagedIconName) : undefined,
+    artifactName: buildConfig?.artifactName,
+    electronVersion,
+    npmRebuild: false,
+    nodeGypRebuild: false,
+    publish: null,
+    copyright: loadedConfig.config.app.copyright,
+  }
+
+  const builderWindowsConfig = createBuilderWindowsConfig(buildConfig?.windows)
+
+  if (builderWindowsConfig) {
+    builderConfig.win = builderWindowsConfig
+  }
+
+  const builderNsisConfig = createBuilderNsisConfig(buildConfig?.nsis)
+
+  if (builderNsisConfig) {
+    builderConfig.nsis = builderNsisConfig
+  }
+
+  const builderMacConfig = createBuilderMacConfig(buildConfig?.mac)
+
+  if (builderMacConfig) {
+    builderConfig.mac = builderMacConfig
+  }
+
+  const builderLinuxConfig = createBuilderLinuxConfig(buildConfig?.linux)
+
+  if (builderLinuxConfig) {
+    builderConfig.linux = builderLinuxConfig
+  }
+
   writeFileSync(
     builderConfigPath,
     JSON.stringify(
-      {
-        appId: loadedConfig.config.app.id,
-        productName: loadedConfig.config.app.name,
-        directories: {
-          output: join(loadedConfig.rootDir, 'output'),
-        },
-        files: ['**/*'],
-        icon: stagedIconName ? join(packagedAppDir, stagedIconName) : undefined,
-        electronVersion,
-        npmRebuild: false,
-        nodeGypRebuild: false,
-        publish: null,
-      },
+      builderConfig,
       null,
       2,
     ),
@@ -1233,6 +2071,8 @@ export function stageBuildApp(loadedConfig: Awaited<ReturnType<typeof loadConfig
     stageDir,
     packagedAppDir,
     builderConfigPath,
+    outputDir,
+    publishMode,
   }
 }
 
@@ -1279,7 +2119,7 @@ async function runBuildRuntime(
       '--config',
       stagedBuild.builderConfigPath,
       '--publish',
-      'never',
+      stagedBuild.publishMode,
     ],
     {
       cwd: loadedConfig.rootDir,
@@ -1298,7 +2138,7 @@ async function runBuildRuntime(
         command: 'build',
         stageDir: stagedBuild.stageDir,
         packagedAppDir: stagedBuild.packagedAppDir,
-        outputDir: join(loadedConfig.rootDir, 'output'),
+        outputDir: stagedBuild.outputDir,
       },
       output as HookOutput,
     )
@@ -1307,7 +2147,11 @@ async function runBuildRuntime(
   return builderExitCode
 }
 
-export async function runCli(argv = process.argv.slice(2), output: CliOutput = defaultOutput) {
+export async function runCli(
+  argv = process.argv.slice(2),
+  output: CliOutput = defaultOutput,
+  runtimeOptions: CliRuntimeOptions = {},
+) {
   try {
     const parsed = parseArgs(argv)
 
@@ -1324,7 +2168,7 @@ export async function runCli(argv = process.argv.slice(2), output: CliOutput = d
         throw new Error('[Frontron] "--check" is not supported with "init".')
       }
 
-      initializeProject(cwd, output)
+      await initializeProject(cwd, output, runtimeOptions, parsed.skipInstall)
       return 0
     }
 
@@ -1354,6 +2198,96 @@ export async function runCli(argv = process.argv.slice(2), output: CliOutput = d
       )
     }
     output.info(`[Frontron] Web ${configuredCommand.mode} target: ${configuredCommand.target}`)
+
+    if (command === 'build') {
+      output.info(`[Frontron] Package output dir: ${resolveBuildOutputDir(loadedConfig)}`)
+
+      if (loadedConfig.config.build?.artifactName) {
+        output.info(`[Frontron] Package artifact pattern: ${loadedConfig.config.build.artifactName}`)
+      }
+
+      if (loadedConfig.config.build?.windows?.targets) {
+        output.info(
+          `[Frontron] Windows package targets: ${loadedConfig.config.build.windows.targets.join(', ')}`,
+        )
+      }
+
+      if (typeof loadedConfig.config.build?.asar !== 'undefined') {
+        output.info(`[Frontron] Package asar: ${loadedConfig.config.build.asar ? 'enabled' : 'disabled'}`)
+      }
+
+      if (loadedConfig.config.build?.compression) {
+        output.info(`[Frontron] Package compression: ${loadedConfig.config.build.compression}`)
+      }
+
+      if (loadedConfig.config.build?.files) {
+        output.info(
+          `[Frontron] Package file patterns: ${loadedConfig.config.build.files.length}`,
+        )
+      }
+
+      if (loadedConfig.config.build?.extraResources) {
+        output.info(
+          `[Frontron] Package extra resources: ${loadedConfig.config.build.extraResources.length}`,
+        )
+      }
+
+      if (loadedConfig.config.build?.extraFiles) {
+        output.info(
+          `[Frontron] Package extra files: ${loadedConfig.config.build.extraFiles.length}`,
+        )
+      }
+
+      if (loadedConfig.config.build?.windows?.artifactName) {
+        output.info(
+          `[Frontron] Windows artifact pattern: ${loadedConfig.config.build.windows.artifactName}`,
+        )
+      }
+
+      if (loadedConfig.config.build?.windows?.requestedExecutionLevel) {
+        output.info(
+          `[Frontron] Windows execution level: ${loadedConfig.config.build.windows.requestedExecutionLevel}`,
+        )
+      }
+
+      if (loadedConfig.config.build?.mac?.targets) {
+        output.info(
+          `[Frontron] macOS package targets: ${loadedConfig.config.build.mac.targets.join(', ')}`,
+        )
+      }
+
+      if (loadedConfig.config.build?.mac?.artifactName) {
+        output.info(
+          `[Frontron] macOS artifact pattern: ${loadedConfig.config.build.mac.artifactName}`,
+        )
+      }
+
+      if (loadedConfig.config.build?.mac?.category) {
+        output.info(`[Frontron] macOS category: ${loadedConfig.config.build.mac.category}`)
+      }
+
+      if (loadedConfig.config.build?.linux?.targets) {
+        output.info(
+          `[Frontron] Linux package targets: ${loadedConfig.config.build.linux.targets.join(', ')}`,
+        )
+      }
+
+      if (loadedConfig.config.build?.linux?.artifactName) {
+        output.info(
+          `[Frontron] Linux artifact pattern: ${loadedConfig.config.build.linux.artifactName}`,
+        )
+      }
+
+      if (loadedConfig.config.build?.linux?.category) {
+        output.info(`[Frontron] Linux category: ${loadedConfig.config.build.linux.category}`)
+      }
+
+      if (loadedConfig.config.build?.linux?.packageCategory) {
+        output.info(
+          `[Frontron] Linux package category: ${loadedConfig.config.build.linux.packageCategory}`,
+        )
+      }
+    }
 
     if (loadedConfig.config.rust) {
       output.info(

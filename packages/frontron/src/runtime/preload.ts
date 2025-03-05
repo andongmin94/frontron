@@ -1,4 +1,8 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { createRequire } from 'node:module'
+
+const require = createRequire(import.meta.url)
+const electron = require('electron') as typeof import('electron')
+const { contextBridge, ipcRenderer } = electron
 
 const invoke = (command: string, ...args: unknown[]) =>
   ipcRenderer.invoke('frontron:invoke', command, ...args)

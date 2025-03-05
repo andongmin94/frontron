@@ -1,7 +1,9 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { createServer, request as createHttpRequest, type Server } from 'node:http'
+import { request as createHttpsRequest } from 'node:https'
+import { createRequire } from 'node:module'
+import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { app, BrowserWindow, ipcMain, type Tray } from 'electron'
 
 import type { FrontronBridgeConfig, FrontronWindowConfig } from '../types'
 import { createDesktopContext } from './context'
@@ -11,8 +13,18 @@ import type { RuntimeManifest } from './manifest'
 import { loadRustRuntime } from './native'
 import { applyConfiguredMenu, createConfiguredTray } from './shell'
 
-let mainWindow: BrowserWindow | null = null
-let appTray: Tray | null = null
+const require = createRequire(import.meta.url)
+const electron = require('electron') as typeof import('electron')
+const { app, BrowserWindow, ipcMain } = electron
+
+type ElectronBrowserWindow = InstanceType<typeof BrowserWindow>
+type ElectronTray = import('electron').Tray
+
+let mainWindow: ElectronBrowserWindow | null = null
+let appTray: ElectronTray | null = null
+let productionWebServer: Server | null = null
+let productionWebOrigin: string | null = null
+let productionWebRootDir: string | null = null
 const smokeResultPath = process.env.FRONTRON_SMOKE_RESULT_PATH
   ? resolve(process.env.FRONTRON_SMOKE_RESULT_PATH)
   : null
@@ -74,12 +86,40 @@ function normalizeRoute(route: string | undefined) {
   return route.startsWith('/') ? route : `/${route}`
 }
 
+function probeUrl(url: string, timeoutMs: number) {
+  return new Promise<void>((resolvePromise, rejectPromise) => {
+    const requestUrl = new URL(url)
+    const request =
+      requestUrl.protocol === 'https:'
+        ? createHttpsRequest(requestUrl, { method: 'GET' })
+        : createHttpRequest(requestUrl, { method: 'GET' })
+
+    const timeout = setTimeout(() => {
+      request.destroy(new Error(`[Frontron] Timed out probing URL: ${url}`))
+    }, timeoutMs)
+
+    request.on('response', (response) => {
+      clearTimeout(timeout)
+      response.resume()
+      resolvePromise()
+    })
+
+    request.on('error', (error) => {
+      clearTimeout(timeout)
+      rejectPromise(error)
+    })
+
+    request.end()
+  })
+}
+
 async function waitForUrlReady(url: string, timeoutMs = 30_000, intervalMs = 250) {
   const startedAt = Date.now()
+  const requestTimeoutMs = Math.max(500, Math.min(intervalMs, 1_000))
 
   while (Date.now() - startedAt < timeoutMs) {
     try {
-      await fetch(url, { method: 'GET' })
+      await probeUrl(url, requestTimeoutMs)
       return
     } catch {
       await new Promise((resolvePromise) => setTimeout(resolvePromise, intervalMs))
@@ -87,6 +127,174 @@ async function waitForUrlReady(url: string, timeoutMs = 30_000, intervalMs = 250
   }
 
   throw new Error(`[Frontron] Timed out waiting for dev server: ${url}`)
+}
+
+function isPathInsideRoot(rootDir: string, targetPath: string) {
+  const relativePath = relative(rootDir, targetPath)
+
+  return relativePath === '' || (!relativePath.startsWith('..') && !isAbsolute(relativePath))
+}
+
+function getContentType(filePath: string) {
+  switch (extname(filePath).toLowerCase()) {
+    case '.css':
+      return 'text/css; charset=utf-8'
+    case '.gif':
+      return 'image/gif'
+    case '.htm':
+    case '.html':
+      return 'text/html; charset=utf-8'
+    case '.ico':
+      return 'image/x-icon'
+    case '.jpeg':
+    case '.jpg':
+      return 'image/jpeg'
+    case '.js':
+    case '.mjs':
+      return 'text/javascript; charset=utf-8'
+    case '.json':
+    case '.map':
+      return 'application/json; charset=utf-8'
+    case '.png':
+      return 'image/png'
+    case '.svg':
+      return 'image/svg+xml'
+    case '.txt':
+      return 'text/plain; charset=utf-8'
+    case '.wasm':
+      return 'application/wasm'
+    case '.webp':
+      return 'image/webp'
+    default:
+      return 'application/octet-stream'
+  }
+}
+
+function resolveStaticFilePath(rootDir: string, pathname: string) {
+  const requestedPath = pathname === '/' ? '/index.html' : pathname
+  const directPath = resolve(rootDir, `.${requestedPath}`)
+
+  if (isPathInsideRoot(rootDir, directPath) && existsSync(directPath)) {
+    const directStats = statSync(directPath)
+
+    if (directStats.isFile()) {
+      return directPath
+    }
+
+    if (directStats.isDirectory()) {
+      const indexPath = join(directPath, 'index.html')
+
+      if (existsSync(indexPath) && statSync(indexPath).isFile()) {
+        return indexPath
+      }
+    }
+  }
+
+  if (extname(pathname).length > 0) {
+    return null
+  }
+
+  const fallbackPath = join(rootDir, 'index.html')
+  return existsSync(fallbackPath) && statSync(fallbackPath).isFile() ? fallbackPath : null
+}
+
+async function stopProductionWebServer() {
+  const server = productionWebServer
+
+  productionWebServer = null
+  productionWebOrigin = null
+  productionWebRootDir = null
+
+  if (!server) {
+    return
+  }
+
+  await new Promise<void>((resolvePromise) => {
+    server.close(() => resolvePromise())
+  })
+}
+
+async function ensureProductionWebServer(
+  manifest: RuntimeManifest,
+  manifestPath: string,
+) {
+  const outDir = resolveManifestPath(manifestPath, manifest.web.outDir)
+
+  if (!outDir) {
+    throw new Error('[Frontron] Missing "web.build.outDir" for production runtime.')
+  }
+
+  const indexPath = join(outDir, 'index.html')
+
+  if (!existsSync(indexPath)) {
+    throw new Error(`[Frontron] Built web entry not found: ${indexPath}`)
+  }
+
+  if (productionWebServer && productionWebOrigin && productionWebRootDir === outDir) {
+    return productionWebOrigin
+  }
+
+  await stopProductionWebServer()
+
+  const origin = await new Promise<string>((resolvePromise, rejectPromise) => {
+    const server = createServer((request, response) => {
+      try {
+        if (request.method !== 'GET' && request.method !== 'HEAD') {
+          response.writeHead(405, {
+            'content-type': 'text/plain; charset=utf-8',
+          })
+          response.end('Method Not Allowed')
+          return
+        }
+
+        const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1')
+        const filePath = resolveStaticFilePath(outDir, decodeURIComponent(requestUrl.pathname))
+
+        if (!filePath) {
+          response.writeHead(404, {
+            'content-type': 'text/plain; charset=utf-8',
+          })
+          response.end('Not Found')
+          return
+        }
+
+        response.writeHead(200, {
+          'content-type': getContentType(filePath),
+        })
+
+        if (request.method === 'HEAD') {
+          response.end()
+          return
+        }
+
+        response.end(readFileSync(filePath))
+      } catch {
+        response.writeHead(500, {
+          'content-type': 'text/plain; charset=utf-8',
+        })
+        response.end('Internal Server Error')
+      }
+    })
+
+    server.on('error', rejectPromise)
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address()
+
+      if (!address || typeof address === 'string') {
+        server.close()
+        rejectPromise(new Error('[Frontron] Could not start the packaged web server.'))
+        return
+      }
+
+      productionWebServer = server
+      productionWebRootDir = outDir
+      productionWebOrigin = `http://127.0.0.1:${address.port}`
+      resolvePromise(productionWebOrigin)
+    })
+  })
+
+  await waitForUrlReady(origin)
+  return origin
 }
 
 async function loadWindowContent(
@@ -110,19 +318,10 @@ async function loadWindowContent(
     return
   }
 
-  const outDir = resolveManifestPath(manifestPath, manifest.web.outDir)
+  const serverOrigin = await ensureProductionWebServer(manifest, manifestPath)
+  const windowUrl = new URL(route, `${serverOrigin}/`).toString()
 
-  if (!outDir) {
-    throw new Error('[Frontron] Missing "web.build.outDir" for production runtime.')
-  }
-
-  const indexPath = join(outDir, 'index.html')
-
-  if (!existsSync(indexPath)) {
-    throw new Error(`[Frontron] Built web entry not found: ${indexPath}`)
-  }
-
-  await mainWindow?.loadFile(indexPath, route === '/' ? undefined : { hash: route.slice(1) })
+  await mainWindow?.loadURL(windowUrl)
 }
 
 function sendMaximizedChanged() {
@@ -142,6 +341,28 @@ function reportSmokeSuccess(payload: Record<string, unknown>) {
   }
 
   writeFileSync(smokeResultPath, JSON.stringify(payload, null, 2))
+}
+
+async function readSmokeRenderState() {
+  if (!mainWindow) {
+    return null
+  }
+
+  try {
+    return await mainWindow.webContents.executeJavaScript(
+      `(() => {
+        const root = document.getElementById('root')
+        return {
+          title: document.title,
+          bodyText: document.body?.innerText ?? '',
+          rootHtmlLength: root ? root.innerHTML.length : null,
+        }
+      })()`,
+      true,
+    )
+  } catch {
+    return null
+  }
 }
 
 function readBridgeHandler(
@@ -184,16 +405,32 @@ async function createWindow(
   onDidFinishLoad?: () => void,
 ) {
   const windowConfig = getMainWindowConfig(manifest)
+  const shouldShowWindow = windowConfig.show ?? true
   const preloadPath = join(dirname(fileURLToPath(import.meta.url)), 'preload.mjs')
   const iconPath = resolveManifestPath(manifestPath, manifest.app.icon)
 
   mainWindow = new BrowserWindow({
-    show: false,
+    show: windowConfig.show ?? false,
     width: windowConfig.width ?? 1280,
     height: windowConfig.height ?? 800,
+    minWidth: windowConfig.minWidth,
+    minHeight: windowConfig.minHeight,
+    maxWidth: windowConfig.maxWidth,
+    maxHeight: windowConfig.maxHeight,
     frame: windowConfig.frame ?? true,
     resizable: windowConfig.resizable ?? true,
+    fullscreen: windowConfig.fullscreen,
+    fullscreenable: windowConfig.fullscreenable,
+    maximizable: windowConfig.maximizable,
+    minimizable: windowConfig.minimizable,
+    closable: windowConfig.closable,
+    alwaysOnTop: windowConfig.alwaysOnTop,
+    backgroundColor: windowConfig.backgroundColor,
+    transparent: windowConfig.transparent,
+    autoHideMenuBar: windowConfig.autoHideMenuBar,
+    skipTaskbar: windowConfig.skipTaskbar,
     title: windowConfig.title ?? manifest.app.name,
+    titleBarStyle: windowConfig.titleBarStyle,
     icon: iconPath && existsSync(iconPath) ? iconPath : undefined,
     webPreferences: {
       nodeIntegration: false,
@@ -208,8 +445,12 @@ async function createWindow(
     mainWindow = null
   })
 
+  if (windowConfig.center) {
+    mainWindow.center()
+  }
+
   mainWindow.once('ready-to-show', () => {
-    if (!isSmokeTest) {
+    if (!isSmokeTest && shouldShowWindow && !mainWindow?.isVisible()) {
       mainWindow?.show()
     }
 
@@ -226,7 +467,11 @@ async function createWindow(
 async function bootstrap() {
   const { manifest, manifestPath } = readManifest()
 
-  if (!app.requestSingleInstanceLock()) {
+  if (isSmokeTest) {
+    app.setPath('userData', join(manifest.rootDir, '.frontron-smoke-user-data'))
+  }
+
+  if (!isSmokeTest && !app.requestSingleInstanceLock()) {
     app.quit()
     return
   }
@@ -234,6 +479,10 @@ async function bootstrap() {
   app.on('second-instance', () => {
     if (!mainWindow) {
       return
+    }
+
+    if (!mainWindow.isVisible()) {
+      mainWindow.show()
     }
 
     if (mainWindow.isMinimized()) {
@@ -244,6 +493,11 @@ async function bootstrap() {
   })
 
   await app.whenReady()
+  app.on('before-quit', () => {
+    appTray?.destroy()
+    appTray = null
+    void stopProductionWebServer()
+  })
   app.setName(manifest.app.name)
   const desktopContext = createDesktopContext(
     manifest,
@@ -265,7 +519,9 @@ async function bootstrap() {
   }
 
   const smokeCallback = isSmokeTest
-    ? () => {
+    ? async () => {
+        const renderState = await readSmokeRenderState()
+
         reportSmokeSuccess({
           mode: manifest.mode,
           rootDir: manifest.rootDir,
@@ -275,10 +531,18 @@ async function bootstrap() {
           hasTray: Boolean(runtimeConfig?.tray),
           nativeStatus: rustRuntime.getStatus(),
           windowRoute: getMainWindowConfig(manifest).route,
+          loadedUrl: mainWindow?.webContents.getURL(),
+          renderState,
         })
 
         setTimeout(() => {
-          app.quit()
+          try {
+            mainWindow?.destroy()
+          } catch {
+            // Best-effort cleanup before forcing smoke exit.
+          }
+
+          process.exit(0)
         }, 0)
       }
     : undefined
@@ -305,5 +569,6 @@ async function bootstrap() {
 
 bootstrap().catch((error) => {
   console.error(error instanceof Error ? error.message : String(error))
+  void stopProductionWebServer()
   app.quit()
 })

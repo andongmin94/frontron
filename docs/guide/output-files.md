@@ -25,7 +25,9 @@ If you are checking whether the framework prepared the desktop layer correctly, 
 
 ## 3. `output/`
 
-This is where the packaged desktop app is written.
+This is the default location where the packaged desktop app is written.
+
+If you set `build.outputDir`, inspect that folder instead.
 
 On Windows, you will usually see things such as:
 
@@ -50,7 +52,7 @@ At the beginning, these questions are enough:
 
 - Was `dist/` created?
 - Was `.frontron/` created?
-- Was `output/` created?
-- Does `output/` contain `win-unpacked/` or an installer file?
+- Was the packaged output folder created?
+- Does that folder contain `win-unpacked/` or an installer file?
 
 If those checks pass, the build flow is usually healthy.

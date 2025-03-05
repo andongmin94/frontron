@@ -17,7 +17,8 @@
     "dev": "unbuild --stub",
     "build": "unbuild",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "version": "node sync-version.js && npm publish && cd ../frontron && npm publish"
   },
   "engines": {
     "node": "^18.0.0 || >=20.0.0"

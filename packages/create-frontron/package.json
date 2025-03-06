@@ -1,6 +1,6 @@
 {
   "name": "create-frontron",
-  "version": "0.5.30",
+  "version": "0.5.33",
   "type": "module",
   "license": "MIT",
   "author": "andongmin",
@@ -10,7 +10,7 @@
   },
   "files": [
     "index.js",
-    "template-*/**",
+    "template",
     "dist"
   ],
   "scripts": {

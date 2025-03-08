@@ -17,11 +17,20 @@ export interface FrontronWebBuildConfig {
   outDir: string
 }
 
+export type FrontronSecurityNavigationPolicy = 'allow' | 'deny' | 'openExternal'
+
 export type FrontronTitleBarStyle =
   | 'default'
   | 'hidden'
   | 'hiddenInset'
   | 'customButtonsOnHover'
+
+export type FrontronAdvancedScalar = string | number | boolean | null
+export type FrontronAdvancedValue =
+  | FrontronAdvancedScalar
+  | FrontronAdvancedValue[]
+  | { [key: string]: FrontronAdvancedValue }
+export type FrontronAdvancedObject = Record<string, FrontronAdvancedValue>
 
 export interface FrontronWindowConfig {
   route: string
@@ -47,6 +56,11 @@ export interface FrontronWindowConfig {
   skipTaskbar?: boolean
   title?: string
   titleBarStyle?: FrontronTitleBarStyle
+  zoomFactor?: number
+  sandbox?: boolean
+  spellcheck?: boolean
+  webSecurity?: boolean
+  advanced?: FrontronAdvancedObject
   [key: string]: unknown
 }
 
@@ -58,6 +72,70 @@ export type FrontronBridgeConfig = Record<string, FrontronBridgeNamespace>
 export interface FrontronWindowState {
   isMaximized: boolean
   isMinimized: boolean
+}
+
+export interface FrontronDeepLinksConfig {
+  enabled?: boolean
+  name?: string
+  schemes?: string | readonly string[]
+}
+
+export interface ResolvedFrontronDeepLinksConfig
+  extends Omit<FrontronDeepLinksConfig, 'enabled' | 'schemes'> {
+  enabled: boolean
+  schemes: string[]
+}
+
+export interface FrontronDeepLinkState {
+  enabled: boolean
+  schemes: string[]
+  pending: string[]
+  last?: string
+}
+
+export type FrontronUpdateStatus =
+  | 'disabled'
+  | 'unsupported'
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'not-available'
+  | 'downloaded'
+  | 'error'
+
+export interface FrontronUpdateState {
+  enabled: boolean
+  supported: boolean
+  status: FrontronUpdateStatus
+  currentVersion?: string
+  latestVersion?: string
+  error?: string
+}
+
+export type FrontronUpdateProvider = 'generic'
+
+export interface FrontronUpdatesConfig {
+  enabled?: boolean
+  provider?: FrontronUpdateProvider
+  url?: string
+  checkOnLaunch?: boolean
+}
+
+export interface ResolvedFrontronUpdatesConfig
+  extends Omit<FrontronUpdatesConfig, 'enabled' | 'provider' | 'checkOnLaunch'> {
+  enabled: boolean
+  provider: FrontronUpdateProvider
+  checkOnLaunch: boolean
+}
+
+export interface FrontronSecurityConfig {
+  externalNavigation?: FrontronSecurityNavigationPolicy
+  newWindow?: FrontronSecurityNavigationPolicy
+}
+
+export interface ResolvedFrontronSecurityConfig {
+  externalNavigation: FrontronSecurityNavigationPolicy
+  newWindow: FrontronSecurityNavigationPolicy
 }
 
 export interface FrontronDesktopContext {
@@ -76,6 +154,28 @@ export interface FrontronDesktopContext {
     minimize(): void
     toggleMaximize(): void
     getState(): FrontronWindowState
+  }
+  windows: {
+    open(name: string): Promise<void>
+    show(name: string): Promise<void>
+    hide(name: string): void
+    focus(name: string): void
+    close(name: string): void
+    minimize(name: string): void
+    toggleMaximize(name: string): void
+    exists(name: string): boolean
+    getState(name: string): FrontronWindowState | null
+    listConfigured(): string[]
+    listOpen(): string[]
+  }
+  deepLinks: {
+    getState(): FrontronDeepLinkState
+    consumePending(): string[]
+  }
+  updates: {
+    getState(): FrontronUpdateState
+    check(): Promise<FrontronUpdateState>
+    quitAndInstall(): boolean
   }
 }
 
@@ -128,6 +228,8 @@ export type FrontronRequestedExecutionLevel =
   | 'asInvoker'
   | 'highestAvailable'
   | 'requireAdministrator'
+export type FrontronFileAssociationRole = 'Editor' | 'Viewer' | 'Shell' | 'None'
+export type FrontronFileAssociationRank = 'Owner' | 'Default' | 'Alternate' | 'None'
 
 export interface FrontronBuildFileSet {
   from: string
@@ -136,6 +238,17 @@ export interface FrontronBuildFileSet {
 }
 
 export type FrontronBuildFilePattern = string | FrontronBuildFileSet
+
+export interface FrontronBuildFileAssociation {
+  ext: string | readonly string[]
+  name?: string
+  description?: string
+  mimeType?: string
+  icon?: string
+  role?: FrontronFileAssociationRole
+  isPackage?: boolean
+  rank?: FrontronFileAssociationRank
+}
 
 export type FrontronWindowsBuildTarget = 'dir' | 'nsis' | 'portable'
 export type FrontronMacBuildTarget =
@@ -173,6 +286,7 @@ export interface FrontronBuildWindowsConfig {
   targets?: FrontronWindowsBuildTarget | readonly FrontronWindowsBuildTarget[]
   icon?: string
   publisherName?: string | readonly string[]
+  certificateSubjectName?: string
   signAndEditExecutable?: boolean
   requestedExecutionLevel?: FrontronRequestedExecutionLevel
   artifactName?: string
@@ -191,6 +305,11 @@ export interface FrontronBuildMacConfig {
   targets?: FrontronMacBuildTarget | readonly FrontronMacBuildTarget[]
   icon?: string
   category?: string
+  identity?: string
+  hardenedRuntime?: boolean
+  gatekeeperAssess?: boolean
+  entitlements?: string
+  entitlementsInherit?: string
   artifactName?: string
 }
 
@@ -202,6 +321,10 @@ export interface FrontronBuildLinuxConfig {
   artifactName?: string
 }
 
+export interface FrontronBuildAdvancedConfig {
+  electronBuilder?: FrontronAdvancedObject
+}
+
 export interface FrontronBuildConfig {
   outputDir?: string
   artifactName?: string
@@ -211,10 +334,12 @@ export interface FrontronBuildConfig {
   files?: readonly FrontronBuildFilePattern[]
   extraResources?: readonly FrontronBuildFilePattern[]
   extraFiles?: readonly FrontronBuildFilePattern[]
+  fileAssociations?: readonly FrontronBuildFileAssociation[]
   windows?: FrontronBuildWindowsConfig
   nsis?: FrontronBuildNsisConfig
   mac?: FrontronBuildMacConfig
   linux?: FrontronBuildLinuxConfig
+  advanced?: FrontronBuildAdvancedConfig
 }
 
 export interface ResolvedFrontronBuildFileSet {
@@ -224,6 +349,11 @@ export interface ResolvedFrontronBuildFileSet {
 }
 
 export type ResolvedFrontronBuildFilePattern = string | ResolvedFrontronBuildFileSet
+
+export interface ResolvedFrontronBuildFileAssociation
+  extends Omit<FrontronBuildFileAssociation, 'ext'> {
+  ext: string[]
+}
 
 export interface ResolvedFrontronBuildNsisConfig
   extends Omit<FrontronBuildNsisConfig, 'installerIcon' | 'uninstallerIcon'> {
@@ -250,11 +380,19 @@ export interface ResolvedFrontronBuildLinuxConfig
 export interface ResolvedFrontronBuildConfig
   extends Omit<
     FrontronBuildConfig,
-    'windows' | 'nsis' | 'mac' | 'linux' | 'files' | 'extraResources' | 'extraFiles'
+    | 'windows'
+    | 'nsis'
+    | 'mac'
+    | 'linux'
+    | 'files'
+    | 'extraResources'
+    | 'extraFiles'
+    | 'fileAssociations'
   > {
   files?: ResolvedFrontronBuildFilePattern[]
   extraResources?: ResolvedFrontronBuildFilePattern[]
   extraFiles?: ResolvedFrontronBuildFilePattern[]
+  fileAssociations?: ResolvedFrontronBuildFileAssociation[]
   windows?: ResolvedFrontronBuildWindowsConfig
   nsis?: ResolvedFrontronBuildNsisConfig
   mac?: ResolvedFrontronBuildMacConfig
@@ -301,6 +439,9 @@ export interface FrontronConfig {
     build?: FrontronWebBuildConfig
   }
   build?: FrontronBuildConfig
+  deepLinks?: FrontronDeepLinksConfig
+  updates?: FrontronUpdatesConfig
+  security?: FrontronSecurityConfig
   windows?: FrontronWindowsConfig
   bridge?: FrontronBridgeConfig
   tray?: FrontronTrayConfig
@@ -310,8 +451,11 @@ export interface FrontronConfig {
 }
 
 export interface ResolvedFrontronConfig
-  extends Omit<FrontronConfig, 'rust' | 'build'> {
+  extends Omit<FrontronConfig, 'rust' | 'build' | 'updates' | 'deepLinks' | 'security'> {
   build?: ResolvedFrontronBuildConfig
+  deepLinks?: ResolvedFrontronDeepLinksConfig
+  updates?: ResolvedFrontronUpdatesConfig
+  security?: ResolvedFrontronSecurityConfig
   rust?: ResolvedFrontronRustConfig
 }
 

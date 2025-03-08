@@ -36,6 +36,24 @@ These namespaces are built into Frontron.
 - `getState()`
 - `onMaximizedChanged(listener)`
 
+`bridge.window` is still the primary-window convenience API.
+
+### `bridge.windows`
+
+- `open({ name })`
+- `show({ name })`
+- `hide({ name })`
+- `focus({ name })`
+- `close({ name })`
+- `minimize({ name })`
+- `toggleMaximize({ name })`
+- `exists({ name })`
+- `getState({ name })`
+- `listConfigured()`
+- `listOpen()`
+
+Use this namespace when your config defines more than one named window.
+
 ### `bridge.native`
 
 - `getStatus()`
@@ -50,6 +68,7 @@ import { bridge } from 'frontron/client'
 const version = await bridge.system.getVersion()
 const state = await bridge.window.getState()
 const nativeStatus = await bridge.native.getStatus()
+await bridge.windows.open({ name: 'settings' })
 ```
 
 These methods work without project-specific bridge code.

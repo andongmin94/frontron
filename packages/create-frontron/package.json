@@ -1,6 +1,6 @@
 {
   "name": "create-frontron",
-  "version": "0.10.0",
+  "version": "0.11.2",
   "type": "module",
   "license": "MIT",
   "author": "안동민",
@@ -14,11 +14,14 @@
   ],
   "scripts": {
     "build": "unbuild",
-    "test": "vitest run",
+    "test": "vitest run --exclude __tests__/release-rehearsal.spec.ts",
+    "test:release-smoke": "vitest run __tests__/release-rehearsal.spec.ts",
+    "release:verify": "cd ../frontron && npm run test:package-smoke && cd ../create-frontron && npm run test:release-smoke",
+    "release:matrix-smoke": "node scripts/release-matrix-smoke.mjs",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build",
     "version": "node sync-version.js",
-    "release": "cd ../frontron && npm publish && cd ../create-frontron && npm publish"
+    "release": "npm run release:verify && cd ../frontron && npm publish && cd ../create-frontron && npm publish"
   },
   "engines": {
     "node": ">=22.0.0"

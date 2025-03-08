@@ -13,7 +13,7 @@ public/
   icon.ico
 ```
 
-The icon is wired through `frontron/config.ts`:
+The icon is wired through the root `frontron.config.ts`:
 
 ```ts
 app: {
@@ -27,7 +27,7 @@ If you replace that file with your own icon, the packaged app will use it on the
 
 ## 2. Change the app name and app ID
 
-The main app metadata lives in `frontron/config.ts`.
+The main app metadata lives in the root `frontron.config.ts`.
 
 The first two values most people change are:
 
@@ -51,8 +51,8 @@ The window definition itself lives in `frontron/windows/index.ts`.
 ## 4. Good first change order
 
 1. Replace `public/icon.ico`
-2. Update `app.name` in `frontron/config.ts`
-3. Update `app.id` in `frontron/config.ts`
+2. Update `app.name` in the root `frontron.config.ts`
+3. Update `app.id` in the root `frontron.config.ts`
 4. Change visible UI text in `src/components/TitleBar.tsx`
 
 This order keeps the first customization simple and visible.

@@ -26,6 +26,60 @@ function createDesktopContext(): FrontronDesktopContext {
         }
       },
     },
+    windows: {
+      async open() {},
+      async show() {},
+      hide() {},
+      focus() {},
+      close() {},
+      minimize() {},
+      toggleMaximize() {},
+      exists() {
+        return false
+      },
+      getState() {
+        return null
+      },
+      listConfigured() {
+        return ['main']
+      },
+      listOpen() {
+        return []
+      },
+    },
+    deepLinks: {
+      getState() {
+        return {
+          enabled: false,
+          schemes: [],
+          pending: [],
+        }
+      },
+      consumePending() {
+        return []
+      },
+    },
+    updates: {
+      getState() {
+        return {
+          enabled: false,
+          supported: false,
+          status: 'disabled',
+          currentVersion: '0.0.0',
+        }
+      },
+      async check() {
+        return {
+          enabled: false,
+          supported: false,
+          status: 'disabled',
+          currentVersion: '0.0.0',
+        }
+      },
+      quitAndInstall() {
+        return false
+      },
+    },
   }
 }
 

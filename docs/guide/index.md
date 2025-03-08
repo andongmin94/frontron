@@ -84,6 +84,8 @@ This is the official shape for both manual installs and starter users.
 - [Install into an Existing Project](/guide/install-existing-project)
 - [Understand the Bridge Flow](/guide/understand-bridge-flow)
 - [Use the Desktop Bridge](/guide/use-bridge)
+- [Support Matrix](/guide/support-matrix)
+- [Recipes](/guide/recipes)
 - [Troubleshooting](/guide/troubleshooting)
 
 ::: tip

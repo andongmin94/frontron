@@ -13,7 +13,7 @@ public/
   icon.ico
 ```
 
-아이콘은 `frontron/config.ts` 에서 이렇게 연결됩니다.
+아이콘은 루트 `frontron.config.ts` 에서 이렇게 연결됩니다.
 
 ```ts
 app: {
@@ -27,7 +27,7 @@ app: {
 
 ## 2. 앱 이름과 앱 ID 바꾸기
 
-주요 앱 메타데이터는 `frontron/config.ts` 에 있습니다.
+주요 앱 메타데이터는 루트 `frontron.config.ts` 에 있습니다.
 
 대부분의 사용자가 먼저 바꾸는 값은 아래 두 가지입니다.
 
@@ -51,8 +51,8 @@ app: {
 ## 4. 추천하는 첫 변경 순서
 
 1. `public/icon.ico` 교체
-2. `frontron/config.ts` 의 `app.name` 변경
-3. `frontron/config.ts` 의 `app.id` 변경
+2. 루트 `frontron.config.ts` 의 `app.name` 변경
+3. 루트 `frontron.config.ts` 의 `app.id` 변경
 4. `src/components/TitleBar.tsx` 의 화면 텍스트 변경
 
 이 순서가 가장 단순하고 결과도 바로 확인하기 쉽습니다.

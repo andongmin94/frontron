@@ -1,4 +1,6 @@
-const beforeDev = ({ rootDir }) => {
+import type { FrontronHookContext } from 'frontron'
+
+const beforeDev = ({ rootDir }: FrontronHookContext) => {
   console.info(`[Frontron hook] beforeDev ${String(rootDir)}`)
 }
 

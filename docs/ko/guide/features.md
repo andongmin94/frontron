@@ -47,7 +47,8 @@ package.json
 
 `frontron` 은 아래 핵심 기능을 소유합니다.
 
-- 메인 창 생성
+- primary window 생성
+- config 에 정의한 named secondary window 관리
 - preload bridge 노출
 - 창 상태 조회와 창 제어
 - 커스텀 타이틀바 연결

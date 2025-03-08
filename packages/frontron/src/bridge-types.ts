@@ -66,6 +66,10 @@ export function renderBridgeTypes(loadedConfig: LoadedFrontronConfig) {
   )
 
   const lines = [
+    "import 'frontron/client'",
+    '',
+    'export {}',
+    '',
     `type FrontronConfigModule = typeof import(${JSON.stringify(importSpecifier)})`,
     'type FrontronConfigValue = FrontronConfigModule extends { default: infer Default } ? Default : never',
     'type FrontronBridgeSource = FrontronConfigValue extends { bridge: infer Bridge } ? Bridge : unknown',

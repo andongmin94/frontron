@@ -1,7 +1,7 @@
-import * as React from "react";
+import { forwardRef, useState } from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
-import { Minus, Square, X } from "lucide-react";
+import { Minus, Square, Copy, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -42,7 +42,7 @@ interface ButtonProps
   asChild?: boolean;
 }
 
-const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, ...props }, ref) => {
     const Comp = asChild ? Slot : "button";
     return (
@@ -56,11 +56,14 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 );
 
 export default function TitleBar() {
+  const [isMaximized, setIsMaximized] = useState(false);
+  
   const minimize = () => {
     electron.send("minimize");
   };
   const maximize = () => {
     electron.send("maximize");
+    setIsMaximized(!isMaximized);
   };
   const hidden = () => {
     electron.send("hidden");
@@ -83,7 +86,7 @@ export default function TitleBar() {
             </Button>
             &nbsp;
             <Button onClick={maximize} size="icon">
-              <Square className="size-6" />
+              {isMaximized ? <Copy className="size-6" /> : <Square className="size-6" />}
             </Button>
             &nbsp;
             <Button onClick={hidden} size="icon">

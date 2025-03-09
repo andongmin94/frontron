@@ -4,21 +4,23 @@
 - Before architecture or implementation work, read `specs/framework-first.md`.
 
 ## Product direction
-- `frontron` is the real product.
-- `create-frontron` is a thin starter generator only.
-- Keep the project framework-first and config-driven.
+- `create-frontron` is the primary starter/template entrypoint for users.
+- `frontron` is the CLI/runtime support package used by generated starters and compatible manual setups.
+- Keep the project starter-driven, CLI-assisted, and config-driven.
 
 ## Architecture rules
-- Users must be able to install `frontron` into an existing web project, add `frontron.config.ts`, and run/build the desktop app without `create-frontron`.
-- Do not keep runtime/build ownership inside templates.
-- Do not add new Electron core logic to starter templates.
-- `frontron.config.ts` is the official config entrypoint.
-- `frontron/` is the expansion area for app-layer modules.
+- Prefer the starter flow first: `npm create frontron@latest` -> `npm run app:dev` / `npm run app:build`.
+- Keep `frontron.config.ts` as the official config entrypoint.
+- Keep `frontron/` as the expansion area for app-layer modules.
+- Manual install into an existing project may stay supported, but it is no longer the headline story.
+- Do not move raw Electron core back into copied template files unless the task explicitly requires it.
+- Do not reintroduce public `window.electron` style renderer globals as the main contract.
+- Keep `frontron/client` as the supported renderer-facing desktop API.
 
 ## Native strategy
-- Native integration is Rust-only.
+- Native integration stays Rust-first.
 - Treat `frontron/rust` as the first-class Rust slot.
-- Web code must not directly load native modules; go through Frontron bridge APIs.
+- Web code must not directly load native modules; go through the Frontron bridge.
 
 ## Working style
 - Keep changes small and reviewable.

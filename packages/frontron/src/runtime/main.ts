@@ -1094,8 +1094,14 @@ async function bootstrap() {
 
   app.on('activate', async () => {
     if (!getPrimaryWindow()) {
+      const nextPrimaryWindowName = primaryWindowName
+
+      if (!nextPrimaryWindowName) {
+        return
+      }
+
       await openConfiguredWindow(
-        primaryWindowName,
+        nextPrimaryWindowName,
         manifest,
         manifestPath,
         desktopContext,

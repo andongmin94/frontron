@@ -1,8 +1,8 @@
 # Config
 
-This page is a reference for the settings people change most often in a Frontron project.
+This page is a reference for the settings people change most often after starting with `create-frontron`, or after wiring `frontron` into an existing web project.
 
-You do not need to understand every value at once. Start with the values that have the biggest visible effect.
+You do not need to learn the whole desktop layer at once. Start with the values that have the biggest visible effect, then come back here when you need a specific desktop behavior.
 
 ## Good first places to change
 
@@ -18,7 +18,7 @@ For most people, this order is enough:
 
 The main run and build commands live in `package.json`.
 
-The starter uses this shape:
+The generated starter uses this shape:
 
 ```json
 {
@@ -34,11 +34,13 @@ The starter uses this shape:
 
 For a standard Vite project, `frontron dev` and `frontron build` can infer the web command and target from `package.json` and `vite.config.*`.
 
-Add `web.dev` and `web.build` only when your project needs explicit custom values that Frontron cannot infer safely.
+If you are retrofitting an existing frontend, keep this same script shape when possible.
+
+Add `web.dev` and `web.build` only when your project needs explicit custom values that `frontron` cannot infer safely.
 
 ## 2. App metadata
 
-The main metadata values live in `frontron.config.ts`.
+The main metadata values live in the root `frontron.config.ts`.
 
 The most common fields are:
 
@@ -66,7 +68,7 @@ app: {
 
 ## 3. Packaging policy
 
-Normal product decisions for packaging also live in `frontron.config.ts`.
+Normal packaged-app decisions also live in `frontron.config.ts`.
 
 ```ts
 build: {
@@ -111,7 +113,7 @@ The common fields are:
 - `updates.enabled`, `updates.provider`, `updates.url`, `updates.checkOnLaunch`
 - `security.externalNavigation`, `security.newWindow`
 
-If you omit `build.outputDir`, Frontron uses `output/`.
+If you omit `build.outputDir`, `frontron` uses `output/`.
 
 Path-based resource settings such as `build.extraResources`, `build.extraFiles`, `build.windows.icon`, `build.nsis.installerIcon`, `build.mac.icon`, `build.mac.entitlements`, `build.mac.entitlementsInherit`, and `build.linux.icon` are resolved from the project root.
 
@@ -123,11 +125,11 @@ Path-based file association icons are resolved from the project root.
 
 On Windows, electron-builder only applies file associations for NSIS builds, and NSIS registration is effective when `build.nsis.perMachine` is `true`.
 
-`build.advanced.electronBuilder` is a best-effort escape hatch. Prefer the typed `build.*` fields first. Frontron blocks framework-owned fields such as staged app paths, package entry wiring, and the typed packaging fields it already owns.
+`build.advanced.electronBuilder` is a best-effort escape hatch. Prefer the typed `build.*` fields first. `frontron` blocks the staged app paths, package entry wiring, and other packaging fields it already owns.
 
 Typed signing fields describe normal product policy, not secret material. Certificates, keychains, and CI signing secrets still stay outside the repo.
 
-`updates.*` is also a typed product-policy surface now, but this first slice is intentionally small. Frontron currently supports a generic feed URL with launch-time update checks for packaged macOS apps only.
+`updates.*` is also a typed policy surface, but the supported slice is intentionally small. `frontron` currently supports a generic feed URL with launch-time update checks for packaged macOS apps only.
 
 Keep `updates.url` empty only when `updates.enabled` is `false`.
 
@@ -156,7 +158,7 @@ These policies only apply when renderer content tries to leave the current app o
 
 Window definitions live in `frontron/windows/index.ts`.
 
-The starter uses a route-based window shape:
+The generated starter uses a route-based window shape:
 
 ```ts
 const windows = {
@@ -177,7 +179,7 @@ const windows = {
 
 Any additional configured windows are runtime-owned named windows.
 
-In the current slice, non-primary configured windows are lazy singleton windows. Frontron does not create them during bootstrap. Open them later from menu, tray, hooks, or renderer bridge calls such as `bridge.windows.open({ name: 'settings' })`.
+In the current slice, non-primary configured windows are lazy singleton windows. `frontron` does not create them during bootstrap. Open them later from menu, tray, hooks, or renderer bridge calls such as `bridge.windows.open({ name: 'settings' })`.
 
 Common window fields you can now change from `frontron.config.ts` or `frontron/windows/index.ts` are:
 
@@ -199,7 +201,7 @@ Use `show: false` when your app should start hidden and open later from your tra
 
 `windows.*.advanced` is intentionally limited. Frontron still owns `webPreferences`, icon wiring, and the common typed window fields above.
 
-The safe web preference subset is intentionally small. Use `zoomFactor`, `sandbox`, `spellcheck`, and `webSecurity` here, but keep `preload`, `contextIsolation`, `nodeIntegration`, and raw session ownership inside Frontron.
+The safe web preference subset is intentionally small. Use `zoomFactor`, `sandbox`, `spellcheck`, and `webSecurity` here, but keep `preload`, `contextIsolation`, `nodeIntegration`, and raw session ownership inside `frontron`.
 
 ## 5. Development server alignment
 
@@ -219,7 +221,7 @@ const state = await bridge.window.getState()
 const nativeStatus = await bridge.native.getStatus()
 ```
 
-Custom namespaces are registered from `frontron/bridge/`.
+Starter projects and compatible manual installs register custom namespaces from `frontron/bridge/`.
 
 ```ts
 // frontron/bridge/index.ts
@@ -244,13 +246,13 @@ output/
 
 - `dist/`: built web output
 - `output/`: default packaged desktop output
-- `.frontron/`: Frontron staging, manifests, and generated types
+- `.frontron/`: `frontron` staging, manifests, and generated types
 
 If you set `build.outputDir`, replace `output/` with that folder when you inspect packaged output.
 
 ## 8. Menu, tray, and hooks
 
-App-layer desktop extensions live under `frontron/`.
+Starter/template app-layer desktop extensions live under `frontron/`.
 
 ```ts
 import menu from './frontron/menu'
@@ -274,7 +276,7 @@ export default defineConfig({
 })
 ```
 
-The starter scaffold lives under `frontron/rust/`.
+The generated starter scaffold lives under `frontron/rust/`.
 
 - `npm run app:dev`: runs `cargo build`
 - `npm run app:build`: runs `cargo build --release`
@@ -283,7 +285,7 @@ Renderer code still goes through `frontron/client`.
 
 ## 10. How to use this page
 
-This page is a reference page, not a tutorial.
+This page is a reference page for the support package, not a tutorial.
 
 ::: tip
 If you want a slower walkthrough before changing values, start with the "Change App Name and Icon" guide first.

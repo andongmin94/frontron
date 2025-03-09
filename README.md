@@ -8,33 +8,18 @@
 
 # Frontron
 
-Framework-first desktop app layer for existing web projects.
+CLI-assisted Electron starter workflow for web frontend projects.
 
 ## Packages
 
-- `frontron`: the real product. It owns config loading, the CLI, runtime/build staging, bridge APIs, and app-layer expansion.
-- `create-frontron`: a thin starter generator. It produces the same official structure as the manual install path.
+- `create-frontron`: the primary starter generator. Use this first when you want a ready-to-run desktop starter.
+- `frontron`: the support package behind that starter. It provides the CLI, runtime/build support, config loading, and the `frontron/client` bridge used by generated apps.
 
-The architecture contract lives in [`specs/framework-first.md`](specs/framework-first.md).
+The current contract lives in [`specs/framework-first.md`](specs/framework-first.md). The file path stays, but the contract now centers on the starter-first workflow.
 
 ## Quick Start
 
-Use the one-step bootstrap for an existing web project:
-
-```bash
-npx frontron init
-npm run app:dev
-```
-
-If you want manual dependency control:
-
-```bash
-npm install frontron
-npx frontron init --skip-install
-npm run app:dev
-```
-
-Create a new starter app with:
+Start a new project with:
 
 ```bash
 npm create frontron@latest my-app
@@ -43,12 +28,26 @@ npm install
 npm run app:dev
 ```
 
-## Official Shape
+Build the packaged desktop app with:
 
-- Root `frontron.config.ts` is the official config entrypoint.
-- `frontron/` is the app-layer expansion area for bridge, windows, hooks, menu, tray, and Rust.
-- `create-frontron` should stay thin. Runtime and build ownership belong to `frontron`.
-- Normal product decisions such as app metadata, output folder, artifact naming, and Windows targets are user-configurable in `frontron.config.ts`.
+```bash
+npm run app:build
+```
+
+If you already have a compatible web project and want the manual path, `frontron` can still be installed directly:
+
+```bash
+npm install frontron
+npx frontron init --skip-install
+npm run app:dev
+```
+
+## Product Shape
+
+- `create-frontron` generates the starter project and its first-run UI/base files.
+- `frontron` owns the CLI/runtime/build support used by that starter.
+- Root `frontron.config.ts` stays the official config entrypoint.
+- `frontron/` stays the app-layer expansion area for bridge, windows, hooks, menu, tray, and Rust.
 
 ## Requirements
 
@@ -59,17 +58,17 @@ npm run app:dev
 ```text
 frontron/
   docs/                        # VitePress docs site
-  specs/                       # architecture contract and fixtures
+  specs/                       # contract and planning specs
   packages/
-    create-frontron/           # thin starter generator
-    frontron/                  # real product package
+    create-frontron/           # starter generator and template
+    frontron/                  # CLI/runtime support package
 ```
 
 ## Docs
 
 - Docs: [frontron.andongmin.com](https://frontron.andongmin.com)
 - Guide: [frontron.andongmin.com/guide/](https://frontron.andongmin.com/guide/)
-- Spec: [`specs/framework-first.md`](specs/framework-first.md)
+- Contract: [`specs/framework-first.md`](specs/framework-first.md)
 - Issues: [github.com/andongmin94/frontron/issues](https://github.com/andongmin94/frontron/issues)
 
 ## License

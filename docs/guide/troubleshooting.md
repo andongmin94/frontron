@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Most first-time users get stuck in similar places.
+Most first-time starter users and retrofit users get stuck in similar places.
 
 This page is meant to help you decide where to look first.
 
@@ -12,7 +12,7 @@ Before changing files by hand, run:
 npx frontron check
 ```
 
-It checks the first-run contract:
+It checks the first-run CLI contract:
 
 - `package.json`
 - root `frontron.config.ts`
@@ -50,7 +50,7 @@ If `frontron check` says the dev URL already responds before Frontron starts, an
 
 ## If window buttons or bridge calls do not react
 
-Window controls and desktop bridge calls only work when `frontron/client` is connected to the framework runtime.
+Window controls and desktop bridge calls only work when `frontron/client` is connected to the `frontron` runtime.
 
 Check these first:
 
@@ -106,7 +106,7 @@ If `.frontron/runtime/build/app/` is incomplete, remove `.frontron/` and run `np
 
 ## If Rust is enabled and check reports `cargo` missing
 
-Frontron only checks this when `rust.enabled` is true.
+`frontron check` only checks this when `rust.enabled` is true.
 
 Do one of these:
 

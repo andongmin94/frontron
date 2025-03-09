@@ -1,6 +1,6 @@
 # Run in Development
 
-Once the project is created, the next step is to make sure the app actually opens.
+Once the starter is created, the next step is to make sure the app actually opens.
 
 At this stage, the goal is simple: learn which command starts the desktop app and how to tell desktop mode from web-only preview mode.
 
@@ -16,20 +16,18 @@ cd my-app
 npm install
 ```
 
-This installs the packages used by the project.
-
 ## 3. Start development mode
 
 ```bash
 npm run app:dev
 ```
 
-This runs `frontron dev`.
+This runs `frontron dev` behind the starter scripts.
 
 It connects:
 
 - the web dev command from `frontron.config.ts`
-- the Electron desktop app from Frontron
+- the Electron desktop app through Frontron support
 
 You should see a desktop window, not only a browser tab.
 
@@ -45,17 +43,11 @@ On the first run, check these things:
 
 ## 5. Normal edit loop
 
-In development, the usual loop is:
-
 1. Change a file
 2. Save it
 3. Check the result in the app window
 
 React updates are usually fast. Runtime-side changes may require a restart, depending on what changed.
-
-If the app opens but the desktop bridge still feels abstract, read [Understand the Bridge Flow](/guide/understand-bridge-flow) first.
-
-Then read [Use the Desktop Bridge](/guide/use-bridge).
 
 ## 6. First things to check when it fails
 
@@ -81,5 +73,5 @@ If you see `Web preview` in the title bar, or a message such as `Desktop bridge 
 - that the terminal does not show runtime or preload errors
 
 ::: tip
-It is better to get the app opening once before you start heavy customization.
+It is better to get the app opening once before heavy customization.
 :::

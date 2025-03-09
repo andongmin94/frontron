@@ -29,7 +29,7 @@ const listFiles = (dir: string): string[] => {
   return files.sort()
 }
 
-test('framework-first fixtures keep the starter output compatible with manual install', () => {
+test('starter fixtures keep the starter output compatible with manual install', () => {
   const manualFiles = listFiles(manualInstallDir)
   const starterFiles = listFiles(starterOutputDir)
 
@@ -40,7 +40,7 @@ test('framework-first fixtures keep the starter output compatible with manual in
   }
 })
 
-test('framework-first fixtures declare canonical app scripts and config entrypoints', () => {
+test('starter fixtures declare canonical app scripts and config entrypoints', () => {
   const pkg = fs.readJsonSync(join(manualInstallDir, 'package.json'))
   const rootConfig = fs.readFileSync(
     join(manualInstallDir, 'frontron.config.ts'),
@@ -59,7 +59,7 @@ test('framework-first fixtures declare canonical app scripts and config entrypoi
   expect(appConfig).toContain('bridge')
 })
 
-test('docs and package readmes declare the framework-first contract as the target model', () => {
+test('docs and package readmes declare the starter-driven contract as the target model', () => {
   const rootReadme = fs.readFileSync(join(repoRoot, 'README.md'), 'utf-8')
   const frontronReadme = fs.readFileSync(
     join(repoRoot, 'packages', 'frontron', 'README.md'),
@@ -80,9 +80,9 @@ test('docs and package readmes declare the framework-first contract as the targe
   )
 
   expect(rootReadme).toContain('frontron.config.ts')
-  expect(frontronReadme).toContain('frontron dev')
-  expect(starterReadme).toContain('starter generator')
-  expect(docsHome).toContain('framework-first')
+  expect(frontronReadme).toContain('support package')
+  expect(starterReadme).toContain('Electron + React + Vite starter')
+  expect(docsHome).toContain('starter')
   expect(docsGuideIndex).toContain('Quick Start')
   expect(docsSidebar).toContain('Official Contract')
 })

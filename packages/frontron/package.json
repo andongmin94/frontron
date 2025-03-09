@@ -2,7 +2,7 @@
   "name": "frontron",
   "version": "0.11.2",
   "type": "module",
-  "description": "Framework-first desktop app layer for existing web projects",
+  "description": "CLI and runtime support package for Frontron starters and compatible apps",
   "license": "MIT",
   "author": "andongmin",
   "bin": {

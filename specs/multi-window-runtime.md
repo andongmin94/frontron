@@ -6,7 +6,7 @@ This document defines the first Frontron multi-window runtime slice.
 
 The goal is to remove the current single-main-window bias without giving runtime ownership back to app templates and without turning Frontron into raw Electron pass-through.
 
-This design follows the framework-first contract in `specs/framework-first.md`.
+This design follows the current Frontron contract in `specs/framework-first.md`.
 
 ## Current problem
 

@@ -1,8 +1,8 @@
 # Features
 
-This page is a reference for the features that the current Frontron product surface and starter provide out of the box.
+This page is a reference for what the current Frontron starter and support package already give you.
 
-If this is your first visit, start with the quick-start pages first. This page is better when you want to answer, “What do I already get by default?”
+If this is your first visit, start with the quick-start pages first. This page works better when you want to answer, “What do I already get by default?”
 
 ## Good pages to read first
 
@@ -15,9 +15,9 @@ For first-time users, this order is easier:
 4. Come back here for the feature overview
 :::
 
-## 1. Project setup CLI
+## 1. Starter generation
 
-Frontron can start new projects through `create-frontron`.
+Frontron starts new projects through `create-frontron`.
 
 It:
 
@@ -26,11 +26,11 @@ It:
 - seeds `frontron.config.ts` and `frontron/`
 - wires `app:dev` and `app:build`
 
-This means you do not need to write Electron `main`, preload, or packaging files yourself.
+This means you do not need to write Electron `main`, preload, or packaging files yourself on day one.
 
 ## 2. Official starter structure
 
-The starter is React-based and follows the framework-first contract.
+The default starter is React-based and centered on the starter/template path.
 
 ```text
 src/
@@ -41,18 +41,18 @@ public/
 package.json
 ```
 
-This keeps the web app and the app-layer configuration easy to separate.
+This keeps the web app and desktop-side config easy to separate.
 
-## 3. Desktop features from the framework
+## 3. Desktop support from `frontron`
 
-`frontron` owns these core features:
+`frontron` provides the desktop support layer behind the starter:
 
+- CLI commands
 - primary window creation
-- named secondary window management from configured `windows`
+- configured secondary window management
 - preload bridge exposure
 - window state reading and window controls
-- custom title bar wiring
-- desktop launch in dev and staged files for build
+- desktop launch in development and staged files for build
 - packaging flow
 
 ## 4. Development flow
@@ -62,7 +62,7 @@ This keeps the web app and the app-layer configuration easy to separate.
 It runs:
 
 - the configured web dev command
-- the Electron desktop app from Frontron
+- the Electron desktop app through Frontron support
 
 It also generates `.frontron/types/frontron-client.d.ts` for bridge autocomplete.
 
@@ -74,7 +74,7 @@ The default starter includes:
 - a small starter UI
 - a custom title bar example
 
-The starter is intentionally small, so you do not get a large unused UI bundle by default.
+The starter stays intentionally smaller than the old heavy component dump.
 
 ## 6. Build and packaging
 
@@ -94,15 +94,11 @@ The official Rust extension path is `frontron/rust/`.
 - `bridge.native.getStatus()` reports native runtime status.
 - `bridge.native.isReady()` reports the built-in readiness symbol.
 - The starter includes `bridge.system.cpuCount()` as a config-driven Rust example.
-- `rust.bridge.math.add` becomes `bridge.math.add(...)` in the renderer.
-- Config-driven Rust bridge bindings validate argument count and primitive runtime types.
 
 ## 8. How to use this page
-
-This page is meant as a reference, not a step-by-step tutorial.
 
 Come back here when you want to confirm:
 
 - which features are already built in
 - what the starter includes
-- how the runtime and packaging flow is split
+- what `frontron` still owns behind the starter

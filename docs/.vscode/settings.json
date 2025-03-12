@@ -1,8 +1,0 @@
-{
-  "files.exclude": {
-    ".vscode": true,
-    ".gitignore": true,
-    "public/fonts": true,
-    ".vitepress/tsconfig.json": true
-  }
-}

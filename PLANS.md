@@ -1,13 +1,13 @@
-# CLI And Starter Restoration Plan
+# Starter-First Placeholder Cutover Plan
 
 > This file is the active plan for restoring the 0.8.4 / 0.8.5 product feel.
 > Keep the changes small, reviewable, and aligned with `specs/framework-first.md`.
 
 ## Goal
-- Make `create-frontron` the main product story again.
-- Reposition `frontron` as the CLI/runtime support package behind the starter and compatible manual setups.
-- Restore the repo tone from "framework-first product" to "starter/template plus CLI support" without blindly hard-resetting the codebase.
-- Restore the generated starter structure toward the 0.8.4 / 0.8.5 shape when the user explicitly asks for template-owned Electron files again.
+- Make `create-frontron` the only real product story again.
+- Reduce `frontron` to an actual placeholder/init shell package, not just a messaging change.
+- Restore the generated starter structure toward the 0.8.4 / 0.8.5 shape with template-owned Electron files.
+- Prepare a later pass where `frontron init` copies the minimum Electron source into an existing frontend project.
 
 ## Target product shape
 - `create-frontron`
@@ -15,54 +15,74 @@
   - primary onboarding path
   - owns the first-run template UX and starter defaults
 - `frontron`
-  - support CLI and runtime/build helper package
-  - provides `frontron dev`, `frontron build`, `frontron check`, `defineConfig`, and `frontron/client`
-  - stays installable for compatible manual setups, but manual install is now a secondary path
+  - actual placeholder/init shell for retrofit work
+  - no stable runtime/config/bridge contract
+  - long-term role: `frontron init` seeds the minimum Electron source and scripts into a compatible existing web frontend project
 
 ## Current mismatch
-- README, docs landing pages, and package descriptions still sell Frontron as the real framework product.
-- Specs and plans still assume the framework-first migration is the direction to keep expanding.
-- Starter docs still present `create-frontron` as secondary.
-- Contract tests still assert framework-first wording.
+- README, docs pages, and package descriptions must stop presenting `frontron` as a runtime/framework surface.
+- Existing retrofit docs must stop documenting framework-owned runtime/build/config behavior as if it were stable.
+- Starter docs and retrofit docs must clearly separate "real starter" from "future retrofit shell".
+- Contract tests must stop asserting legacy `frontron` runtime/config/bridge behavior.
 
 ## Phases
-1. Contract reset
-   - update `AGENTS.md`, `specs/framework-first.md`, and `PLANS.md`
-   - define the new positioning clearly before broader edits
-2. Product messaging reset
-   - update root README, docs landing pages, guide landing pages, and package descriptions
-   - make `create-frontron` the default entrypoint again
-3. Starter and package docs reset
-   - rewrite package READMEs and starter README text
-   - keep `frontron` described as support CLI/runtime, not the headline framework
-4. Test alignment
-   - update contract tests and starter-readme assertions to match the restored direction
-5. Optional deeper cleanup
-   - evaluate whether any implementation surface should later be pruned or renamed
-   - do this only after the messaging and contract are stable
-6. Structural restoration when requested
-   - move generated starter ownership back toward `src/electron/*`, template-local preload/main wiring, and template-owned packaging scripts
-   - strip hardcoded Frontron branding from generated template metadata where feasible
-   - keep this as an explicit follow-on step, not an accidental side effect of messaging work
+1. Starter restoration
+   - keep `create-frontron` as the real shipped starter story
+   - keep generated apps template-owned with `src/electron/*`
+2. `frontron` placeholder cutover
+   - reduce package exports, build entries, CLI behavior, and tests to placeholder level
+   - stop shipping runtime/client/config surface as the public package story
+3. Retrofit contract rewrite
+   - define what `frontron init` should eventually copy into an existing project
+   - lock the interactive prompt flow and the safe default values
+   - decide which starter files belong to the default `minimal` preset
+   - define `package.json` mutation and conflict rules before implementation
+4. Implementation follow-up
+   - implement the future `init` copy flow only after the placeholder cutover is stable
 
 ## Current slice
 - Status: in progress.
 - Focus:
-  - restore the repo-level product story
-  - keep visible docs and package metadata consistent
-  - avoid a destructive git reset while the worktree is already dirty
+  - keep `create-frontron` as the real starter
+  - keep `frontron` as a real placeholder/init shell package
+  - write down the v1 retrofit contract before shipping any real `init` behavior
+
+## Approved v1 defaults
+- supported target:
+  - Vite-family projects and compatible web frontends with explicit dev/build scripts
+- default Electron directory:
+  - `electron/`
+- default desktop scripts:
+  - `app`
+  - `app:build`
+- default preset:
+  - `minimal`
+- default conflict policy:
+  - infer first, ask on ambiguity, never overwrite existing scripts or files automatically
+
+## v1 contract summary
+- `frontron init` should copy app-owned Electron source into an existing project.
+- It should derive those files from the starter, but use trimmed retrofit variants instead of copying the whole starter Electron folder verbatim.
+- The default `minimal` preset should focus on:
+  - `main.ts`
+  - `window.ts`
+  - `serve.ts`
+  - `tsconfig.electron.json`
+  - package metadata and scripts
+- The preload bridge remains optional and belongs to a `starter-like` preset, not the default retrofit path.
+- `frontron init` must preserve existing web scripts and ask for custom script names when needed.
 
 ## Validation
-- `cd docs && npm run docs-build`
-- `cd packages/frontron && npm run build`
-- `cd packages/frontron && npm run typecheck`
-- `cd packages/frontron && npm test`
-- `cd packages/create-frontron && npm run build`
-- `cd packages/create-frontron && npm run typecheck`
-- `cd packages/create-frontron && npm test`
+- `cd frontron && npm run build`
+- `cd frontron && npm run typecheck`
+- `cd frontron && npm test`
+- `cd create-frontron && npm run build`
+- `cd create-frontron && npm run typecheck`
+- `cd create-frontron && npm test`
 
 ## Acceptance criteria
 - `create-frontron` is clearly the main onboarding product again.
-- `frontron` is described consistently as the support CLI/runtime package.
+- `frontron` is both described and shipped as a placeholder/init shell, not as a runtime/framework product.
 - Root docs, guide docs, package READMEs, package metadata, and contract tests no longer contradict that direction.
-- The repo feels closer to 0.8.5 in messaging and starter emphasis, without requiring a hard reset.
+- The repo feels like a starter-plus-future-init model, not a framework package with a starter attached.
+- The future `frontron init` contract is documented clearly enough that implementation can start from the agreed file set, prompt flow, and conflict policy.

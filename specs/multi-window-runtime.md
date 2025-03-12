@@ -14,7 +14,7 @@ Today Frontron already accepts `windows` as a map in config and ships that map t
 
 Current constraints:
 
-- `packages/frontron/src/runtime/main.ts` stores one `mainWindow` global.
+- `frontron/src/runtime/main.ts` stores one `mainWindow` global.
 - built-in desktop context window controls target only that single window.
 - built-in bridge namespace `window.*` targets only that single window.
 - `main` or the first configured window is loaded, and every other configured window is effectively ignored.
@@ -245,7 +245,7 @@ Do not let secondary windows bypass:
 
 ## Required source changes
 
-### `packages/frontron/src/types.ts`
+### `frontron/src/types.ts`
 
 Add:
 
@@ -256,13 +256,13 @@ Keep:
 
 - existing `window.*` types for primary-window compatibility
 
-### `packages/frontron/src/client.ts`
+### `frontron/src/client.ts`
 
 Add built-in client types for `bridge.windows.*`.
 
 Keep `bridge.window.*` unchanged.
 
-### `packages/frontron/src/runtime/context.ts`
+### `frontron/src/runtime/context.ts`
 
 Refactor desktop context creation so it can operate on:
 
@@ -271,13 +271,13 @@ Refactor desktop context creation so it can operate on:
 
 Add a `windows` module to the desktop context.
 
-### `packages/frontron/src/runtime/bridge.ts`
+### `frontron/src/runtime/bridge.ts`
 
 Expose built-in `windows.*` bridge handlers backed by the new desktop context methods.
 
 Keep the current `window.*` handlers mapped to the primary window.
 
-### `packages/frontron/src/runtime/main.ts`
+### `frontron/src/runtime/main.ts`
 
 Refactor:
 
@@ -287,7 +287,7 @@ Refactor:
 - smoke reporting to include configured and open window names
 - `loadWindowContent(...)` and maximize notification logic so they target the correct window
 
-### `packages/frontron/src/runtime/manifest.ts`
+### `frontron/src/runtime/manifest.ts`
 
 Likely no shape change is needed in this slice because the manifest already contains `windows`.
 
@@ -299,10 +299,10 @@ Only update if helper types need stronger runtime semantics.
 
 Update and extend:
 
-- `packages/frontron/__tests__/runtime-bridge.spec.ts`
-- `packages/frontron/__tests__/runtime-smoke.spec.ts`
-- `packages/frontron/__tests__/client.spec.ts`
-- `packages/frontron/__tests__/bridge-types.spec.ts`
+- `frontron/__tests__/runtime-bridge.spec.ts`
+- `frontron/__tests__/runtime-smoke.spec.ts`
+- `frontron/__tests__/client.spec.ts`
+- `frontron/__tests__/bridge-types.spec.ts`
 
 Add coverage for:
 
@@ -329,13 +329,7 @@ Required assertions:
 
 ## Documentation changes after implementation
 
-Update:
-
-- `docs/guide/config.md`
-- `docs/guide/customize-app.md` if examples reference windows
-- `docs/guide/features.md`
-- `docs/guide/use-bridge.md`
-- Korean equivalents under `docs/ko/guide/`
+Update the external docs project and published guide pages. The old in-repo `docs/` site no longer exists in this repository.
 
 Docs should clearly explain:
 

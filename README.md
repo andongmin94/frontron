@@ -1,21 +1,19 @@
 <div align="center">
 
-<a href="https://frontron.andongmin.com">
-<img src="https://frontron.andongmin.com/logo.svg" alt="Frontron logo" height="200" />
+<a href="https://andongmin.com/frontron/">
+<img src="https://andongmin.com/frontron/logo.svg" alt="Frontron logo" height="200" />
 </a>
 
 </div>
 
 # Frontron
 
-CLI-assisted Electron starter workflow for web frontend projects.
+Electron starter generator plus a transitional init shell for retrofitting existing web frontend projects.
 
 ## Packages
 
 - `create-frontron`: the primary starter generator. Use this first when you want a ready-to-run desktop starter.
-- `frontron`: the support package behind that starter. It provides the CLI, runtime/build support, config loading, and the `frontron/client` bridge used by generated apps.
-
-The current contract lives in [`specs/framework-first.md`](specs/framework-first.md). The file path stays, but the contract now centers on the starter-first workflow.
+- `frontron`: a transitional placeholder/init shell for the existing-project retrofit path.
 
 ## Quick Start
 
@@ -25,29 +23,27 @@ Start a new project with:
 npm create frontron@latest my-app
 cd my-app
 npm install
-npm run app:dev
+npm run app
 ```
 
 Build the packaged desktop app with:
 
 ```bash
-npm run app:build
+npm run build
 ```
 
-If you already have a compatible web project and want the manual path, `frontron` can still be installed directly:
+If you already have a compatible web project, note that the retrofit path is being redesigned:
 
 ```bash
 npm install frontron
-npx frontron init --skip-install
-npm run app:dev
+npx frontron --help
 ```
 
 ## Product Shape
 
-- `create-frontron` generates the starter project and its first-run UI/base files.
-- `frontron` owns the CLI/runtime/build support used by that starter.
-- Root `frontron.config.ts` stays the official config entrypoint.
-- `frontron/` stays the app-layer expansion area for bridge, windows, hooks, menu, tray, and Rust.
+- `create-frontron` generates a template-owned Electron + React + Vite starter.
+- The generated starter keeps its Electron files under `src/electron/` and exposes a preload bridge on `window.electron`.
+- `frontron` is not the main product story anymore. Treat it as the placeholder/init package name reserved for the retrofit path while that flow is being redesigned.
 
 ## Requirements
 
@@ -57,18 +53,16 @@ npm run app:dev
 
 ```text
 frontron/
-  docs/                        # VitePress docs site
-  specs/                       # contract and planning specs
-  packages/
-    create-frontron/           # starter generator and template
-    frontron/                  # CLI/runtime support package
+  create-frontron/             # starter generator and template
+  frontron/                    # placeholder/init package reserved for retrofit work
+  specs/                       # repo-level contracts and planning docs
 ```
 
 ## Docs
 
-- Docs: [frontron.andongmin.com](https://frontron.andongmin.com)
-- Guide: [frontron.andongmin.com/guide/](https://frontron.andongmin.com/guide/)
-- Contract: [`specs/framework-first.md`](specs/framework-first.md)
+- Docs site: [andongmin.com/frontron/](https://andongmin.com/frontron/)
+- Guide: [andongmin.com/frontron/guide/](https://andongmin.com/frontron/guide/)
+- The docs project now lives outside this repository.
 - Issues: [github.com/andongmin94/frontron/issues](https://github.com/andongmin94/frontron/issues)
 
 ## License

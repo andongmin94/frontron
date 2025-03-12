@@ -1,104 +1,74 @@
-# CLI And Starter Contract
+# Starter-First Contract
 
 ## 1. Core definition
 
-Frontron is no longer positioned as a broad framework-first product.
+Frontron is no longer positioned as a desktop framework contract.
 
-The current product story is:
+The repo now has two roles:
 
-- `create-frontron` is the primary starter/template entrypoint
-- `frontron` is the support CLI/runtime package behind that starter
-
-The file path stays `specs/framework-first.md` for continuity, but the contract it describes is now starter-first.
+- `create-frontron` is the real product and the official starter/template entrypoint
+- `frontron` is a placeholder/init shell reserved for the future existing-project retrofit path
 
 ## 2. Package roles
 
 ### `create-frontron`
 - official starter generator
 - primary onboarding path
-- owns starter defaults, template files, and first-run app structure
+- owns the starter template, `src/electron/*`, preload bridge, and first-run developer experience
 
 ### `frontron`
-- support package used by starters and compatible manual setups
-- owns the CLI commands such as `frontron dev`, `frontron build`, and `frontron check`
-- owns config loading, runtime/build support, and `frontron/client`
+- placeholder/init package name for retrofit work
+- not the main renderer/runtime contract
+- future goal: `frontron init` copies the minimum Electron source and scripts into a compatible existing web frontend project
 
 ## 3. Primary user flow
 
-The default flow should feel like this:
+The default flow is:
 
 1. run `npm create frontron@latest`
 2. enter the project
 3. run `npm install`
-4. run `npm run app:dev`
-5. later run `npm run app:build`
+4. run `npm run app`
+5. later run `npm run build`
 
-The starter experience is first-class again.
+## 4. Official structure
 
-## 4. Secondary manual flow
-
-Manual install is still allowed for compatible projects, but it is a secondary path:
-
-1. install `frontron`
-2. create `frontron.config.ts`
-3. add `app:dev` and `app:build`
-4. run the app through the CLI
-
-This path should stay compatible, but it no longer defines the main product story.
-
-## 5. Official structure
-
-Generated starter apps still use the official Frontron structure:
+Generated starter apps use template-owned Electron files:
 
 ```txt
 my-app/
   src/
+    electron/
+  src/
+    types/
   public/
   package.json
-  frontron.config.ts
-  frontron/
+  tsconfig.electron.json
+  vite.config.ts
 ```
 
-The starter may include a richer frontend base, but the desktop support layer still comes from `frontron`.
+The preload bridge is exposed on `window.electron`.
 
-## 6. Responsibility split
+## 5. Retrofit direction
 
-### `create-frontron` owns
-- project generation
-- starter template files
-- example UI/base files
-- first-run developer experience
+The existing-project path is intentionally incomplete right now.
 
-### `frontron` owns
-- CLI commands
-- config loading
-- runtime/build support
-- `frontron/client`
-- desktop bridge/runtime helpers
-- Rust integration slot
+The intended end state is:
 
-## 7. Renderer contract
+1. install `frontron`
+2. run `frontron init`
+3. copy the minimum Electron source into the app
+4. let the app own those files directly
 
-Renderer code should continue to use:
+Until that redesign lands, `frontron` should be treated as a placeholder package, not as a stable framework/runtime surface.
 
-```ts
-import { bridge } from 'frontron/client'
-```
+The v1 retrofit contract is defined in [init-retrofit-v1.md](./init-retrofit-v1.md).
 
-The project direction changed, but the supported renderer API did not.
-
-## 8. Native strategy
-
-- Rust stays the official native extension path
-- the slot remains `frontron/rust`
-- web code should still access native features through the bridge
-
-## 9. Success criteria
+## 6. Success criteria
 
 The direction is correct when:
 
 1. docs and package pages clearly start with `create-frontron`
-2. `frontron` reads as the support CLI/runtime package, not the headline framework
-3. starter users can run the app immediately
-4. manual install still works for compatible projects
-5. repo messaging feels close to the 0.8.4 / 0.8.5 era again
+2. generated apps own their Electron files directly
+3. `window.electron` is again the starter bridge contract
+4. `frontron` reads as a future init shell, not as the real product

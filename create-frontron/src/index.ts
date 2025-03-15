@@ -159,6 +159,10 @@ async function init() {
 
   pkg.name = projectPackageName
 
+  if (pkg.productName === '__CREATE_APP_NAME__') {
+    pkg.productName = projectDisplayName
+  }
+
   if (pkg.build?.productName === '__CREATE_APP_NAME__') {
     pkg.build.productName = projectDisplayName
   }

@@ -34,7 +34,7 @@
   "bugs": {
     "url": "https://github.com/andongmin94/frontron/issues"
   },
-  "homepage": "https://frontron.andongmin.com",
+  "homepage": "https://andongmin.com/frontron/",
   "dependencies": {
     "kolorist": "^1.8.0",
     "minimist": "^1.2.8",

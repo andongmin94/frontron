@@ -120,7 +120,7 @@ test(
       }
     }
 
-    expect(generatedPackage.scripts.app).toContain('electron')
+    expect(generatedPackage.scripts.app).toContain('src/electron/serve.ts')
     expect(generatedPackage.scripts.build).toContain('electron-builder')
     expect(generatedPackage.dependencies).not.toHaveProperty('frontron')
     expect(generatedPackage.dependencies).toHaveProperty('express')
@@ -145,7 +145,7 @@ test(
     }
 
     expect(packageAfterInstall.scripts.dev).toBe('vite --port 4311')
-    expect(packageAfterInstall.scripts.app).toContain('npm run dev')
+    expect(packageAfterInstall.scripts.app).toContain('src/electron/serve.ts')
   },
   120000,
 )

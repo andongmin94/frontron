@@ -50,6 +50,8 @@ export interface InitOptions {
   preset?: string
 }
 
+type InitPreset = 'minimal' | 'starter-like'
+
 interface InitConfig {
   cwd: string
   packageJsonPath: string
@@ -63,12 +65,15 @@ interface InitConfig {
   outDir: string
   productName: string
   appId: string
+  preset: InitPreset
+  allowExtraMetadataMainOverride: boolean
 }
 
 const ELECTRON_VERSION = '^40.1.0'
 const ELECTRON_BUILDER_VERSION = '^26.0.12'
 const TYPESCRIPT_VERSION = '~6.0.2'
 const NODE_TYPES_VERSION = '^25.5.0'
+const VALID_PRESETS: readonly InitPreset[] = ['minimal', 'starter-like']
 
 function normalizeValue(value: string, fallback: string) {
   const normalized = value.trim()
@@ -103,6 +108,20 @@ function titleCase(value: string) {
 function createDefaultAppId(packageName: string) {
   const slug = slugify(packageName || 'desktop-app') || 'desktop-app'
   return `com.local.${slug}`
+}
+
+function normalizePresetValue(value: string | undefined, fallback: InitPreset = 'minimal'): InitPreset {
+  const normalized = normalizeValue(value ?? fallback, fallback).toLowerCase() as InitPreset
+
+  if (VALID_PRESETS.includes(normalized)) {
+    return normalized
+  }
+
+  throw new Error(`Unknown preset "${value}". Expected "minimal" or "starter-like".`)
+}
+
+function usesStarterBridge(preset: InitPreset) {
+  return preset === 'starter-like'
 }
 
 function inferPackageManager(cwd: string): 'npm' | 'pnpm' | 'yarn' | 'bun' {
@@ -154,10 +173,6 @@ function inferScriptName(packageJson: PackageJson, kind: 'dev' | 'build') {
     .map(([name]) => name)
 
   return viteCandidates.length === 1 ? viteCandidates[0] : (kind === 'dev' ? 'dev' : 'build')
-}
-
-function isViteDevCommand(command: string | undefined) {
-  return Boolean(command && /\bvite(?:\s|$)/i.test(command) && !/\bvite\s+build\b/i.test(command))
 }
 
 function isViteBuildCommand(command: string | undefined) {
@@ -220,7 +235,7 @@ function normalizeLoopbackHost(value: string | null | undefined) {
 function inferPort(packageJson: PackageJson, scriptName: string) {
   const command = packageJson.scripts?.[scriptName]
 
-  if (!command || !isViteDevCommand(command)) {
+  if (!command) {
     return null
   }
 
@@ -243,7 +258,7 @@ function inferPort(packageJson: PackageJson, scriptName: string) {
 function inferHost(packageJson: PackageJson, scriptName: string) {
   const command = packageJson.scripts?.[scriptName]
 
-  if (!command || !isViteDevCommand(command)) {
+  if (!command) {
     return null
   }
 
@@ -347,10 +362,18 @@ async function askConfirm(
   return prompter.confirm(message, defaultValue)
 }
 
-function renderMainSource() {
-  return `import { app, Menu } from 'electron'
-import { createMainWindow, getMainWindow } from './window'
-import { startStaticServer, stopStaticServer } from './serve'
+function renderMainSource(preset: InitPreset) {
+  const importLines = [
+    `import { app, Menu } from 'electron'`,
+    `import { createMainWindow, getMainWindow } from './window.js'`,
+    `import { startStaticServer, stopStaticServer } from './serve.js'`,
+  ]
+
+  if (usesStarterBridge(preset)) {
+    importLines.splice(2, 0, `import { setupIpcHandlers } from './ipc.js'`)
+  }
+
+  return `${importLines.join('\n')}
 
 const isDev = process.env.NODE_ENV === 'development'
 let isQuitting = false
@@ -367,6 +390,7 @@ async function boot() {
   }
 
   createMainWindow(rendererUrl)
+${usesStarterBridge(preset) ? '\n  setupIpcHandlers()' : ''}
 
   if (!isDev) {
     Menu.setApplicationMenu(null)
@@ -408,6 +432,7 @@ if (!app.requestSingleInstanceLock()) {
 
     if (rendererUrl) {
       createMainWindow(rendererUrl)
+${usesStarterBridge(preset) ? '\n      setupIpcHandlers()' : ''}
     }
   })
 
@@ -429,13 +454,48 @@ if (!app.requestSingleInstanceLock()) {
 `
 }
 
-function renderWindowSource() {
-  return `import { BrowserWindow } from 'electron'
+function renderWindowSource(preset: InitPreset) {
+  return `import { existsSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { BrowserWindow, type BrowserWindowConstructorOptions } from 'electron'
+
+const isDev = process.env.NODE_ENV === 'development'
+const runtimeDir = path.dirname(fileURLToPath(import.meta.url))
+const preloadPath = path.join(runtimeDir, 'preload.js')
+const defaultIconPath = path.resolve(runtimeDir, '../public/icon.ico')
 
 let mainWindow: BrowserWindow | null = null
 
 export function getMainWindow() {
   return mainWindow
+}
+
+function toWebSocketOrigin(rendererUrl: URL) {
+  return \`\${rendererUrl.protocol === 'https:' ? 'wss:' : 'ws:'}//\${rendererUrl.host}\`
+}
+
+function buildContentSecurityPolicy(rendererUrl: string) {
+  const origin = new URL(rendererUrl)
+  const directives = [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "object-src 'none'",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    "style-src 'self' 'unsafe-inline'",
+    "worker-src 'self' blob:",
+    isDev
+      ? \`script-src 'self' 'unsafe-inline' 'unsafe-eval' \${origin.origin}\`
+      : "script-src 'self'",
+    isDev
+      ? \`connect-src 'self' \${origin.origin} \${toWebSocketOrigin(origin)}\`
+      : "connect-src 'self'",
+  ]
+
+  return directives.join('; ')
 }
 
 export function createMainWindow(rendererUrl: string) {
@@ -444,7 +504,11 @@ export function createMainWindow(rendererUrl: string) {
     return mainWindow
   }
 
-  mainWindow = new BrowserWindow({
+${usesStarterBridge(preset) ? `  if (!existsSync(preloadPath)) {
+    console.warn(\`[frontron:init] Preload script not found at \${preloadPath}.\`)
+  }
+
+` : ''}  const windowOptions: BrowserWindowConstructorOptions = {
     width: 1200,
     height: 800,
     minWidth: 960,
@@ -455,8 +519,31 @@ export function createMainWindow(rendererUrl: string) {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
+${usesStarterBridge(preset) ? "      preload: preloadPath,\n" : ''}    },
+  }
+
+  if (existsSync(defaultIconPath)) {
+    windowOptions.icon = defaultIconPath
+  }
+
+  mainWindow = new BrowserWindow(windowOptions)
+
+  const rendererOrigin = new URL(rendererUrl).origin
+  const contentSecurityPolicy = buildContentSecurityPolicy(rendererUrl)
+
+  mainWindow.webContents.session.webRequest.onHeadersReceived(
+    {
+      urls: [\`\${rendererOrigin}/*\`],
     },
-  })
+    (details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'Content-Security-Policy': [contentSecurityPolicy],
+        },
+      })
+    },
+  )
 
   void mainWindow.loadURL(rendererUrl)
 
@@ -464,11 +551,173 @@ export function createMainWindow(rendererUrl: string) {
     mainWindow?.show()
   })
 
+${usesStarterBridge(preset) ? `  if (isDev) {
+    void mainWindow.webContents
+      .executeJavaScript(
+        \`Boolean(window.electron && typeof window.electron.getWindowState === "function")\`,
+        true,
+      )
+      .then((hasBridge) => {
+        if (!hasBridge) {
+          console.warn('[frontron:init] Preload bridge is unavailable in the renderer.')
+        }
+      })
+      .catch(() => {})
+  }
+
+` : ''}  if (isDev) {
+${usesStarterBridge(preset) ? `    mainWindow.webContents.on('preload-error', (_event, preloadPath, error) => {
+      console.error(\`[frontron:init] Preload error at \${preloadPath}:\`, error)
+    })
+
+` : ''}    mainWindow.webContents.on('console-message', (details) => {
+      if (details.level === 'warning' || details.level === 'error') {
+        console.error(\`[renderer:\${details.level}] \${details.message}\`)
+      }
+    })
+  }
+
+  if (process.platform === 'win32') {
+    mainWindow.on('system-context-menu', (event) => {
+      event.preventDefault()
+    })
+  } else {
+    mainWindow.webContents.on('context-menu', (event) => {
+      event.preventDefault()
+    })
+  }
+
   mainWindow.on('closed', () => {
     mainWindow = null
   })
 
   return mainWindow
+}
+`
+}
+
+function renderPreloadSource() {
+  return `// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { contextBridge, ipcRenderer } = require('electron')
+
+const hideWindowChannel = 'window:hide'
+const minimizeWindowChannel = 'window:minimize'
+const toggleMaximizeWindowChannel = 'window:toggle-maximize'
+const getWindowStateChannel = 'window:get-state'
+const maximizedChangedChannel = 'window:maximized-changed'
+const quitAppChannel = 'app:quit'
+
+contextBridge.exposeInMainWorld('electron', {
+  hideWindow: () => ipcRenderer.send(hideWindowChannel),
+  minimizeWindow: () => ipcRenderer.send(minimizeWindowChannel),
+  toggleMaximizeWindow: () => ipcRenderer.send(toggleMaximizeWindowChannel),
+  quitApp: () => ipcRenderer.send(quitAppChannel),
+  getWindowState: () => ipcRenderer.invoke(getWindowStateChannel),
+  onWindowMaximizedChanged: (listener: (isMaximized: boolean) => void) => {
+    const wrapped = (_event: unknown, value: unknown) => {
+      listener(Boolean(value))
+    }
+
+    ipcRenderer.on(maximizedChangedChannel, wrapped)
+    return () => ipcRenderer.removeListener(maximizedChangedChannel, wrapped)
+  },
+})
+`
+}
+
+function renderIpcSource() {
+  return `import { app, ipcMain } from 'electron'
+
+import { getMainWindow } from './window.js'
+
+const hideWindowChannel = 'window:hide'
+const minimizeWindowChannel = 'window:minimize'
+const toggleMaximizeWindowChannel = 'window:toggle-maximize'
+const getWindowStateChannel = 'window:get-state'
+const maximizedChangedChannel = 'window:maximized-changed'
+const quitAppChannel = 'app:quit'
+let hasRegisteredIpcHandlers = false
+let boundWindow: ReturnType<typeof getMainWindow> = null
+
+export function setupIpcHandlers() {
+  const window = getMainWindow()
+
+  if (!window) return
+
+  if (boundWindow !== window) {
+    boundWindow = window
+    const sendMaxState = () => {
+      const activeWindow = getMainWindow()
+
+      if (!activeWindow) return
+      activeWindow.webContents.send(maximizedChangedChannel, activeWindow.isMaximized())
+    }
+
+    window.on('maximize', sendMaxState)
+    window.on('unmaximize', sendMaxState)
+  }
+
+  if (hasRegisteredIpcHandlers) {
+    return
+  }
+
+  hasRegisteredIpcHandlers = true
+
+  ipcMain.on(hideWindowChannel, () => {
+    getMainWindow()?.hide()
+  })
+
+  ipcMain.on(minimizeWindowChannel, () => {
+    getMainWindow()?.minimize()
+  })
+
+  ipcMain.on(toggleMaximizeWindowChannel, () => {
+    const activeWindow = getMainWindow()
+
+    if (!activeWindow) return
+
+    if (activeWindow.isMaximized()) activeWindow.unmaximize()
+    else activeWindow.maximize()
+    activeWindow.webContents.send(maximizedChangedChannel, activeWindow.isMaximized())
+  })
+
+  ipcMain.on(quitAppChannel, () => {
+    app.quit()
+  })
+
+  ipcMain.handle(getWindowStateChannel, () => {
+    const activeWindow = getMainWindow()
+
+    return {
+      isMaximized: Boolean(activeWindow?.isMaximized()),
+      isMinimized: Boolean(activeWindow?.isMinimized()),
+    }
+  })
+}
+`
+}
+
+function renderElectronTypesSource() {
+  return `export {}
+
+type DesktopWindowState = {
+  isMaximized: boolean
+  isMinimized: boolean
+}
+
+declare global {
+  interface Window {
+    electron?: {
+      hideWindow: () => void
+      minimizeWindow: () => void
+      toggleMaximizeWindow: () => void
+      quitApp: () => void
+      getWindowState: () => Promise<DesktopWindowState>
+      onWindowMaximizedChanged: (
+        listener: (isMaximized: boolean) => void
+      ) => () => void
+    }
+  }
 }
 `
 }
@@ -489,17 +738,19 @@ import { createReadStream, existsSync, writeFileSync } from 'node:fs'
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from 'node:http'
 import path from 'node:path'
 import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
 
 const PACKAGE_MANAGER = ${JSON.stringify(config.packageManager)}
 const WEB_DEV_SCRIPT = ${JSON.stringify(config.webDevScript)}
 const WEB_OUT_DIR = ${JSON.stringify(config.outDir)}
 const DEV_URL = ${JSON.stringify(devUrl)}
 const LOOPBACK_HOST = '127.0.0.1'
-const ROOT_DIR = path.resolve(__dirname, '..')
+const runtimeDir = path.dirname(fileURLToPath(import.meta.url))
+const ROOT_DIR = path.resolve(runtimeDir, '..')
 const DIST_DIR = path.resolve(ROOT_DIR, 'dist-electron')
 const MAIN_ENTRY_PATH = path.join(DIST_DIR, 'main.js')
 const RUNTIME_PACKAGE_PATH = path.join(DIST_DIR, 'package.json')
-const require = createRequire(__filename)
+const require = createRequire(import.meta.url)
 const electronExecutablePath = require('electron') as string
 const mimeTypes = new Map<string, string>([
   ['.css', 'text/css; charset=utf-8'],
@@ -535,7 +786,7 @@ function getRunnerArgs(scriptName: string) {
 }
 
 function ensureRuntimePackage() {
-  writeFileSync(RUNTIME_PACKAGE_PATH, JSON.stringify({ type: 'commonjs' }, null, 2))
+  writeFileSync(RUNTIME_PACKAGE_PATH, JSON.stringify({ type: 'module' }, null, 2))
 }
 
 function isUrlReady(urlString: string, timeoutMs = 1000) {
@@ -818,9 +1069,9 @@ function renderTsconfigSource(desktopDir: string) {
   return `${JSON.stringify(
     {
       compilerOptions: {
-        target: 'ES2022',
-        module: 'CommonJS',
-        moduleResolution: 'Node',
+        target: 'ES2020',
+        module: 'ESNext',
+        moduleResolution: 'Bundler',
         rootDir: `./${desktopDir}`,
         outDir: './dist-electron',
         strict: true,
@@ -836,8 +1087,16 @@ function renderTsconfigSource(desktopDir: string) {
   )}\n`
 }
 
-function ensureArray(value: unknown) {
-  return Array.isArray(value) ? [...value] : []
+function ensureArray(value: unknown, label: string) {
+  if (typeof value === 'undefined') {
+    return []
+  }
+
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== 'string')) {
+    throw new Error(`${label} must be an array of strings to preserve existing packaging rules.`)
+  }
+
+  return [...value]
 }
 
 function ensureObject<T extends object>(value: unknown, fallback: T) {
@@ -851,7 +1110,7 @@ function patchPackageJson(config: InitConfig) {
   const build = ensureObject<NonNullable<PackageJson['build']>>(packageJson.build, {})
   const directories = ensureObject<{ output?: string }>(build.directories, {})
   const extraMetadata = ensureObject<Record<string, unknown>>(build.extraMetadata, {})
-  const files = ensureArray(build.files)
+  const files = ensureArray(build.files, 'build.files')
   const webBuildCommand = scripts[config.webBuildScript]
 
   if (!webBuildCommand) {
@@ -879,7 +1138,11 @@ function patchPackageJson(config: InitConfig) {
   build.files = files
   directories.output ??= 'release'
   build.directories = directories
-  extraMetadata.main = 'dist-electron/main.js'
+
+  if (typeof extraMetadata.main === 'undefined' || config.allowExtraMetadataMainOverride) {
+    extraMetadata.main = 'dist-electron/main.js'
+  }
+
   build.extraMetadata = extraMetadata
 
   packageJson.scripts = scripts
@@ -889,6 +1152,7 @@ function patchPackageJson(config: InitConfig) {
 
 function createSummary(config: InitConfig) {
   return [
+    `- preset: ${config.preset}`,
     `- frontend dev script: ${config.webDevScript}`,
     `- frontend build script: ${config.webBuildScript}`,
     `- Electron directory: ${config.desktopDir}`,
@@ -896,12 +1160,13 @@ function createSummary(config: InitConfig) {
     `- desktop build script: ${config.buildScript}`,
     `- frontend output: ${config.outDir}`,
     `- package manager: ${config.packageManager}`,
+    usesStarterBridge(config.preset) ? '- preload bridge: window.electron' : '- preload bridge: disabled',
   ].join('\n')
 }
 
 export async function runInit(options: InitOptions, context: InitContext) {
-  if (options.preset && options.preset !== 'minimal') {
-    throw new Error('Only the "minimal" preset is implemented right now.')
+  if (options.preset) {
+    normalizePresetValue(options.preset)
   }
 
   const packageJsonPath = join(context.cwd, 'package.json')
@@ -961,19 +1226,32 @@ export async function runInit(options: InitOptions, context: InitContext) {
       takenDesktopScriptNames,
       'desktop:build',
     )
+    const preset = normalizePresetValue(
+      await askText(
+        prompter,
+        promptEnabled,
+        'Preset (minimal|starter-like)',
+        options.preset ?? 'minimal',
+      ),
+      'minimal',
+    )
     const inferredOutDir =
       options.outDir ??
       inferOutDirFromScript(packageJson, webBuildScript) ??
-      inferOutDir(context.cwd) ??
-      'dist'
+      inferOutDir(context.cwd)
+    if (!inferredOutDir && options.yes) {
+      throw new Error(
+        `Unable to infer the frontend build output for "${webBuildScript}". Pass --out-dir or run without --yes.`,
+      )
+    }
     const outDir = normalizePathValue(
       await askText(
         prompter,
         promptEnabled,
         '프론트엔드 빌드 출력 디렉토리',
-        inferredOutDir,
+        inferredOutDir ?? 'dist',
       ),
-      inferredOutDir,
+      inferredOutDir ?? 'dist',
     )
     const packageName = packageJson.name ?? 'desktop-app'
     const productName = normalizeValue(
@@ -994,10 +1272,40 @@ export async function runInit(options: InitOptions, context: InitContext) {
       ),
       options.appId ?? createDefaultAppId(packageName),
     )
+    const existingBuild = ensureObject<NonNullable<PackageJson['build']>>(packageJson.build, {})
+    const existingExtraMetadata = ensureObject<Record<string, unknown>>(existingBuild.extraMetadata, {})
+    const existingExtraMetadataMain = existingExtraMetadata.main
+
+    if (
+      typeof existingExtraMetadataMain !== 'undefined' &&
+      typeof existingExtraMetadataMain !== 'string'
+    ) {
+      throw new Error(
+        'Existing build.extraMetadata.main must be a string to preserve existing packaging rules.',
+      )
+    }
+
+    let allowExtraMetadataMainOverride =
+      typeof existingExtraMetadataMain === 'undefined' ||
+      existingExtraMetadataMain === 'dist-electron/main.js' ||
+      options.force
+
+    if (!allowExtraMetadataMainOverride && existingExtraMetadataMain) {
+      allowExtraMetadataMainOverride = await askConfirm(
+        prompter,
+        promptEnabled,
+        `기존 build.extraMetadata.main (${existingExtraMetadataMain}) 값을 dist-electron/main.js로 바꿀까요?`,
+        false,
+      )
+
+      if (!allowExtraMetadataMainOverride) {
+        throw new Error('Init aborted because build.extraMetadata.main already exists.')
+      }
+    }
 
     const filesToWrite = new Map<string, string>([
-      [join(context.cwd, desktopDir, 'main.ts'), renderMainSource()],
-      [join(context.cwd, desktopDir, 'window.ts'), renderWindowSource()],
+      [join(context.cwd, desktopDir, 'main.ts'), renderMainSource(preset)],
+      [join(context.cwd, desktopDir, 'window.ts'), renderWindowSource(preset)],
       [
         join(context.cwd, desktopDir, 'serve.ts'),
         renderServeSource({
@@ -1013,10 +1321,18 @@ export async function runInit(options: InitOptions, context: InitContext) {
           outDir,
           productName,
           appId,
+          preset,
+          allowExtraMetadataMainOverride,
         }),
       ],
       [join(context.cwd, 'tsconfig.electron.json'), renderTsconfigSource(desktopDir)],
     ])
+
+    if (usesStarterBridge(preset)) {
+      filesToWrite.set(join(context.cwd, desktopDir, 'preload.ts'), renderPreloadSource())
+      filesToWrite.set(join(context.cwd, desktopDir, 'ipc.ts'), renderIpcSource())
+      filesToWrite.set(join(context.cwd, 'src', 'types', 'electron.d.ts'), renderElectronTypesSource())
+    }
 
     const conflicts = [...filesToWrite.keys()].filter((filePath) => existsSync(filePath))
 
@@ -1048,6 +1364,8 @@ export async function runInit(options: InitOptions, context: InitContext) {
       outDir,
       productName,
       appId,
+      preset,
+      allowExtraMetadataMainOverride,
     }
 
     patchPackageJson(config)
@@ -1059,7 +1377,7 @@ export async function runInit(options: InitOptions, context: InitContext) {
 
     writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8')
 
-    context.output.info('[Frontron] Added the minimal Electron retrofit layer.')
+    context.output.info(`[Frontron] Added the ${preset} Electron retrofit layer.`)
     context.output.info(createSummary(config))
     context.output.info('')
     context.output.info(`Run "${appScript}" to start the desktop app after installing dependencies.`)

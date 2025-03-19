@@ -8,7 +8,7 @@ It is not the main product anymore, and it still does not ship a stable desktop 
 
 - new apps should start with `create-frontron`
 - `frontron` keeps the retrofit package name and CLI entrypoint reserved
-- `init` can now seed the first minimal Electron layer into a compatible existing web frontend project
+- `init` can now seed a conservative `minimal` or `starter-like` Electron layer into a compatible existing web frontend project
 - `check`, `dev`, and `build` still report the placeholder transition
 - the retrofit flow is still starter-derived and intentionally conservative
 
@@ -33,10 +33,13 @@ Its current shape is:
   - default: `electron/`
 - ask which desktop script names to add
   - defaults: `app` and `app:build`
+- ask which preset to use
+  - defaults: `minimal`
 - copy a minimal, app-owned Electron layer into the project
+- optionally copy a starter-like preload bridge on `window.electron`
 - keep existing web scripts intact unless the user explicitly chooses otherwise
 
-The default preset is `minimal`, not a full starter copy.
+The default preset is `minimal`. `starter-like` adds `preload.ts`, `ipc.ts`, and `src/types/electron.d.ts` without replacing the app's existing frontend structure.
 
 ## License
 

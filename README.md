@@ -55,7 +55,6 @@ npx frontron --help
 frontron/
   create-frontron/             # starter generator and template
   frontron/                    # placeholder/init package reserved for retrofit work
-  specs/                       # repo-level contracts and planning docs
 ```
 
 ## Docs

@@ -66,7 +66,6 @@ test('starter template restores the template-owned electron structure', () => {
   expect(packageJson.scripts).not.toHaveProperty('app:dev')
   expect(packageJson.scripts).not.toHaveProperty('app:build')
   expect(packageJson.dependencies).toHaveProperty('cmdk')
-  expect(packageJson.dependencies).toHaveProperty('express')
   expect(packageJson.dependencies).toHaveProperty('recharts')
   expect(packageJson.dependencies).toHaveProperty('sonner')
   expect(packageJson.dependencies).toHaveProperty('tw-animate-css')

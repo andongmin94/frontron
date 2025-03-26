@@ -21,32 +21,29 @@ const defaultOutput: CliOutput = {
   },
 }
 
-const PLACEHOLDER_LINES = [
-  '[Frontron] `frontron` is now an experimental init shell.',
-  '[Frontron] The existing-project retrofit flow is still starter-derived and conservative.',
+const HELP_LINES = [
+  '[Frontron] `frontron init` seeds a conservative Electron layer into an existing web frontend project.',
   '[Frontron] Start new apps with `npm create frontron@latest`.',
-  '[Frontron] `frontron init` can now seed an app-owned Electron layer into compatible web frontend projects.',
+  '[Frontron] The retrofit flow stays app-owned and avoids replacing the existing frontend structure.',
 ] as const
 
 function printHelp(output: CliOutput) {
-  output.info('Usage: frontron <init|check|dev|build> [--help]')
+  output.info('Usage: frontron init [options]')
   output.info('')
 
-  for (const line of PLACEHOLDER_LINES) {
+  for (const line of HELP_LINES) {
     output.info(line)
   }
 
   output.info('')
-  output.info('Active command: init')
-  output.info('Placeholder commands: check, dev, build')
-}
-
-function printCommandNotice(command: string, output: CliOutput) {
-  output.error(`[Frontron] "${command}" is not active in the current init-shell package.`)
-
-  for (const line of PLACEHOLDER_LINES) {
-    output.error(line)
-  }
+  output.info('Options:')
+  output.info(
+    '  --adapter <generic-static|next-export|next-standalone|nuxt-node-server|remix-node-server|sveltekit-static|sveltekit-node|generic-node-server>',
+  )
+  output.info('                                                   Override runtime adapter auto-detection.')
+  output.info('  --preset <minimal|starter-like>         Choose the Electron retrofit preset.')
+  output.info('  --server-root <path>                    Source runtime root for node-server adapters.')
+  output.info('  --server-entry <path>                   Server entry inside that runtime root.')
 }
 
 function parseCliOptions(argv: string[]) {
@@ -78,6 +75,11 @@ function parseCliOptions(argv: string[]) {
       case '--force':
         options.force = true
         break
+      case '--adapter':
+        if (!nextValue) throw new Error('--adapter requires a value.')
+        options.adapter = nextValue
+        index += 1
+        break
       case '--desktop-dir':
         if (!nextValue) throw new Error('--desktop-dir requires a value.')
         options.desktopDir = nextValue
@@ -106,6 +108,16 @@ function parseCliOptions(argv: string[]) {
       case '--out-dir':
         if (!nextValue) throw new Error('--out-dir requires a value.')
         options.outDir = nextValue
+        index += 1
+        break
+      case '--server-root':
+        if (!nextValue) throw new Error('--server-root requires a value.')
+        options.serverRoot = nextValue
+        index += 1
+        break
+      case '--server-entry':
+        if (!nextValue) throw new Error('--server-entry requires a value.')
+        options.serverEntry = nextValue
         index += 1
         break
       case '--product-name':
@@ -152,12 +164,12 @@ export async function runCli(
     return 0
   }
 
-  if (command === 'doctor') {
-    printCommandNotice('check', output)
-    return 1
-  }
-
   if (command === 'init') {
+    if (parsed.positional[1] === '--help' || parsed.positional[1] === '-h') {
+      printHelp(output)
+      return 0
+    }
+
     try {
       return await runInit(parsed.options, {
         cwd: context.cwd ?? process.cwd(),
@@ -172,13 +184,6 @@ export async function runCli(
     }
   }
 
-  if (command === 'check' || command === 'dev' || command === 'build') {
-    printCommandNotice(command, output)
-    return 1
-  }
-
-  output.error(
-    `[Frontron] Unknown command "${command}". Expected "init", "check", "dev", or "build".`,
-  )
+  output.error(`[Frontron] Unknown command "${command}". Only "init" is supported.`)
   return 1
 }

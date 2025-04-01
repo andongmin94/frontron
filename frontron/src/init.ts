@@ -1,9 +1,24 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join, relative } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
+import { join, relative } from 'node:path'
 import readline from 'node:readline/promises'
 
-import { resolveInitAdapter } from './init/adapters'
-import { patchPackageJson } from './init/package-json'
+import { applyInitChanges } from './init/apply'
+import { describeInitAdapterSelection, resolveInitAdapter } from './init/adapters'
+import { createDesktopScriptCommands, previewPackageJsonPatch } from './init/package-json'
+import {
+  MANIFEST_PATH,
+  createManifest,
+  type PackageJsonOwnershipClaim,
+  readExistingManifest,
+  readManifest,
+  renderManifestSource,
+  splitFileConflicts,
+} from './init/manifest'
+import {
+  createDryRunReport,
+  createInitPlan,
+  createScriptFallbackWarnings,
+} from './init/plan'
 import {
   type InitContext,
   type InitOptions,
@@ -74,19 +89,6 @@ async function askText(
   return prompter.text(message, defaultValue)
 }
 
-async function askConfirm(
-  prompter: InitPrompter | null,
-  enabled: boolean,
-  message: string,
-  defaultValue: boolean,
-) {
-  if (!enabled || !prompter) {
-    return defaultValue
-  }
-
-  return prompter.confirm(message, defaultValue)
-}
-
 async function chooseDesktopScriptName(
   prompter: InitPrompter | null,
   promptEnabled: boolean,
@@ -95,14 +97,31 @@ async function chooseDesktopScriptName(
   defaultValue: string,
   takenNames: Set<string>,
   conflictFallback: string,
+  explicitValue: boolean,
+  allowedExistingNames = new Set<string>(),
 ) {
   let candidate = normalizeValue(
     await askText(prompter, promptEnabled, message, defaultValue),
     defaultValue,
   )
 
-  while (packageJson.scripts?.[candidate] || takenNames.has(candidate)) {
+  while (
+    (packageJson.scripts?.[candidate] && !allowedExistingNames.has(candidate)) ||
+    takenNames.has(candidate)
+  ) {
     if (!promptEnabled || !prompter) {
+      if (!explicitValue) {
+        for (const fallback of [
+          conflictFallback,
+          `${defaultValue}:electron`,
+          `${conflictFallback}:2`,
+        ]) {
+          if (!packageJson.scripts?.[fallback] && !takenNames.has(fallback)) {
+            return fallback
+          }
+        }
+      }
+
       throw new Error(`Script name "${candidate}" already exists. Choose a different desktop script name.`)
     }
 
@@ -124,16 +143,19 @@ function ensureObject<T extends object>(value: unknown, fallback: T) {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as T) : fallback
 }
 
-function createSummary(config: Parameters<typeof patchPackageJson>[0]) {
+function createSummary(config: Parameters<typeof previewPackageJsonPatch>[0]) {
   const lines = [
     `- preset: ${config.preset}`,
     `- adapter: ${config.adapter}`,
+    `- adapter confidence: ${config.adapterConfidence}`,
+    ...config.adapterReasons.map((reason) => `- adapter reason: ${reason}`),
     `- runtime strategy: ${config.runtimeStrategy}`,
     `- frontend dev script: ${config.webDevScript}`,
     `- frontend build script: ${config.webBuildScript}`,
     `- Electron directory: ${config.desktopDir}`,
     `- desktop dev script: ${config.appScript}`,
     `- desktop build script: ${config.buildScript}`,
+    `- desktop package script: ${config.packageScript}`,
     `- frontend output: ${config.outDir}`,
     `- package manager: ${config.packageManager}`,
     usesStarterBridge(config.preset) ? '- preload bridge: window.electron' : '- preload bridge: disabled',
@@ -145,6 +167,19 @@ function createSummary(config: Parameters<typeof patchPackageJson>[0]) {
   }
 
   return lines.join('\n')
+}
+
+function mergePackageJsonClaims(
+  existingClaims: PackageJsonOwnershipClaim[] = [],
+  nextClaims: PackageJsonOwnershipClaim[] = [],
+) {
+  const claims = new Map<string, PackageJsonOwnershipClaim>()
+
+  for (const claim of [...existingClaims, ...nextClaims]) {
+    claims.set(`${claim.action ?? 'set'}:${claim.path}:${JSON.stringify(claim.value)}`, claim)
+  }
+
+  return [...claims.values()]
 }
 
 export async function runInit(options: InitOptions, context: InitContext) {
@@ -160,7 +195,18 @@ export async function runInit(options: InitOptions, context: InitContext) {
 
   const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as PackageJson
   const adapter = resolveInitAdapter(context.cwd, packageJson, options.adapter)
-  const promptEnabled = !options.yes
+  const promptEnabled = !options.yes && !options.dryRun
+  const existingManifest = options.force ? readExistingManifest(context.cwd) : null
+  let existingManifestDetails: ReturnType<typeof readManifest> = null
+
+  if (options.force) {
+    try {
+      existingManifestDetails = readManifest(context.cwd)
+    } catch {
+      existingManifestDetails = null
+    }
+  }
+  const allowedExistingScriptNames = existingManifest?.scripts ?? new Set<string>()
   const prompter =
     promptEnabled
       ? context.prompter ?? createReadlinePrompter(context.stdin ?? process.stdin, context.stdout ?? process.stdout)
@@ -197,9 +243,11 @@ export async function runInit(options: InitOptions, context: InitContext) {
       promptEnabled,
       packageJson,
       '데스크톱 개발 스크립트 이름',
-      options.appScript ?? 'app',
+      options.appScript ?? 'frontron:dev',
       takenDesktopScriptNames,
-      'desktop:app',
+      'frontron:dev:electron',
+      Boolean(options.appScript),
+      allowedExistingScriptNames,
     )
     takenDesktopScriptNames.add(appScript)
     const buildScript = await chooseDesktopScriptName(
@@ -207,10 +255,30 @@ export async function runInit(options: InitOptions, context: InitContext) {
       promptEnabled,
       packageJson,
       '데스크톱 빌드 스크립트 이름',
-      options.buildScript ?? 'app:build',
+      options.buildScript ?? 'frontron:build',
       takenDesktopScriptNames,
-      'desktop:build',
+      'frontron:build:electron',
+      Boolean(options.buildScript),
+      allowedExistingScriptNames,
     )
+    takenDesktopScriptNames.add(buildScript)
+    const packageScript = await chooseDesktopScriptName(
+      prompter,
+      promptEnabled,
+      packageJson,
+      '데스크톱 패키징 스크립트 이름',
+      options.packageScript ?? 'frontron:package',
+      takenDesktopScriptNames,
+      'frontron:package:electron',
+      Boolean(options.packageScript),
+      allowedExistingScriptNames,
+    )
+    takenDesktopScriptNames.add(packageScript)
+    const scriptFallbackWarnings = createScriptFallbackWarnings(packageJson, options, {
+      appScript,
+      buildScript,
+      packageScript,
+    })
     const preset = normalizePresetValue(
       await askText(
         prompter,
@@ -313,42 +381,29 @@ export async function runInit(options: InitOptions, context: InitContext) {
     const existingExtraMetadata = ensureObject<Record<string, unknown>>(existingBuild.extraMetadata, {})
     const existingExtraMetadataMain = existingExtraMetadata.main
 
-    if (
-      typeof existingExtraMetadataMain !== 'undefined' &&
-      typeof existingExtraMetadataMain !== 'string'
-    ) {
-      throw new Error(
-        'Existing build.extraMetadata.main must be a string to preserve existing packaging rules.',
-      )
-    }
-
-    let allowExtraMetadataMainOverride =
+    const allowExtraMetadataMainOverride =
       typeof existingExtraMetadataMain === 'undefined' ||
       existingExtraMetadataMain === 'dist-electron/main.js' ||
       options.force
 
-    if (!allowExtraMetadataMainOverride && existingExtraMetadataMain) {
-      allowExtraMetadataMainOverride = await askConfirm(
-        prompter,
-        promptEnabled,
-        `기존 build.extraMetadata.main (${existingExtraMetadataMain}) 값을 dist-electron/main.js로 바꿀까요?`,
-        false,
-      )
-
-      if (!allowExtraMetadataMainOverride) {
-        throw new Error('Init aborted because build.extraMetadata.main already exists.')
-      }
-    }
-
+    const adapterSelection = describeInitAdapterSelection(
+      adapter,
+      options.adapter,
+      context.cwd,
+      packageJson,
+    )
     const config = {
       cwd: context.cwd,
       packageJson,
       packageManager: inferPackageManager(context.cwd),
       adapter: adapter.id,
+      adapterConfidence: adapterSelection.confidence,
+      adapterReasons: adapterSelection.reasons,
       runtimeStrategy: adapter.runtimeStrategy,
       desktopDir,
       appScript,
       buildScript,
+      packageScript,
       webDevScript,
       webBuildScript,
       webBuildCommand,
@@ -375,37 +430,85 @@ export async function runInit(options: InitOptions, context: InitContext) {
       filesToWrite.set(join(context.cwd, 'src', 'types', 'electron.d.ts'), renderElectronTypesSource())
     }
 
-    const conflicts = [...filesToWrite.keys()].filter((filePath) => existsSync(filePath))
+    const packageJsonPatchPlan = previewPackageJsonPatch(config)
+    const packageJsonClaims = mergePackageJsonClaims(
+      existingManifestDetails?.packageJsonClaims,
+      packageJsonPatchPlan.ownershipClaims,
+    )
+    filesToWrite.set(
+      join(context.cwd, MANIFEST_PATH),
+      renderManifestSource(
+        createManifest(
+          config,
+          filesToWrite,
+          [join(context.cwd, MANIFEST_PATH)],
+          createDesktopScriptCommands(config),
+          packageJsonClaims,
+        ),
+      ),
+    )
 
-    if (conflicts.length > 0 && !options.force) {
-      const overwrite = await askConfirm(
-        prompter,
-        promptEnabled,
-        `기존 파일을 덮어쓸까요? ${conflicts
+    const conflicts = [...filesToWrite.keys()].filter((filePath) => existsSync(filePath))
+    const conflictPlan = splitFileConflicts(context.cwd, conflicts, options.force, existingManifest)
+    const packageJsonBlockers = [
+      ...packageJsonPatchPlan.blockers,
+      typeof existingExtraMetadataMain !== 'undefined' &&
+      typeof existingExtraMetadataMain !== 'string'
+        ? 'Existing build.extraMetadata.main must be a string to preserve existing packaging rules.'
+        : null,
+      !allowExtraMetadataMainOverride &&
+      typeof existingExtraMetadataMain === 'string'
+        ? `Existing build.extraMetadata.main will not be overwritten: ${existingExtraMetadataMain}`
+        : null,
+    ].filter((blocker): blocker is string => typeof blocker === 'string')
+    const plan = createInitPlan({
+      config,
+      filesToWrite,
+      packageJsonPlan: packageJsonPatchPlan,
+      warnings: [
+        ...scriptFallbackWarnings,
+        ...adapterSelection.warnings,
+        ...packageJsonPatchPlan.warnings,
+      ],
+      blockers: packageJsonBlockers,
+      blockedFiles: conflictPlan.blocked,
+      overwriteFiles: conflictPlan.safeToOverwrite,
+    })
+
+    if (options.dryRun) {
+      context.output.info(createDryRunReport(plan))
+
+      return 0
+    }
+
+    if (conflictPlan.blocked.length > 0) {
+      throw new Error(
+        `Init aborted because one or more target files already exist: ${conflictPlan.blocked
           .map((filePath) => normalizePathValue(relative(context.cwd, filePath), filePath))
           .join(', ')}`,
-        false,
       )
-
-      if (!overwrite) {
-        throw new Error('Init aborted because one or more target files already exist.')
-      }
     }
 
-    patchPackageJson(config)
-
-    for (const [filePath, source] of filesToWrite) {
-      mkdirSync(dirname(filePath), { recursive: true })
-      writeFileSync(filePath, source, 'utf8')
+    if (plan.blockers.length > 0) {
+      throw new Error(`Init aborted because package.json cannot be patched: ${plan.blockers.join('; ')}`)
     }
 
-    writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8')
+    applyInitChanges(packageJsonPath, packageJsonPatchPlan.packageJson, plan)
 
     context.output.info(`[Frontron] Added the ${preset} Electron retrofit layer.`)
     context.output.info(createSummary(config))
+    if (scriptFallbackWarnings.length > 0) {
+      context.output.info('')
+      context.output.info('Warnings:')
+
+      for (const warning of scriptFallbackWarnings) {
+        context.output.info(`- ${warning}`)
+      }
+    }
     context.output.info('')
     context.output.info(`Run "${appScript}" to start the desktop app after installing dependencies.`)
-    context.output.info(`Run "${buildScript}" to create a packaged build.`)
+    context.output.info(`Run "${buildScript}" to prepare the desktop build.`)
+    context.output.info(`Run "${packageScript}" to create a packaged build.`)
 
     return 0
   } finally {

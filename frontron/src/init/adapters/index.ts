@@ -1,4 +1,6 @@
 import {
+  type AdapterConfidence,
+  type AdapterDetectionResult,
   type InitAdapter,
   type InitAdapterId,
   type PackageJson,
@@ -24,11 +26,33 @@ import {
   inferScriptName,
 } from '../detect'
 
+function detected(
+  confidence: AdapterConfidence,
+  reasons: string[],
+  warnings: string[] = [],
+): AdapterDetectionResult {
+  return {
+    matched: true,
+    confidence,
+    reasons,
+    warnings,
+  }
+}
+
+function notDetected(reason: string): AdapterDetectionResult {
+  return {
+    matched: false,
+    confidence: 'low',
+    reasons: [reason],
+    warnings: [],
+  }
+}
+
 const genericStaticAdapter: InitAdapter = {
   id: 'generic-static',
   runtimeStrategy: 'static-export',
   detect() {
-    return true
+    return detected('low', ['No specific framework adapter matched; using generic static fallback.'])
   },
   inferDefaults(cwd, packageJson) {
     const webBuildScript = inferScriptName(packageJson, 'build')
@@ -55,13 +79,18 @@ const nextExportAdapter: InitAdapter = {
   runtimeStrategy: 'static-export',
   detect(cwd, packageJson) {
     if (!hasPackageDependency(packageJson, 'next')) {
-      return false
+      return notDetected('next dependency was not found.')
     }
 
-    return (
-      hasNextConfigOutput(cwd, 'export') ||
-      findScriptByCommand(packageJson, /\bnext\s+export\b/i) !== null
-    )
+    if (hasNextConfigOutput(cwd, 'export')) {
+      return detected('high', ['next dependency found.', 'next config declares output: export.'])
+    }
+
+    if (findScriptByCommand(packageJson, /\bnext\s+export\b/i) !== null) {
+      return detected('medium', ['next dependency found.', 'package.json has a next export script.'])
+    }
+
+    return notDetected('next dependency found, but no static export signal was found.')
   },
   inferDefaults(_cwd, packageJson) {
     const webBuildScript =
@@ -107,7 +136,15 @@ const nextStandaloneAdapter: InitAdapter = {
   id: 'next-standalone',
   runtimeStrategy: 'node-server',
   detect(cwd, packageJson) {
-    return hasPackageDependency(packageJson, 'next') && hasNextConfigOutput(cwd, 'standalone')
+    if (!hasPackageDependency(packageJson, 'next')) {
+      return notDetected('next dependency was not found.')
+    }
+
+    if (!hasNextConfigOutput(cwd, 'standalone')) {
+      return notDetected('next dependency found, but next config does not declare output: standalone.')
+    }
+
+    return detected('high', ['next dependency found.', 'next config declares output: standalone.'])
   },
   inferDefaults(_cwd, packageJson) {
     return {
@@ -141,7 +178,19 @@ const nuxtNodeServerAdapter: InitAdapter = {
   id: 'nuxt-node-server',
   runtimeStrategy: 'node-server',
   detect(cwd, packageJson) {
-    return hasPackageDependency(packageJson, 'nuxt') || hasNuxtConfig(cwd)
+    if (hasPackageDependency(packageJson, 'nuxt') && hasNuxtConfig(cwd)) {
+      return detected('high', ['nuxt dependency found.', 'nuxt config file found.'])
+    }
+
+    if (hasPackageDependency(packageJson, 'nuxt')) {
+      return detected('medium', ['nuxt dependency found.'])
+    }
+
+    if (hasNuxtConfig(cwd)) {
+      return detected('medium', ['nuxt config file found.'])
+    }
+
+    return notDetected('nuxt dependency or config was not found.')
   },
   inferDefaults(_cwd, packageJson) {
     return {
@@ -172,11 +221,23 @@ const remixNodeServerAdapter: InitAdapter = {
   id: 'remix-node-server',
   runtimeStrategy: 'node-server',
   detect(cwd, packageJson) {
-    return (
-      hasPackageDependency(packageJson, '@remix-run/dev') ||
-      hasPackageDependency(packageJson, '@remix-run/node') ||
-      hasRemixConfig(cwd)
-    )
+    const reasons: string[] = []
+
+    if (hasPackageDependency(packageJson, '@remix-run/dev')) {
+      reasons.push('@remix-run/dev dependency found.')
+    }
+
+    if (hasPackageDependency(packageJson, '@remix-run/node')) {
+      reasons.push('@remix-run/node dependency found.')
+    }
+
+    if (hasRemixConfig(cwd)) {
+      reasons.push('remix config file found.')
+    }
+
+    return reasons.length > 0
+      ? detected(reasons.length > 1 ? 'high' : 'medium', reasons)
+      : notDetected('remix dependency or config was not found.')
   },
   inferDefaults(_cwd, packageJson) {
     return {
@@ -207,10 +268,25 @@ const svelteKitStaticAdapter: InitAdapter = {
   id: 'sveltekit-static',
   runtimeStrategy: 'static-export',
   detect(cwd, packageJson) {
-    return (
-      hasPackageDependency(packageJson, '@sveltejs/adapter-static') ||
+    if (
+      hasPackageDependency(packageJson, '@sveltejs/adapter-static') &&
       hasSvelteKitAdapterConfig(cwd, '@sveltejs/adapter-static')
-    )
+    ) {
+      return detected('high', [
+        '@sveltejs/adapter-static dependency found.',
+        'svelte config uses @sveltejs/adapter-static.',
+      ])
+    }
+
+    if (hasPackageDependency(packageJson, '@sveltejs/adapter-static')) {
+      return detected('medium', ['@sveltejs/adapter-static dependency found.'])
+    }
+
+    if (hasSvelteKitAdapterConfig(cwd, '@sveltejs/adapter-static')) {
+      return detected('medium', ['svelte config uses @sveltejs/adapter-static.'])
+    }
+
+    return notDetected('SvelteKit static adapter signal was not found.')
   },
   inferDefaults(cwd, packageJson) {
     const webBuildScript = inferScriptName(packageJson, 'build')
@@ -241,10 +317,25 @@ const svelteKitNodeAdapter: InitAdapter = {
   id: 'sveltekit-node',
   runtimeStrategy: 'node-server',
   detect(cwd, packageJson) {
-    return (
-      hasPackageDependency(packageJson, '@sveltejs/adapter-node') ||
+    if (
+      hasPackageDependency(packageJson, '@sveltejs/adapter-node') &&
       hasSvelteKitAdapterConfig(cwd, '@sveltejs/adapter-node')
-    )
+    ) {
+      return detected('high', [
+        '@sveltejs/adapter-node dependency found.',
+        'svelte config uses @sveltejs/adapter-node.',
+      ])
+    }
+
+    if (hasPackageDependency(packageJson, '@sveltejs/adapter-node')) {
+      return detected('medium', ['@sveltejs/adapter-node dependency found.'])
+    }
+
+    if (hasSvelteKitAdapterConfig(cwd, '@sveltejs/adapter-node')) {
+      return detected('medium', ['svelte config uses @sveltejs/adapter-node.'])
+    }
+
+    return notDetected('SvelteKit node adapter signal was not found.')
   },
   inferDefaults(_cwd, packageJson) {
     return {
@@ -273,7 +364,7 @@ const genericNodeServerAdapter: InitAdapter = {
   id: 'generic-node-server',
   runtimeStrategy: 'node-server',
   detect() {
-    return false
+    return notDetected('generic-node-server is only selected by --adapter.')
   },
   inferDefaults(_cwd, packageJson) {
     return {
@@ -326,5 +417,32 @@ export function resolveInitAdapter(
     return getInitAdapterById(normalizeAdapterValue(requestedAdapter))
   }
 
-  return INIT_ADAPTERS.find((adapter) => adapter.detect(cwd, packageJson)) ?? genericStaticAdapter
+  return INIT_ADAPTERS.find((adapter) => adapter.detect(cwd, packageJson).matched) ?? genericStaticAdapter
+}
+
+export function describeInitAdapterSelection(
+  adapter: InitAdapter,
+  requestedAdapter: string | undefined,
+  cwd: string,
+  packageJson: PackageJson,
+): {
+  confidence: AdapterConfidence
+  reasons: string[]
+  warnings: string[]
+} {
+  if (requestedAdapter) {
+    return {
+      confidence: 'high',
+      reasons: [`Adapter was explicitly selected with --adapter ${requestedAdapter}.`],
+      warnings: [],
+    }
+  }
+
+  const detection = adapter.detect(cwd, packageJson)
+
+  return {
+    confidence: detection.confidence,
+    reasons: detection.reasons,
+    warnings: detection.warnings,
+  }
 }

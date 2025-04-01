@@ -40,13 +40,16 @@ npx frontron init
 ```
 
 `frontron init` is the active retrofit flow today. It adds a conservative, app-owned Electron layer without replacing the app's existing frontend structure unless you explicitly choose starter-like additions.
+After init, `npx frontron doctor` checks the generated Electron layer and reports missing files, scripts, and packaging metadata. Before init, it reports the project as not initialized instead of listing generated Electron files as missing.
+Use `npx frontron clean --dry-run` to preview removal of manifest-owned files, scripts, dependencies, and Electron build metadata; generated file hashes and ownership records guard local edits by default.
+Use `npx frontron update --dry-run` to preview a manifest-owned refresh before applying it.
 
 ## Product Shape
 
 - `create-frontron` generates a template-owned Electron + React + Vite starter.
 - The generated starter keeps its Electron files under `src/electron/` and exposes a preload bridge on `window.electron`.
 - `frontron init` retrofits compatible existing web frontend projects with an app-owned Electron layer while preserving existing web scripts by default.
-- The current `frontron` CLI surface is intentionally narrow: `init` is the supported command.
+- The current `frontron` CLI surface is intentionally narrow: `init`, `doctor`, `clean`, and `update` are supported commands.
 
 ## Requirements
 

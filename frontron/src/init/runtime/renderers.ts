@@ -366,7 +366,7 @@ export function renderServeSource(config: InitConfig) {
   const devHost =
     inferHost(config.packageJson, config.webDevScript) ??
     normalizeLoopbackHost(inferViteServerValue(config.cwd, 'host')) ??
-    '127.0.0.1'
+    'localhost'
   const devPort =
     inferPort(config.packageJson, config.webDevScript) ??
     Number.parseInt(inferViteServerValue(config.cwd, 'port') ?? '', 10) ??

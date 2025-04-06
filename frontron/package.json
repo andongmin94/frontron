@@ -1,6 +1,6 @@
 {
   "name": "frontron",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "type": "module",
   "description": "Init-focused Electron retrofit CLI for existing web frontend projects",
   "license": "MIT",

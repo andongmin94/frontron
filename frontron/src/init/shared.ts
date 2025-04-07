@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 import type { CliOutput } from '../cli'
 
@@ -215,9 +215,52 @@ export function usesStarterBridge(preset: InitPreset) {
   return preset === 'starter-like'
 }
 
-export function inferPackageManager(cwd: string): 'npm' | 'pnpm' | 'yarn' | 'bun' {
-  if (existsSync(join(cwd, 'pnpm-lock.yaml'))) return 'pnpm'
-  if (existsSync(join(cwd, 'yarn.lock'))) return 'yarn'
-  if (existsSync(join(cwd, 'bun.lockb')) || existsSync(join(cwd, 'bun.lock'))) return 'bun'
+type PackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun'
+
+function parseDeclaredPackageManager(value: unknown): PackageManager | null {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const name = value.match(/^(npm|pnpm|yarn|bun)(?:@|$)/)?.[1]
+  return name ? (name as PackageManager) : null
+}
+
+function inferLockfilePackageManager(cwd: string): PackageManager | null {
+  let currentDir = resolve(cwd)
+
+  while (true) {
+    if (existsSync(join(currentDir, 'pnpm-lock.yaml'))) return 'pnpm'
+    if (existsSync(join(currentDir, 'yarn.lock'))) return 'yarn'
+    if (existsSync(join(currentDir, 'bun.lockb')) || existsSync(join(currentDir, 'bun.lock'))) return 'bun'
+    if (existsSync(join(currentDir, 'package-lock.json')) || existsSync(join(currentDir, 'npm-shrinkwrap.json'))) {
+      return 'npm'
+    }
+
+    const parentDir = dirname(currentDir)
+
+    if (parentDir === currentDir) {
+      break
+    }
+
+    currentDir = parentDir
+  }
+
+  return null
+}
+
+export function inferPackageManager(cwd: string, packageJson?: PackageJson): PackageManager {
+  const declaredPackageManager = parseDeclaredPackageManager(packageJson?.packageManager)
+
+  if (declaredPackageManager) {
+    return declaredPackageManager
+  }
+
+  const lockfilePackageManager = inferLockfilePackageManager(cwd)
+
+  if (lockfilePackageManager) {
+    return lockfilePackageManager
+  }
+
   return 'npm'
 }

@@ -128,7 +128,7 @@ function buildContentSecurityPolicy(rendererUrl: string) {
     "style-src 'self' 'unsafe-inline'",
     "worker-src 'self' blob:",
     isDev
-      ? \`script-src 'self' 'unsafe-inline' 'unsafe-eval' \${origin.origin}\`
+      ? \`script-src 'self' \${origin.origin}\`
       : "script-src 'self'",
     isDev
       ? \`connect-src 'self' \${origin.origin} \${toWebSocketOrigin(origin)}\`

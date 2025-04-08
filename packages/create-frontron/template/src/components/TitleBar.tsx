@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import frontronLogo from "/frontron.svg";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center hover:bg-gray-700 hover:cursor-pointer justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
@@ -33,7 +33,7 @@ const buttonVariants = cva(
       variant: "default",
       size: "default",
     },
-  },
+  }
 );
 
 interface ButtonProps
@@ -52,12 +52,12 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         {...props}
       />
     );
-  },
+  }
 );
 
 export default function TitleBar() {
   const [isMaximized, setIsMaximized] = useState(false);
-  
+
   const minimize = () => {
     electron.send("minimize");
   };
@@ -86,7 +86,11 @@ export default function TitleBar() {
             </Button>
             &nbsp;
             <Button onClick={maximize} size="icon">
-              {isMaximized ? <Copy className="size-6" /> : <Square className="size-6" />}
+              {isMaximized ? (
+                <Copy className="size-6" />
+              ) : (
+                <Square className="size-6" />
+              )}
             </Button>
             &nbsp;
             <Button onClick={hidden} size="icon">

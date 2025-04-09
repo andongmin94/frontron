@@ -138,7 +138,7 @@
     font-style: normal;
     font-display: swap;
   }
-  
+
   * {
     @apply border-border;
   }

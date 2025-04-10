@@ -1,4 +1,4 @@
-import { forwardRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Copy, Minus, Square, X } from "lucide-react";
@@ -36,69 +36,79 @@ const buttonVariants = cva(
   },
 );
 
-interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
-  asChild?: boolean;
-}
+function Button({
+  className,
+  variant,
+  size,
+  asChild = false,
+  ...props
+}: React.ComponentProps<"button"> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean;
+  }) {
+  const Comp = asChild ? Slot : "button";
 
-const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
-    const Comp = asChild ? Slot : "button";
-    return (
-      <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
-        ref={ref}
-        {...props}
-      />
-    );
-  },
-);
+  return (
+    <Comp
+      data-slot="button"
+      className={cn(buttonVariants({ variant, size, className }))}
+      {...props}
+    />
+  );
+}
 
 export default function TitleBar() {
   const [isMaximized, setIsMaximized] = useState(false);
+  const [ipcRenderer, setIpcRenderer] = useState<any>(null);
+
+  // 컴포넌트 마운트시 한 번만 ipcRenderer 가져오기
+  useEffect(() => {
+    setIpcRenderer(require("electron").ipcRenderer);
+  }, []);
 
   const minimize = () => {
-    electron.send("minimize");
+    ipcRenderer.send("minimize");
   };
+
   const maximize = () => {
-    electron.send("maximize");
+    ipcRenderer.send("maximize");
     setIsMaximized(!isMaximized);
   };
+
   const hidden = () => {
-    electron.send("hidden");
+    ipcRenderer.send("hidden");
   };
+
   return (
     <>
-      {typeof electron !== "undefined" && (
-        <div
-          className="fixed flex w-full justify-between bg-neutral-800"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-        >
-          <div className="flex items-center pl-2">
-            <img src={frontronLogo} alt="Frontron" className="size-6" />
-            &nbsp;&nbsp;
-            <span className="text-lg text-white">Frontron</span>
-          </div>
-          <div style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
-            <Button onClick={minimize} size="icon">
-              <Minus className="size-6" />
-            </Button>
-            &nbsp;
-            <Button onClick={maximize} size="icon">
-              {isMaximized ? (
-                <Copy className="size-6" />
-              ) : (
-                <Square className="size-6" />
-              )}
-            </Button>
-            &nbsp;
-            <Button onClick={hidden} size="icon">
-              <X className="size-6" />
-            </Button>
-          </div>
+      <div
+        className="fixed flex w-full justify-between bg-neutral-800"
+        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+      >
+        <div className="flex items-center pl-2">
+          <img src={frontronLogo} alt="Frontron" className="size-6" />
+          &nbsp;&nbsp;
+          <span className="text-lg text-white">Frontron</span>
         </div>
-      )}
+        <div style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+          <Button onClick={minimize} size="icon">
+            <Minus className="size-6" />
+          </Button>
+          &nbsp;
+          <Button onClick={maximize} size="icon">
+            {isMaximized ? (
+              <Copy className="size-6" />
+            ) : (
+              <Square className="size-6" />
+            )}
+          </Button>
+          &nbsp;
+          <Button onClick={hidden} size="icon">
+            <X className="size-6" />
+          </Button>
+        </div>
+      </div>
+
       <div className="h-[40px]" />
     </>
   );

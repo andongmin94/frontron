@@ -1,14 +1,28 @@
 // 일렉트론 모듈
-const path = require("path");
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } = require("electron");
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } from 'electron';
+
+// ESM에서 __dirname 사용하기 위한 설정
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // 환경 변수 설정
-require("dotenv").config();
-let PORT = process.env.NODE_ENV === 'development' ? 3000 : 1994;
+import dotenv from 'dotenv';
+dotenv.config();
+// package.json 파일의 절대 경로 생성
+const packagePath = path.join(__dirname, '../../package.json');
+// 파일 읽고 JSON으로 파싱
+const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+
 const isDev = process.env.NODE_ENV === 'development';
+const DEV_PORT = pkg.config.port.dev;
+const PROD_PORT = pkg.config.port.prod;
+let PORT = isDev ? DEV_PORT : PROD_PORT;
 
 // 로컬 웹 서버 모듈
-const express = require('express');
+import express from 'express';
 const server = express();
 
 // 개발 모드가 아닐때 빌드 파일 서빙 로직
@@ -44,8 +58,9 @@ const createWindow = () => {
     resizable: isDev,
     icon: path.join(__dirname, "../../public/icon.png"),
     webPreferences: {
-      preload: path.join(__dirname, "preload.cjs"),
-      webSecurity: false,
+      nodeIntegration: true,    // Node.js API 활성화
+      contextIsolation: false,  // preload 스크립트와 렌더러 프로세스 간 격리 해제
+      webSecurity: false,       // 웹 보안 기능 비활성화
     },
   });
 
@@ -143,3 +158,5 @@ app.whenReady().then(createWindow).then(() => {
     Menu.setApplicationMenu(menu);
   }
 });
+
+export default mainWindow;

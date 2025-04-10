@@ -2,7 +2,6 @@ import {
   existsSync,
   mkdtempSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
   rmSync,
   writeFileSync,
@@ -51,10 +50,6 @@ function runNpm(args, cwd) {
   run(getNpmExecutable(), args, cwd)
 }
 
-function runNode(args, cwd) {
-  run(process.execPath, args, cwd)
-}
-
 function createScratchDir(prefix) {
   mkdirSync(scratchRoot, { recursive: true })
   const directory = mkdtempSync(join(scratchRoot, `${prefix}-`))
@@ -99,19 +94,6 @@ function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`)
 }
 
-function stabilizeGeneratedStarterDevPort(appRoot, port) {
-  const packageJsonPath = join(appRoot, 'package.json')
-  const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'))
-
-  packageJson.scripts = {
-    ...packageJson.scripts,
-    dev: `vite --port ${port}`,
-    'build:web': 'tsc -b && vite build',
-  }
-
-  writeJson(packageJsonPath, packageJson)
-}
-
 function createVitePressProject(appRoot) {
   const docsRoot = join(appRoot, 'docs')
   const vitepressRoot = join(docsRoot, '.vitepress')
@@ -146,45 +128,23 @@ export default defineConfig({
   )
 }
 
-function runStarterCase(createTarball, frontronTarball) {
-  logStep('starter case: packed create-frontron -> app:build')
+function runStarterCase(createTarball) {
+  logStep('starter case: packed create-frontron -> typecheck')
 
   const root = createScratchDir('starter')
   const appName = 'matrix-starter-app'
   const appRoot = join(root, appName)
 
   runNpm(['init', '-y'], root)
-  runNpm(['install', '--ignore-scripts', createTarball, frontronTarball], root)
+  runNpm(['install', '--ignore-scripts', createTarball], root)
 
-  const createCliPath = join(root, 'node_modules', 'create-frontron', 'index.js')
-  const frontronCliPath = join(root, 'node_modules', 'frontron', 'index.js')
-
-  runNode([createCliPath, appName, '--overwrite', 'yes'], root)
-  stabilizeGeneratedStarterDevPort(appRoot, 4312)
-  runNpm(['install', '--ignore-scripts', frontronTarball], appRoot)
+  runNpm(['exec', '--', 'create-frontron', appName, '--overwrite', 'yes'], root)
   runNpm(['install'], appRoot)
-  runNode(
-    [
-      frontronCliPath,
-      'init',
-      '--yes',
-      '--force',
-      '--app-script',
-      'app:retrofit',
-      '--build-script',
-      'app:build',
-      '--web-build',
-      'build:web',
-      '--out-dir',
-      'dist',
-    ],
-    appRoot,
-  )
-  runNpm(['run', 'app:build'], appRoot)
+  runNpm(['run', 'typecheck'], appRoot)
 }
 
 function runViteCase(frontronTarball) {
-  logStep('vite case: existing Vite app -> init -> app:build')
+  logStep('vite case: existing Vite app -> init -> frontron:build')
 
   const root = createScratchDir('vite')
   const appName = 'matrix-vite-app'
@@ -195,14 +155,13 @@ function runViteCase(frontronTarball) {
   runNpm(['install', '--ignore-scripts', frontronTarball], appRoot)
   runNpm(['install'], appRoot)
 
-  const frontronCliPath = join(appRoot, 'node_modules', 'frontron', 'index.js')
-
-  runNode([frontronCliPath, 'init', '--yes'], appRoot)
-  runNpm(['run', 'app:build'], appRoot)
+  runNpm(['exec', '--', 'frontron', 'init', '--yes'], appRoot)
+  runNpm(['install'], appRoot)
+  runNpm(['run', 'frontron:build'], appRoot)
 }
 
 function runVitePressCase(frontronTarball) {
-  logStep('vitepress case: existing docs app -> init -> app:build')
+  logStep('vitepress case: existing docs app -> init -> frontron:build')
 
   const appRoot = createScratchDir('vitepress')
 
@@ -210,10 +169,24 @@ function runVitePressCase(frontronTarball) {
   runNpm(['install', '--ignore-scripts', 'vitepress', frontronTarball], appRoot)
   runNpm(['install'], appRoot)
 
-  const frontronCliPath = join(appRoot, 'node_modules', 'frontron', 'index.js')
-
-  runNode([frontronCliPath, 'init', '--yes'], appRoot)
-  runNpm(['run', 'app:build'], appRoot)
+  runNpm(
+    [
+      'exec',
+      '--',
+      'frontron',
+      'init',
+      '--yes',
+      '--web-dev',
+      'docs:dev',
+      '--web-build',
+      'docs:build',
+      '--out-dir',
+      'docs/.vitepress/dist',
+    ],
+    appRoot,
+  )
+  runNpm(['install'], appRoot)
+  runNpm(['run', 'frontron:build'], appRoot)
 }
 
 function main() {
@@ -222,7 +195,7 @@ function main() {
   const selectedCase = process.argv[2] ?? 'all'
 
   if (selectedCase === 'all' || selectedCase === 'starter') {
-    runStarterCase(createTarball, frontronTarball)
+    runStarterCase(createTarball)
   }
 
   if (selectedCase === 'all' || selectedCase === 'vite') {

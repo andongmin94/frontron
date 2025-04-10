@@ -25,6 +25,8 @@ npm create frontron@latest
 npx create-frontron@latest my-app
 ```
 
+Requires Node.js `22.15+`.
+
 ## After generation
 
 ```bash
@@ -35,6 +37,8 @@ npm run app
 
 - `npm run dev`: web preview only
 - `npm run app`: Electron runtime + web dev server
+- `npm run typecheck`: fast TypeScript verification without packaging
+- `npm run build`: production web build + Electron packaging
 
 ## Output shape
 

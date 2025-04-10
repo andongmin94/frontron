@@ -224,6 +224,42 @@ export default {
     expect(combined).toContain('- adapter: next-export')
   })
 
+  test('init uses the Next.js default dev port when no port is configured', async () => {
+    const projectRoot = fixtures.createTempProjectWithScripts(
+      {
+        dev: 'next dev',
+        build: 'next build',
+      },
+      {
+        dependencies: {
+          next: '^16.0.0',
+          react: '^19.0.0',
+          'react-dom': '^19.0.0',
+        },
+        extraFiles: {
+          'next.config.ts': `export default {
+  output: 'export',
+}
+`,
+        },
+      },
+    )
+    fixtures.tempDirs.push(projectRoot)
+    const output = fixtures.createOutput()
+
+    const exitCode = await runCli(['init', '--yes'], output, {
+      cwd: projectRoot,
+    })
+
+    expect(exitCode).toBe(0)
+
+    const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    fixtures.expectEmbeddedString(serveSource, 'DEV_URL', 'http://localhost:3000')
+    expect(combined).toContain('The dev runner waits for http://localhost:3000.')
+  })
+
   test('init detects Next.js standalone output and stages a packaged node-server runtime', async () => {
     const projectRoot = fixtures.createTempProjectWithScripts(
       {
@@ -323,6 +359,38 @@ export default {
     expect(combined).toContain('- adapter: nuxt-node-server')
     expect(combined).toContain('- server runtime root: .output')
     expect(combined).toContain('- server entry: server/index.mjs')
+  })
+
+  test('init uses the Nuxt default dev port when no port is configured', async () => {
+    const projectRoot = fixtures.createTempProjectWithScripts(
+      {
+        dev: 'nuxt dev',
+        build: 'nuxt build',
+      },
+      {
+        dependencies: {
+          nuxt: '^4.0.0',
+        },
+        extraFiles: {
+          'nuxt.config.ts': `export default defineNuxtConfig({})
+`,
+        },
+      },
+    )
+    fixtures.tempDirs.push(projectRoot)
+    const output = fixtures.createOutput()
+
+    const exitCode = await runCli(['init', '--yes'], output, {
+      cwd: projectRoot,
+    })
+
+    expect(exitCode).toBe(0)
+
+    const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    fixtures.expectEmbeddedString(serveSource, 'DEV_URL', 'http://localhost:3000')
+    expect(combined).toContain('The dev runner waits for http://localhost:3000.')
   })
 
   test('init auto-detects Remix node-server projects', async () => {

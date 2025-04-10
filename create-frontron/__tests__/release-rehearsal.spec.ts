@@ -26,19 +26,6 @@ function runNpm(args: string[], cwd: string) {
   return result.stdout
 }
 
-function runNode(args: string[], cwd: string) {
-  const result = spawnSync(process.execPath, args, {
-    cwd,
-    encoding: 'utf8',
-  })
-
-  if (result.status !== 0) {
-    throw new Error(result.stderr || result.stdout || 'node command failed')
-  }
-
-  return result.stdout
-}
-
 function ensureBuildOutput(packageRoot: string) {
   runNpm(['run', 'build'], packageRoot)
 }
@@ -98,14 +85,7 @@ test(
     runNpm(['init', '-y'], rehearsalRoot)
     runNpm(['install', '--ignore-scripts', createTarball], rehearsalRoot)
 
-    const createCliPath = join(
-      rehearsalRoot,
-      'node_modules',
-      'create-frontron',
-      'index.js',
-    )
-
-    runNode([createCliPath, generatedAppName, '--overwrite', 'yes'], rehearsalRoot)
+    runNpm(['exec', '--', 'create-frontron', generatedAppName, '--overwrite', 'yes'], rehearsalRoot)
 
     const generatedPackage = JSON.parse(
       readFileSync(join(generatedAppRoot, 'package.json'), 'utf8'),
@@ -121,6 +101,7 @@ test(
     }
 
     expect(generatedPackage.scripts.app).toContain('src/electron/serve.ts')
+    expect(generatedPackage.scripts.typecheck).toBe('tsc -b && tsc -p tsconfig.electron.json')
     expect(generatedPackage.scripts.build).toContain('electron-builder')
     expect(generatedPackage.dependencies).not.toHaveProperty('frontron')
     expect(generatedPackage.devDependencies).toHaveProperty('electron')
@@ -135,6 +116,7 @@ test(
     expect(existsSync(join(generatedAppRoot, 'frontron.config.ts'))).toBe(false)
 
     runNpm(['install', '--ignore-scripts'], generatedAppRoot)
+    runNpm(['run', 'typecheck'], generatedAppRoot)
     stabilizeGeneratedStarterDevPort(generatedAppRoot, 4311)
 
     const packageAfterInstall = JSON.parse(

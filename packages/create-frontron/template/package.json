@@ -3,7 +3,13 @@
   "version": "0.0.1",
   "type": "module",
   "author": "안동민",
-  "main": "src/electron/main.cjs",
+  "main": "src/electron/main.js",
+  "config": {
+    "port": {
+      "dev": 3000,
+      "prod": 1994
+    }
+  },
   "build": {
     "appId": "Frontron",
     "productName": "Frontron",

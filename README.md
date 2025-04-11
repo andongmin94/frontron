@@ -37,6 +37,7 @@ Retrofit an existing compatible web project with:
 ```bash
 npm install -D frontron
 npx frontron init
+# or: npm exec -- frontron init
 npm install
 npm run frontron:dev
 ```
@@ -75,6 +76,7 @@ Run shared release tasks from the repo root:
 node release.mjs sync-version
 node release.mjs verify
 node release.mjs matrix-smoke
+node release.mjs publish-dry-run
 node release.mjs publish
 ```
 

@@ -251,7 +251,7 @@ export function createDesktopScriptCommands(config: InitConfig) {
     [config.buildScript]:
       `${config.webBuildCommand} && tsc -p tsconfig.electron.json && node dist-electron/serve.js --prepare-build`,
     [config.packageScript]:
-      `${config.webBuildCommand} && tsc -p tsconfig.electron.json && node dist-electron/serve.js --prepare-build && electron-builder`,
+      `${config.webBuildCommand} && tsc -p tsconfig.electron.json && node dist-electron/serve.js --prepare-build && node --no-deprecation ./node_modules/electron-builder/cli.js`,
   }
 }
 

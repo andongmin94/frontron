@@ -130,7 +130,7 @@ async function chooseDesktopScriptName(
       await askText(
         prompter,
         true,
-        `${message} (이미 사용 중입니다. 다른 이름을 입력하세요)`,
+        `${message} (already in use; choose another name)`,
         conflictFallback,
       ),
       conflictFallback,
@@ -231,11 +231,11 @@ export async function runInit(options: InitOptions, context: InitContext) {
     const inferredWebDevScript = options.webDevScript ?? adapterDefaults.webDevScript
     const inferredWebBuildScript = options.webBuildScript ?? adapterDefaults.webBuildScript
     const webDevScript = normalizeValue(
-      await askText(prompter, promptEnabled, '웹 개발 스크립트 이름', inferredWebDevScript),
+      await askText(prompter, promptEnabled, 'Web dev script name', inferredWebDevScript),
       inferredWebDevScript,
     )
     const webBuildScript = normalizeValue(
-      await askText(prompter, promptEnabled, '웹 빌드 스크립트 이름', inferredWebBuildScript),
+      await askText(prompter, promptEnabled, 'Web build script name', inferredWebBuildScript),
       inferredWebBuildScript,
     )
 
@@ -248,7 +248,7 @@ export async function runInit(options: InitOptions, context: InitContext) {
     }
 
     const desktopDir = normalizePathValue(
-      await askText(prompter, promptEnabled, 'Electron 소스 디렉토리', options.desktopDir ?? 'electron'),
+      await askText(prompter, promptEnabled, 'Electron source directory', options.desktopDir ?? 'electron'),
       options.desktopDir ?? 'electron',
     )
     const takenDesktopScriptNames = new Set<string>()
@@ -256,7 +256,7 @@ export async function runInit(options: InitOptions, context: InitContext) {
       prompter,
       promptEnabled,
       packageJson,
-      '데스크톱 개발 스크립트 이름',
+      'Desktop dev script name',
       options.appScript ?? 'frontron:dev',
       takenDesktopScriptNames,
       'frontron:dev:electron',
@@ -268,7 +268,7 @@ export async function runInit(options: InitOptions, context: InitContext) {
       prompter,
       promptEnabled,
       packageJson,
-      '데스크톱 빌드 스크립트 이름',
+      'Desktop build script name',
       options.buildScript ?? 'frontron:build',
       takenDesktopScriptNames,
       'frontron:build:electron',
@@ -280,7 +280,7 @@ export async function runInit(options: InitOptions, context: InitContext) {
       prompter,
       promptEnabled,
       packageJson,
-      '데스크톱 패키징 스크립트 이름',
+      'Desktop package script name',
       options.packageScript ?? 'frontron:package',
       takenDesktopScriptNames,
       'frontron:package:electron',
@@ -319,7 +319,7 @@ export async function runInit(options: InitOptions, context: InitContext) {
       await askText(
         prompter,
         promptEnabled,
-        '프론트엔드 빌드 출력 디렉토리',
+        'Frontend build output directory',
         inferredOutDir ?? 'dist',
       ),
       inferredOutDir ?? 'dist',
@@ -353,7 +353,7 @@ export async function runInit(options: InitOptions, context: InitContext) {
             await askText(
               prompter,
               promptEnabled,
-              'Node 서버 런타임 루트',
+              'Node server runtime root',
               inferredServerRoot || '.output',
             ),
             inferredServerRoot || '.output',
@@ -365,7 +365,7 @@ export async function runInit(options: InitOptions, context: InitContext) {
             await askText(
               prompter,
               promptEnabled,
-              'Node 서버 엔트리',
+              'Node server entry',
               inferredServerEntry || 'server/index.mjs',
             ),
             inferredServerEntry || 'server/index.mjs',

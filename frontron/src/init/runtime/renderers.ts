@@ -434,7 +434,7 @@ function readEmbeddedJson<T>(value: string) {
   return JSON.parse(value) as T
 }
 
-function getRunnerCommand() {
+function getPackageManagerCommand() {
   if (process.platform !== 'win32') return PACKAGE_MANAGER
   if (PACKAGE_MANAGER === 'npm') return 'npm.cmd'
   if (PACKAGE_MANAGER === 'pnpm') return 'pnpm.cmd'
@@ -443,8 +443,18 @@ function getRunnerCommand() {
   return PACKAGE_MANAGER
 }
 
+function getRunnerCommand() {
+  return process.platform === 'win32'
+    ? process.env.ComSpec ?? 'cmd.exe'
+    : getPackageManagerCommand()
+}
+
 function getRunnerArgs(scriptName: string) {
-  return PACKAGE_MANAGER === 'yarn' ? [scriptName] : ['run', scriptName]
+  const args = PACKAGE_MANAGER === 'yarn' ? [scriptName] : ['run', scriptName]
+
+  return process.platform === 'win32'
+    ? ['/d', '/s', '/c', getPackageManagerCommand(), ...args]
+    : args
 }
 
 function getElectronExecutablePath() {
@@ -781,7 +791,6 @@ function spawnWebDevServer() {
     cwd: ROOT_DIR,
     stdio: 'inherit',
     env: process.env,
-    shell: process.platform === 'win32',
   })
 }
 

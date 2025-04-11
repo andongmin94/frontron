@@ -9,7 +9,7 @@
     "dev": "vite",
     "app": "node src/electron/serve.ts --dev-app",
     "typecheck": "tsc -b && tsc -p tsconfig.electron.json",
-    "build": "tsc -b && vite build && tsc -p tsconfig.electron.json && electron-builder",
+    "build": "tsc -b && vite build && tsc -p tsconfig.electron.json && node --no-deprecation ./node_modules/electron-builder/cli.js",
     "lint": "oxlint --fix src vite.config.ts && oxfmt ."
   },
   "dependencies": {

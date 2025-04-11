@@ -1,6 +1,6 @@
 {
   "name": "create-frontron",
-  "version": "0.13.3",
+  "version": "0.13.4",
   "type": "module",
   "description": "Electron starter generator with React and Vite",
   "license": "MIT",
@@ -15,7 +15,8 @@
   ],
   "scripts": {
     "build": "unbuild",
-    "test": "vitest run --exclude __tests__/release-rehearsal.spec.ts",
+    "test": "npm run build && vitest run --exclude __tests__/release-rehearsal.spec.ts",
+    "test:package-smoke": "vitest run __tests__/package-smoke.spec.ts",
     "test:release-smoke": "vitest run __tests__/release-rehearsal.spec.ts",
     "release:verify": "node ../release.mjs verify",
     "release:matrix-smoke": "node ../release.mjs matrix-smoke",

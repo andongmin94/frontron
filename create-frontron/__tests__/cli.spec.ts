@@ -43,6 +43,15 @@ test('prompts for the project name if none supplied', () => {
   expect(stdout).toContain('Project name:')
 })
 
+test('prints help without prompting', () => {
+  const { stdout } = run(['--help'])
+
+  expect(stdout).toContain('Usage: create-frontron [project-name] [options]')
+  expect(stdout).toContain('--overwrite <yes|no|ignore>')
+  expect(stdout).toContain('Defaults to "desktop-app"')
+  expect(stdout).not.toContain('Project name:')
+})
+
 test('asks to overwrite non-empty target directory', () => {
   createNonEmptyDir()
   const { stdout } = run([projectName], { cwd: __dirname })

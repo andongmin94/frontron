@@ -17,19 +17,42 @@ const tempRoot = join(repoRoot, '.tmp')
 const scratchRoot = join(repoRoot, '.tmp', 'release-matrix-smoke')
 const tempRoots = []
 
-function getNpmExecutable() {
-  return process.platform === 'win32' ? 'npm.cmd' : 'npm'
+function getNpmInvocation(args) {
+  if (process.platform === 'win32') {
+    return {
+      command: process.env.ComSpec ?? 'cmd.exe',
+      args: ['/d', '/s', '/c', 'npm', ...args],
+    }
+  }
+
+  return {
+    command: 'npm',
+    args,
+  }
 }
 
 function logStep(message) {
   console.log(`[matrix] ${message}`)
 }
 
+function getChildEnv() {
+  const nodeOptions = process.env.NODE_OPTIONS?.trim()
+
+  if (nodeOptions?.includes('--trace-deprecation') || nodeOptions?.includes('--no-deprecation')) {
+    return process.env
+  }
+
+  return {
+    ...process.env,
+    NODE_OPTIONS: nodeOptions ? `${nodeOptions} --no-deprecation` : '--no-deprecation',
+  }
+}
+
 function run(command, args, cwd) {
   const result = spawnSync(command, args, {
     cwd,
     encoding: 'utf8',
-    shell: process.platform === 'win32' && command.endsWith('.cmd'),
+    env: getChildEnv(),
     stdio: 'pipe',
   })
 
@@ -47,7 +70,12 @@ function run(command, args, cwd) {
 }
 
 function runNpm(args, cwd) {
-  run(getNpmExecutable(), args, cwd)
+  const invocation = getNpmInvocation(args)
+  run(invocation.command, invocation.args, cwd)
+}
+
+function installNpm(args, cwd) {
+  runNpm(['install', '--fund=false', '--audit=false', '--loglevel=error', ...args], cwd)
 }
 
 function createScratchDir(prefix) {
@@ -65,14 +93,13 @@ function packPackageForReal(root, prefix) {
   ensureBuildOutput(root)
 
   const outputDir = createScratchDir(prefix)
-  const npmExecutable = getNpmExecutable()
+  const invocation = getNpmInvocation(['pack', '--json', '--ignore-scripts', '--pack-destination', outputDir])
   const result = spawnSync(
-    npmExecutable,
-    ['pack', '--json', '--ignore-scripts', '--pack-destination', outputDir],
+    invocation.command,
+    invocation.args,
     {
       cwd: root,
       encoding: 'utf8',
-      shell: process.platform === 'win32',
     },
   )
 
@@ -129,45 +156,47 @@ export default defineConfig({
 }
 
 function runStarterCase(createTarball) {
-  logStep('starter case: packed create-frontron -> typecheck')
+  logStep('starter case: packed create-frontron -> typecheck -> package directory')
 
   const root = createScratchDir('starter')
   const appName = 'matrix-starter-app'
   const appRoot = join(root, appName)
 
   runNpm(['init', '-y'], root)
-  runNpm(['install', '--ignore-scripts', createTarball], root)
+  installNpm(['--ignore-scripts', createTarball], root)
 
   runNpm(['exec', '--', 'create-frontron', appName, '--overwrite', 'yes'], root)
-  runNpm(['install'], appRoot)
+  installNpm([], appRoot)
   runNpm(['run', 'typecheck'], appRoot)
+  runNpm(['run', 'build', '--', '--dir'], appRoot)
 }
 
 function runViteCase(frontronTarball) {
-  logStep('vite case: existing Vite app -> init -> frontron:build')
+  logStep('vite case: existing Vite app -> init -> frontron:build -> package directory')
 
   const root = createScratchDir('vite')
   const appName = 'matrix-vite-app'
   const appRoot = join(root, appName)
 
   runNpm(['create', 'vite@latest', appName, '--', '--template', 'react-ts'], root)
-  runNpm(['install'], appRoot)
-  runNpm(['install', '--ignore-scripts', frontronTarball], appRoot)
-  runNpm(['install'], appRoot)
+  installNpm([], appRoot)
+  installNpm(['--ignore-scripts', frontronTarball], appRoot)
+  installNpm([], appRoot)
 
   runNpm(['exec', '--', 'frontron', 'init', '--yes'], appRoot)
-  runNpm(['install'], appRoot)
+  installNpm([], appRoot)
   runNpm(['run', 'frontron:build'], appRoot)
+  runNpm(['run', 'frontron:package', '--', '--dir'], appRoot)
 }
 
 function runVitePressCase(frontronTarball) {
-  logStep('vitepress case: existing docs app -> init -> frontron:build')
+  logStep('vitepress case: existing docs app -> init -> frontron:build -> package directory')
 
   const appRoot = createScratchDir('vitepress')
 
   createVitePressProject(appRoot)
-  runNpm(['install', '--ignore-scripts', 'vitepress', frontronTarball], appRoot)
-  runNpm(['install'], appRoot)
+  installNpm(['--ignore-scripts', 'vitepress', frontronTarball], appRoot)
+  installNpm([], appRoot)
 
   runNpm(
     [
@@ -185,8 +214,73 @@ function runVitePressCase(frontronTarball) {
     ],
     appRoot,
   )
-  runNpm(['install'], appRoot)
+  installNpm([], appRoot)
   runNpm(['run', 'frontron:build'], appRoot)
+  runNpm(['run', 'frontron:package', '--', '--dir'], appRoot)
+}
+
+function runGenericNodeServerCase(frontronTarball) {
+  logStep('generic-node-server case: custom node runtime -> init -> package directory')
+
+  const appRoot = createScratchDir('generic-node-server')
+  const scriptsRoot = join(appRoot, 'scripts')
+  mkdirSync(scriptsRoot, { recursive: true })
+
+  writeJson(join(appRoot, 'package.json'), {
+    name: 'matrix-generic-node-server-app',
+    version: '0.0.0',
+    private: true,
+    type: 'module',
+    scripts: {
+      dev: 'node scripts/dev-server.mjs',
+      build: 'node scripts/build.mjs',
+    },
+  })
+
+  writeFileSync(
+    join(scriptsRoot, 'dev-server.mjs'),
+    `import { createServer } from 'node:http'
+
+const server = createServer((_request, response) => {
+  response.end('ok')
+})
+
+server.listen(4217, '127.0.0.1')
+`,
+  )
+
+  writeFileSync(
+    join(scriptsRoot, 'build.mjs'),
+    `import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+const serverRoot = join(process.cwd(), '.output', 'server')
+mkdirSync(serverRoot, { recursive: true })
+writeFileSync(join(serverRoot, 'index.mjs'), "console.log('generic node server')\\n")
+`,
+  )
+
+  installNpm(['--ignore-scripts', frontronTarball], appRoot)
+  installNpm([], appRoot)
+
+  runNpm(
+    [
+      'exec',
+      '--',
+      'frontron',
+      'init',
+      '--yes',
+      '--adapter',
+      'generic-node-server',
+      '--server-root',
+      '.output',
+      '--server-entry',
+      'server/index.mjs',
+    ],
+    appRoot,
+  )
+  installNpm([], appRoot)
+  runNpm(['run', 'frontron:package', '--', '--dir'], appRoot)
 }
 
 function main() {
@@ -206,7 +300,11 @@ function main() {
     runVitePressCase(frontronTarball)
   }
 
-  if (!['all', 'starter', 'vite', 'vitepress'].includes(selectedCase)) {
+  if (selectedCase === 'all' || selectedCase === 'generic-node-server') {
+    runGenericNodeServerCase(frontronTarball)
+  }
+
+  if (!['all', 'starter', 'vite', 'vitepress', 'generic-node-server'].includes(selectedCase)) {
     throw new Error(`Unknown matrix case: ${selectedCase}`)
   }
 

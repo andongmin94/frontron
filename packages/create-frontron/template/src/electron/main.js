@@ -8,43 +8,25 @@ import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } from 'electron';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 환경 변수 설정
-import dotenv from 'dotenv';
-dotenv.config();
-// package.json 파일의 절대 경로 생성
-const packagePath = path.join(__dirname, '../../package.json');
-// 파일 읽고 JSON으로 파싱
-const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
-
+let PORT;
 const isDev = process.env.NODE_ENV === 'development';
-const DEV_PORT = pkg.config.port.dev;
-const PROD_PORT = pkg.config.port.prod;
-let PORT = isDev ? DEV_PORT : PROD_PORT;
-
-// 로컬 웹 서버 모듈
-import express from 'express';
-const server = express();
-
-// 개발 모드가 아닐때 빌드 파일 서빙 로직
 if (!isDev) {
+  // 로컬 웹 서버 모듈
+  const express = (await import('express')).default;
+  const server = express();
+  
   // 빌드 파일 서빙
   server.use(express.static(path.join(__dirname, '../../dist')));
 
   // 루트 경로 요청 처리
-  server.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, '../../dist', 'index.html'));
-  });
+  server.get('/', (_, res) => res.sendFile(path.join(__dirname, '../../dist', 'index.html')));
 
-  // 서버 시작
-  server.listen(PORT, 'localhost', () => {}).on('error', (err) => {
-    // 포트가 이미 사용 중인 경우 다른 포트로 재시도
-    if (err.code === 'EADDRINUSE') {
-      PORT += 1; // 포트 번호 증가
-      setTimeout(() => {
-        server.listen(PORT, 'localhost');
-      }, 1000); // 1초 후에 다시 시도
-    }
-  });
+  // 로컬 호스트로 연결
+  const listener = server.listen(0, 'localhost', () => PORT = listener.address().port);
+} else {
+  const viteConfig = fs.readFileSync(path.join(__dirname, '../../vite.config.ts'), 'utf-8');
+  const portMatch = viteConfig.match(/port:\s*(\d+)/);
+  if (portMatch && portMatch[1]) PORT = parseInt(portMatch[1], 10);
 }
 
 // 일렉트론 생성 함수
@@ -85,78 +67,61 @@ const createWindow = () => {
       return false;
     });
   } else {
-    mainWindow.on('close', () => {
-      app.quit();
-    });
+    mainWindow.on('close', () => app.quit());
   }
 };
 
 // Electron의 초기화가 완료후 브라우저 윈도우 생성
 app.whenReady().then(createWindow).then(() => {
+  // 트레이 세팅
+  const tray = new Tray(nativeImage.createFromPath(path.join(__dirname, "../../public/icon.png")));
+  tray.setToolTip("Frontron");
+  tray.on("double-click", () => mainWindow.show());
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: "열기", type: "normal", click: () => mainWindow.show() },
+      { label: "종료", type: "normal", click: () => mainWindow.close() },
+    ])
+  );
+
   // 기본 생성 세팅
-  app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") app.quit();
-  });
-  // macOS-specific settings
+  app.on("window-all-closed", () => process.platform !== "darwin" ? app.quit() : null);
+
+  // macOS-특화 설정
   if (process.platform === 'darwin') {
-    app.on('before-quit', () => {
-      tray.destroy();
-    });
+    app.on('before-quit', () => tray.destroy());
 
     app.on('activate', () => {
       app.dock.show();
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      BrowserWindow.getAllWindows().length === 0 ? createWindow() : null;
     });
   } else {
     // 모든 플랫폼에 적용되는 activate 이벤트 핸들러 (macOS 제외)
-    app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
-    });
+    app.on("activate", () => BrowserWindow.getAllWindows().length === 0 ? createWindow() : null);
   }
 
   // 타이틀 바 옵션
   ipcMain.on("hidden", () => mainWindow.hide());
   ipcMain.on("minimize", () => mainWindow.minimize());
-  ipcMain.on("maximize", () => {
-    mainWindow.isMaximized() ? mainWindow.restore() : mainWindow.maximize();
-  });
-
-  // 트레이 세팅
-  const tray = new Tray(nativeImage.createFromPath(path.join(__dirname, "../../public/icon.png")));
-  tray.setToolTip("Frontron React");
-  tray.on("double-click", () => mainWindow.show());
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: "Open", type: "normal", click: () => mainWindow.show() },
-      { label: "Quit", type: "normal", click: () => mainWindow.close() },
-    ])
-  );
+  ipcMain.on("maximize", () => mainWindow.isMaximized() ? mainWindow.restore() : mainWindow.maximize());
 
   // F5 새로고침, F12 개발자 도구 열기
   if (isDev) {
-    const menu = Menu.buildFromTemplate([
-      {
-        label: "File",
-        submenu: [
-          {
-            label: "Reload",
-            accelerator: "F5",
-            click: () => {
-              mainWindow.reload();
-            },
-          },
-          {
-            label: "Toggle DevTools",
-            accelerator: "F12",
-            click: () => {
-              mainWindow.webContents.toggleDevTools();
-            },
-          },
-        ],
-      },
-    ]);
+    const menu = Menu.buildFromTemplate([{
+      label: "File",
+      submenu: [
+        {
+          label: "Reload",
+          accelerator: "F5",
+          click: () => mainWindow.reload(),
+        },
+        {
+          label: "Toggle DevTools",
+          accelerator: "F12",
+          click: () => mainWindow.webContents.toggleDevTools(),
+        },
+      ],
+    }]);
     Menu.setApplicationMenu(menu);
   }
 });
-
-export default mainWindow;

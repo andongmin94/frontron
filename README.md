@@ -26,6 +26,8 @@ npm install
 npm run app
 ```
 
+For pnpm, yarn, or bun, use the equivalent `create`, install, and run commands; `create-frontron` prints package-manager-specific next steps.
+
 For starter apps, build the packaged desktop app with:
 
 ```bash
@@ -41,6 +43,8 @@ npx frontron init
 npm install
 npm run frontron:dev
 ```
+
+For pnpm, yarn, or bun retrofits, use the equivalent add/install/run commands. After `frontron init`, the CLI prints next steps for the package manager detected from the project lockfile.
 
 `frontron init` is the active retrofit flow today. It adds a conservative, app-owned Electron layer without replacing the app's existing frontend structure unless you explicitly choose starter-like additions.
 Use `npm run frontron:package` when you are ready to create a packaged desktop build from a retrofit project.
@@ -77,8 +81,11 @@ node release.mjs sync-version
 node release.mjs verify
 node release.mjs matrix-smoke
 node release.mjs publish-dry-run
+node release.mjs check-auth
 node release.mjs publish
 ```
+
+`publish-dry-run` also checks that the current version is not already on npm. `publish` checks npm owner authentication before the long verification suite, refuses to publish an existing version, runs the dry-run gates, publishes both packages, and then verifies the published version plus the `latest` dist-tag on npm.
 
 ## Docs
 

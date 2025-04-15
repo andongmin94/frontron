@@ -1,15 +1,14 @@
 import { defineConfig } from "vitepress";
-import { transformerTwoslash } from "@shikijs/vitepress-twoslash";
 import { buildEnd } from "./buildEnd.config";
 
-const ogDescription = "GUI Library for Desktop App Development";
-const ogImage = "https://frontron.andongmin.com/frontron.svg";
 const ogTitle = "Frontron";
+const ogDescription = "Desktop App Template";
 const ogUrl = "https://frontron.andongmin.com";
+const ogImage = "https://frontron.andongmin.com/frontron.svg";
 
 export default defineConfig({
   title: "Frontron",
-  description: "GUI Library for Desktop App Development",
+  description: "Desktop App Template",
 
   head: [
     ["link", { rel: "icon", type: "image/svg+xml", href: "/frontron.svg" }],
@@ -70,222 +69,12 @@ export default defineConfig({
               text: "Features",
               link: "/guide/features",
             },
+            {
+              text: "Configuration",
+              link: "/guide/config",
+            }
           ],
-        },
-        {
-          text: "Config",
-          items: [
-            {
-              text: "React",
-              link: "/guide/config/react",
-            },
-            {
-              text: "Next.js",
-              link: "/guide/config/next",
-            },
-          ],
-        },
-        {
-          text: "Components",
-          items: [
-            {
-              text: "Accordion",
-              link: "/guide/components/accordion",
-            },
-            {
-              text: "Alert",
-              link: "/guide/components/alert",
-            },
-            {
-              text: "Alert Dialog",
-              link: "/guide/components/alert-dialog",
-            },
-            {
-              text: "Aspect Ratio",
-              link: "/guide/components/aspect-ratio",
-            },
-            {
-              text: "Avatar",
-              link: "/guide/components/avatar",
-            },
-            {
-              text: "Badge",
-              link: "/guide/components/badge",
-            },
-            {
-              text: "Breadcrumb",
-              link: "/guide/components/breadcrumb",
-            },
-            {
-              text: "Button",
-              link: "/guide/components/button",
-            },
-            {
-              text: "Calendar",
-              link: "/guide/components/calendar",
-            },
-            {
-              text: "Card",
-              link: "/guide/components/card",
-            },
-            {
-              text: "Carousel",
-              link: "/guide/components/carousel",
-            },
-            {
-              text: "Chart",
-              link: "/guide/components/chart",
-            },
-            {
-              text: "Checkbox",
-              link: "/guide/components/checkbox",
-            },
-            {
-              text: "Collapsible",
-              link: "/guide/components/collapsible",
-            },
-            {
-              text: "Combobox",
-              link: "/guide/components/combobox",
-            },
-            {
-              text: "Command",
-              link: "/guide/components/command",
-            },
-            {
-              text: "Context Menu",
-              link: "/guide/components/context-menu",
-            },
-            {
-              text: "Data Table",
-              link: "/guide/components/data-table",
-            },
-            {
-              text: "Date Picker",
-              link: "/guide/components/date-picker",
-            },
-            {
-              text: "Dialog",
-              link: "/guide/components/dialog",
-            },
-            {
-              text: "Drawer",
-              link: "/guide/components/drawer",
-            },
-            {
-              text: "Dropdown Menu",
-              link: "/guide/components/dropdown-menu",
-            },
-            {
-              text: "Form",
-              link: "/guide/components/form",
-            },
-            {
-              text: "Hover Card",
-              link: "/guide/components/hover-card",
-            },
-            {
-              text: "Input",
-              link: "/guide/components/input",
-            },
-            {
-              text: "Input OTP",
-              link: "/guide/components/input-otp",
-            },
-            {
-              text: "Label",
-              link: "/guide/components/label",
-            },
-            {
-              text: "Menubar",
-              link: "/guide/components/menubar",
-            },
-            {
-              text: "Navigation Menu",
-              link: "/guide/components/navigation-menu",
-            },
-            {
-              text: "Pagination",
-              link: "/guide/components/pagination",
-            },
-            {
-              text: "Popover",
-              link: "/guide/components/popover",
-            },
-            {
-              text: "Progress",
-              link: "/guide/components/progress",
-            },
-            {
-              text: "Radio Group",
-              link: "/guide/components/radio-group",
-            },
-            {
-              text: "Resizable",
-              link: "/guide/components/resizable",
-            },
-            {
-              text: "Scroll Area",
-              link: "/guide/components/scroll-area",
-            },
-            {
-              text: "Select",
-              link: "/guide/components/select",
-            },
-            {
-              text: "Separator",
-              link: "/guide/components/separator",
-            },
-            {
-              text: "Sheet",
-              link: "/guide/components/sheet",
-            },
-            {
-              text: "Skeleton",
-              link: "/guide/components/skeleton",
-            },
-            {
-              text: "Slider",
-              link: "/guide/components/slider",
-            },
-            {
-              text: "Sonner",
-              link: "/guide/components/sonner",
-            },
-            {
-              text: "Switch",
-              link: "/guide/components/switch",
-            },
-            {
-              text: "Table",
-              link: "/guide/components/table",
-            },
-            {
-              text: "Tabs",
-              link: "/guide/components/tabs",
-            },
-            {
-              text: "Textarea",
-              link: "/guide/components/textarea",
-            },
-            {
-              text: "Toast",
-              link: "/guide/components/toast",
-            },
-            {
-              text: "Toggle",
-              link: "/guide/components/toggle",
-            },
-            {
-              text: "Toggle Group",
-              link: "/guide/components/toggle-group",
-            },
-            {
-              text: "Tooltip",
-              link: "/guide/components/tooltip",
-            },
-          ],
-        },
+        }
       ],
     },
 
@@ -303,9 +92,6 @@ export default defineConfig({
       { rel: "canonical", href: canonicalUrl },
     ]);
     return pageData;
-  },
-  markdown: {
-    codeTransformers: [transformerTwoslash()],
   },
   buildEnd,
 });

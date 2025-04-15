@@ -2,11 +2,11 @@
 layout: home
 
 title: Frontron
-titleTemplate: GUI Library for Desktop App Development
+titleTemplate: Desktop App Template
 
 hero:
-  name: Frontron
-  text: GUI Library for Desktop App Development
+  name: <a href="https://npmjs.com/package/create-frontron"><img src="https://img.shields.io/npm/v/frontron" alt="npm package"></a>Frontron
+  text: Desktop App Template
   tagline:  Create desktop app with frontron.
   image:
     src: /frontron.svg

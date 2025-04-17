@@ -41,6 +41,9 @@ describe('frontron init core flow', () => {
     fixtures.expectEmbeddedString(serveSource, 'WEB_DEV_SCRIPT', 'dev')
     fixtures.expectEmbeddedString(serveSource, 'DEV_URL', 'http://localhost:5180')
     fixtures.expectEmbeddedString(serveSource, 'WEB_OUT_DIR', 'dist-web')
+    expect(serveSource).toContain('function createLoopbackUrlCandidates')
+    expect(serveSource).toContain('const readyDevUrl = await waitForUrlReady(DEV_URL)')
+    expect(serveSource).toContain('ELECTRON_RENDERER_URL: readyDevUrl')
     expect(serveSource).toContain(
       "createRequire(import.meta.url)",
     )

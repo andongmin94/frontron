@@ -27,7 +27,7 @@ async function initializeApp() {
   if (isDev) {
     rendererUrl =
       process.env.ELECTRON_RENDERER_URL?.trim() || (await inferDevUrl())
-    await waitForUrlReady(rendererUrl)
+    rendererUrl = await waitForUrlReady(rendererUrl)
   } else {
     rendererUrl = await startRendererServer()
   }

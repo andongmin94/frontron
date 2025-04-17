@@ -45,6 +45,7 @@ test('starter template restores the template-owned electron structure', () => {
   )
   const viteConfig = fs.readFileSync(join(genPath, 'vite.config.ts'), 'utf-8')
   const electronMain = fs.readFileSync(join(genPath, 'src/electron/main.ts'), 'utf-8')
+  const electronServe = fs.readFileSync(join(genPath, 'src/electron/serve.ts'), 'utf-8')
   const electronPreload = fs.readFileSync(
     join(genPath, 'src/electron/preload.ts'),
     'utf-8',
@@ -95,6 +96,8 @@ test('starter template restores the template-owned electron structure', () => {
   expect(tsconfigElectron).toContain('src/electron/**/*.ts')
   expect(viteConfig).not.toContain('}),,')
   expect(electronMain).toContain('createWindow')
+  expect(electronMain).toContain('rendererUrl = await waitForUrlReady(rendererUrl)')
+  expect(electronServe).toContain('function createLoopbackUrlCandidates')
   expect(electronPreload).toContain('exposeInMainWorld("electron"')
   expect(electronWindow).toContain('preload')
   expect(electronTypes).toContain('interface Window')

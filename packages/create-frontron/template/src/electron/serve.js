@@ -46,10 +46,9 @@ function getPortFromViteConfig(configPath) {
  * 개발 또는 프로덕션 환경에 맞는 포트를 결정합니다.
  * @param {boolean} isDev - 개발 모드 여부
  * @param {string} __dirname - 현재 디렉토리 경로
- * @param {number} DEFAULT_PORT - 기본 포트 번호
  * @returns {Promise<number|null>} 사용할 포트 번호 또는 실패 시 null
  */
-export async function determinePort(isDev, __dirname, DEFAULT_PORT) {
+export async function determinePort(isDev, __dirname) {
   if (!isDev) {
     // --- 프로덕션 로직 (변경 없음) ---
     try {
@@ -90,7 +89,7 @@ export async function determinePort(isDev, __dirname, DEFAULT_PORT) {
     // --- 개발 로직 수정 ---
     const viteConfigPath = path.join(__dirname, '../../vite.config.ts');
     const vitePort = getPortFromViteConfig(viteConfigPath);
-    const portToUse = vitePort !== null ? vitePort : DEFAULT_PORT;
+    const portToUse = vitePort !== null ? vitePort : 0;
     console.log(`Using development port: ${portToUse}`);
     return portToUse; // 개발 모드에서는 Promise가 아닌 숫자 바로 반환
   }

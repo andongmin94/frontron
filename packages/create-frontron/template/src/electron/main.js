@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } from 'electron';
+import { createSplash, closeSplash } from './splash.js'; // splash.js 임포트
 
 // ESM에서 __dirname 사용하기 위한 설정
 const __filename = fileURLToPath(import.meta.url);
@@ -34,6 +35,7 @@ let mainWindow;
 const createWindow = () => {
   // 브라우저 창 생성
   mainWindow = new BrowserWindow({
+    show: false, // 스플래시 화면이 먼저 보이도록 false로 설정
     width: 1600,
     height: 900,
     frame: false,
@@ -48,6 +50,11 @@ const createWindow = () => {
 
   // 포트 연결
   mainWindow.loadURL(`http://localhost:${PORT}`);
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    closeSplash(); // 스플래시 화면 닫기
+    mainWindow.show(); // 메인 윈도우 표시
+  });
 
   // 우클릭 메뉴 비활성화
   mainWindow.hookWindowMessage(278, function(e) {
@@ -72,7 +79,10 @@ const createWindow = () => {
 };
 
 // Electron의 초기화가 완료후 브라우저 윈도우 생성
-app.whenReady().then(createWindow).then(() => {
+app.whenReady().then(() => {
+  createSplash(); // 스플래시 화면 생성
+  createWindow(); // 메인 윈도우 생성
+}).then(() => {
   // 트레이 세팅
   const tray = new Tray(nativeImage.createFromPath(path.join(__dirname, "../../public/icon.png")));
   tray.setToolTip("Frontron");

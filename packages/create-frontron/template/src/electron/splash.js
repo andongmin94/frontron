@@ -11,7 +11,6 @@ const __dirname = path.dirname(__filename);
 const fontPath = path.join(__dirname, '../../public/fonts/PretendardVariable.woff2');
 // 경로 구분자를 웹 표준인 '/'로 변경하고 file:// 프로토콜 추가
 const fontSrcUrl = `file://${fontPath.replace(/\\/g, '/')}`;
-console.log('Font Source URL:', fontSrcUrl); // 경로 확인용 로그
 
 let splashWindow = null;
 export function createSplash() {

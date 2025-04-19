@@ -22,5 +22,7 @@ export default tseslint.config({
       "warn",
       { allowConstantExport: true },
     ],
+    "@typescript-eslint/no-explicit-any": "off", // 'any' 타입 사용 허용
+    "@typescript-eslint/no-require-imports": "off", // 'require()' 사용 허용
   },
 });

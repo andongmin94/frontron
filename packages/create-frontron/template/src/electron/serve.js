@@ -61,7 +61,7 @@ export async function determinePort(isDev, __dirname, DEFAULT_PORT) {
         throw new Error(`Distribution directory not found: ${distPath}`);
       }
       server.use(express.static(distPath));
-      server.get('*', (_, res) => {
+      server.get('/', (_, res) => {
         const indexPath = path.join(distPath, 'index.html');
         if (fs.existsSync(indexPath)) {
           res.sendFile(indexPath);

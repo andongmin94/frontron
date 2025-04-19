@@ -1,6 +1,6 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { app, Menu } from 'electron'; // 필요한 모듈만 남김
+import { app, Menu } from 'electron';
 
 // 모듈 임포트
 import { createSplash, closeSplash } from './splash.js';
@@ -14,14 +14,9 @@ import { setupDevMenu } from './dev.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isDev = process.env.NODE_ENV === 'development';
-let DEFAULT_PORT = 0; // 기본 포트 번호
-
-let PORT; // 포트 번호 저장
 
 // --- 싱글 인스턴스 보장 ---
-const gotTheLock = app.requestSingleInstanceLock();
-
-if (!gotTheLock) {
+if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', (event, commandLine, workingDirectory) => {
@@ -32,20 +27,30 @@ if (!gotTheLock) {
     }
   });
 
-  // --- 앱 초기화 및 실행 ---
-  async function initializeApp() {
+  // --- 앱 초기화 및 실행 (IIFE 사용) ---
+  (async () => { // async IIFE 시작
     try {
-      PORT = await determinePort(isDev, __dirname, DEFAULT_PORT);
-      if (PORT === null) {
-        throw new Error('Failed to determine port.');
-      }
-
       await app.whenReady();
-
       createSplash();
-      createWindow(PORT, isDev, __dirname, closeSplash); // mainWindow 생성
-      createTray(getMainWindow, __dirname); // 트레이 생성
-      setupIpcHandlers(getMainWindow); // IPC 핸들러 설정
+      setTimeout(async () => {
+        try {
+          // determinePort와 createWindow는 setTimeout 콜백 안에서 실행
+          const port = await determinePort(isDev, __dirname); // DEFAULT_PORT 누락 시 추가 필요
+          if (port === null) {
+            throw new Error('Failed to determine port inside setTimeout.');
+          }
+          createWindow(port, isDev, __dirname, closeSplash); // mainWindow 생성
+          createTray(getMainWindow, __dirname); // 트레이 생성
+          setupIpcHandlers(getMainWindow); // IPC 핸들러 설정
+        } catch (error) {
+          console.error('Error creating window after delay:', error);
+          // 지연 후 창 생성 실패 시 처리 (예: 오류 메시지, 앱 종료)
+          closeSplash(); // 스플래시 닫기
+          const { dialog } = await import('electron');
+          if (dialog) dialog.showErrorBox('Error', `Failed to create main window:\n${error.message}`);
+          app.quit();
+        }
+      }, 2000);
 
       if (isDev) {
         setupDevMenu(getMainWindow); // 개발 메뉴 설정
@@ -58,9 +63,7 @@ if (!gotTheLock) {
       // 사용자에게 오류 알림 (예: dialog.showErrorBox)
       app.quit(); // 초기화 실패 시 앱 종료
     }
-  }
-
-  initializeApp();
+  })(); // async IIFE 즉시 호출
 
   // --- 앱 생명주기 이벤트 핸들러 ---
   app.on('window-all-closed', () => {
@@ -88,5 +91,4 @@ if (!gotTheLock) {
     // 앱 종료 전 처리 (예: 트레이 아이콘 제거)
     destroyTray();
   });
-
 } // 싱글 인스턴스 Lock 블록 끝

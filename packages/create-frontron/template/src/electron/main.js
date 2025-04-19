@@ -4,11 +4,11 @@ import { app, Menu } from 'electron'; // 필요한 모듈만 남김
 
 // 모듈 임포트
 import { createSplash, closeSplash } from './splash.js';
-import { determinePort } from './serverSetup.js';
-import { createWindow, getMainWindow } from './windowManager.js';
-import { createTray, destroyTray } from './trayManager.js';
-import { setupIpcHandlers } from './ipcHandlers.js';
-import { setupDevMenu } from './devUtils.js';
+import { determinePort } from './serve.js';
+import { createWindow, getMainWindow } from './window.js';
+import { createTray, destroyTray } from './tray.js';
+import { setupIpcHandlers } from './ipc.js';
+import { setupDevMenu } from './dev.js';
 
 // --- 기본 설정 ---
 const __filename = fileURLToPath(import.meta.url);

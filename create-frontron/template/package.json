@@ -7,9 +7,9 @@
   "productName": "__CREATE_APP_NAME__",
   "scripts": {
     "dev": "vite",
-    "app": "node src/electron/serve.ts --dev-app",
+    "app": "node --no-deprecation src/electron/serve.ts --dev-app",
     "typecheck": "tsc -b && tsc -p tsconfig.electron.json",
-    "build": "tsc -b && vite build && tsc -p tsconfig.electron.json && node --no-deprecation ./node_modules/electron-builder/cli.js",
+    "build": "tsc -b && node --no-deprecation ./node_modules/vite/bin/vite.js build && tsc -p tsconfig.electron.json && node --no-deprecation ./node_modules/electron-builder/cli.js",
     "lint": "oxlint --fix src vite.config.ts && oxfmt ."
   },
   "dependencies": {

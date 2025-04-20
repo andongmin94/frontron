@@ -121,6 +121,12 @@ function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`)
 }
 
+function assertFileExists(path, label) {
+  if (!existsSync(path)) {
+    throw new Error(`${label} was not created at ${path}`)
+  }
+}
+
 function createVitePressProject(appRoot) {
   const docsRoot = join(appRoot, 'docs')
   const vitepressRoot = join(docsRoot, '.vitepress')
@@ -156,7 +162,7 @@ export default defineConfig({
 }
 
 function runStarterCase(createTarball) {
-  logStep('starter case: packed create-frontron -> typecheck -> package directory')
+  logStep('starter case: packed create-frontron -> typecheck -> MSI and portable package')
 
   const root = createScratchDir('starter')
   const appName = 'matrix-starter-app'
@@ -168,7 +174,14 @@ function runStarterCase(createTarball) {
   runNpm(['exec', '--', 'create-frontron', appName, '--overwrite', 'yes'], root)
   installNpm([], appRoot)
   runNpm(['run', 'typecheck'], appRoot)
-  runNpm(['run', 'build', '--', '--dir'], appRoot)
+  runNpm(['run', 'build'], appRoot)
+
+  if (process.platform === 'win32') {
+    assertFileExists(join(appRoot, 'output', `${appName}-0.0.0-x64.msi`), 'starter MSI package')
+    assertFileExists(join(appRoot, 'output', `${appName}.exe`), 'starter portable package')
+  } else {
+    assertFileExists(join(appRoot, 'output'), 'starter package output directory')
+  }
 }
 
 function runViteCase(frontronTarball) {

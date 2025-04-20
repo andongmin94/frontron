@@ -32,7 +32,6 @@
       "dist/**/*"
     ],
     "directories": {
-      "buildResources": "assets",
       "output": "dist_app"
     }
   },

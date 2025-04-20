@@ -1,4 +1,4 @@
-import { BrowserWindow } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import path from 'path';
 
 let mainWindow = null;
@@ -57,11 +57,9 @@ export function createWindow(port, isDev, __dirname, closeSplash) {
   mainWindow.on('close', (e) => {
     if (process.platform === 'darwin') {
       // macOS: 사용자가 명시적으로 종료(Cmd+Q 등)하지 않으면 숨김
-      if (!app.isQuiting) { // app 객체 접근 필요 시 main.js에서 전달받거나 import 필요
-        e.preventDefault();
-        mainWindow.hide();
-        app.dock?.hide(); // Dock 에서도 숨김
-      }
+      e.preventDefault();
+      mainWindow.hide();
+      app.dock?.hide(); // Dock 에서도 숨김
     }
     // 다른 OS 에서는 window-all-closed 에서 앱 종료 처리
   });

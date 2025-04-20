@@ -4,7 +4,7 @@
   "type": "module",
   "author": "안동민",
   "description": "Electron 기반 데스크탑 애플리케이션",
-  "main": "src/electron/main.js",
+  "main": "dist/electron/main.js",
   "build": {
     "appId": "Frontron",
     "productName": "Frontron",
@@ -28,7 +28,6 @@
     },
     "files": [
       "node_modules/**/*",
-      "src/electron/**/*",
       "public/**/*",
       "dist/**/*"
     ],
@@ -39,8 +38,8 @@
   },
   "scripts": {
     "dev": "vite",
-    "app": "concurrently \"npm run dev\" \"cross-env NODE_ENV=development electron .\"",
-    "build": "vite build && electron-builder",
+    "app": "concurrently \"npm run dev\" \"tsc -p tsconfig.electron.json && cross-env NODE_ENV=development electron .\"",
+    "build": "vite build && tsc -p tsconfig.electron.json && electron-builder",
     "lint": "eslint . && npx prettier --write ."
   },
   "dependencies": {

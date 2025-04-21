@@ -82,10 +82,11 @@ node release.mjs verify
 node release.mjs matrix-smoke
 node release.mjs publish-dry-run
 node release.mjs check-auth
+node release.mjs registry-smoke 0.13.3
 node release.mjs publish
 ```
 
-`publish-dry-run` also checks that the current version is not already on npm. `publish` checks npm owner authentication before the long verification suite, refuses to publish an existing version, runs the dry-run gates, publishes both packages, and then verifies the published version plus the `latest` dist-tag on npm.
+`publish-dry-run` also checks that the current version is not already on npm. `registry-smoke` verifies the public npm install path for a specific version. `publish` checks npm owner authentication before the long verification suite, refuses to publish an existing version, runs the dry-run gates, publishes both packages, verifies the published version plus the `latest` dist-tag on npm, and then runs the registry install smoke.
 
 ## Docs
 

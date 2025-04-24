@@ -23,6 +23,8 @@ const packageSpecs = [
   },
 ]
 const tempRoot = join(repoRoot, '.tmp')
+const publishStagingTag = 'frontron-staged'
+const latestTag = 'latest'
 
 function getNpmInvocation(args) {
   if (process.platform === 'win32') {
@@ -107,6 +109,46 @@ function writePackageVersion(spec, version) {
   }
 
   writeJson(spec.lockPath, lockJson)
+}
+
+function syncFrontronCreateDependency(version) {
+  const dependencyRange = `^${version}`
+  const packageJson = readJson(frontronPackagePath)
+  packageJson.dependencies ??= {}
+
+  if (packageJson.dependencies['create-frontron'] !== dependencyRange) {
+    packageJson.dependencies['create-frontron'] = dependencyRange
+    writeJson(frontronPackagePath, packageJson)
+    logStep(`synced frontron dependency create-frontron to ${dependencyRange}`)
+  }
+
+  const lockPath = join(frontronPackageRoot, 'package-lock.json')
+
+  if (!existsSync(lockPath)) {
+    return
+  }
+
+  const lockJson = readJson(lockPath)
+  lockJson.packages ??= {}
+  lockJson.packages[''] ??= {}
+  lockJson.packages[''].dependencies ??= {}
+
+  if (lockJson.packages[''].dependencies['create-frontron'] !== dependencyRange) {
+    lockJson.packages[''].dependencies['create-frontron'] = dependencyRange
+    writeJson(lockPath, lockJson)
+  }
+}
+
+function assertFrontronCreateDependencySynced() {
+  const packageJson = readJson(frontronPackagePath)
+  const expectedRange = `^${packageJson.version}`
+  const actualRange = packageJson.dependencies?.['create-frontron']
+
+  if (actualRange !== expectedRange) {
+    throw new Error(
+      `frontron must depend on create-frontron "${expectedRange}" before publish. Run "node release.mjs publish" so the release script can sync and stage both packages safely.`,
+    )
+  }
 }
 
 function logStep(message) {
@@ -238,8 +280,8 @@ function readRegistryValue(args, description) {
   return result.stdout.trim()
 }
 
-function verifyPublishedPackages(version) {
-  logStep(`verifying published npm packages at ${version}`)
+function verifyPublishedPackages(version, tag = latestTag) {
+  logStep(`verifying published npm packages at ${version} with dist-tag "${tag}"`)
 
   for (const spec of packageSpecs) {
     const publishedVersion = readRegistryValue([`${spec.name}@${version}`, 'version'], `${spec.name}@${version}`)
@@ -248,11 +290,11 @@ function verifyPublishedPackages(version) {
       throw new Error(`npm registry returned "${publishedVersion}" for "${spec.name}@${version}".`)
     }
 
-    const latestVersion = readRegistryValue([spec.name, 'dist-tags.latest'], `${spec.name} latest dist-tag`)
+    const taggedVersion = readRegistryValue([spec.name, `dist-tags.${tag}`], `${spec.name} ${tag} dist-tag`)
 
-    if (latestVersion !== version) {
+    if (taggedVersion !== version) {
       throw new Error(
-        `npm latest dist-tag for "${spec.name}" is "${latestVersion}", expected "${version}". Publish completed but latest does not point at the release.`,
+        `npm ${tag} dist-tag for "${spec.name}" is "${taggedVersion}", expected "${version}". Publish completed but ${tag} does not point at the release.`,
       )
     }
   }
@@ -321,7 +363,7 @@ writeFileSync('dist/index.html', '<!doctype html><title>registry retrofit</title
     )
 
     installNpm(['--save-dev', `frontron@${version}`], retrofitRoot)
-    runNpm(['exec', '--', 'frontron', 'init', '--yes', '--out-dir', 'dist'], retrofitRoot)
+    runNpm(['exec', '--', 'frontron', 'init', '--yes', '--preset', 'starter-like', '--out-dir', 'dist'], retrofitRoot)
     runNpm(['exec', '--', 'frontron', 'doctor'], retrofitRoot)
   } finally {
     rmSync(scratchRoot, { recursive: true, force: true })
@@ -388,39 +430,68 @@ function runMatrixSmoke(args = []) {
 
 function publishPackages(version) {
   const publishOrder = [
-    packageSpecs.find((spec) => spec.name === 'frontron'),
     packageSpecs.find((spec) => spec.name === 'create-frontron'),
+    packageSpecs.find((spec) => spec.name === 'frontron'),
   ].filter(Boolean)
   const published = []
+  const skipped = []
 
   try {
     for (const spec of publishOrder) {
-      logStep(`publishing ${spec.name}`)
-      runNpm(['publish'], spec.root)
+      if (versionExistsOnRegistry(spec, version)) {
+        logStep(`${spec.name}@${version} is already published; skipping package publish`)
+        skipped.push(spec.name)
+        continue
+      }
+
+      logStep(`publishing ${spec.name} with dist-tag "${publishStagingTag}"`)
+      runNpm(['publish', '--tag', publishStagingTag], spec.root)
       published.push(spec.name)
     }
   } catch (error) {
     const registryState = packageSpecs.map((spec) => describeRegistryVersionState(spec, version))
 
     throw new Error(
-      `Publish failed after ${published.length > 0 ? published.join(', ') : 'no packages'} published. Registry state: ${registryState.join('; ')}. Original error: ${
+      `Publish failed after ${published.length > 0 ? published.join(', ') : 'no packages'} published and ${
+        skipped.length > 0 ? skipped.join(', ') : 'no packages'
+      } skipped. Registry state: ${registryState.join('; ')}. Original error: ${
         error instanceof Error ? error.message : error
       }`,
     )
   }
 }
 
-function dryRunPublishPackages() {
-  logStep('dry-running frontron publish')
-  runNpm(['publish', '--dry-run'], frontronPackageRoot)
+function setDistTagForPackages(version, tag, specs = packageSpecs) {
+  for (const spec of specs) {
+    logStep(`setting ${spec.name}@${version} dist-tag "${tag}"`)
+    runNpm(['dist-tag', 'add', `${spec.name}@${version}`, tag], repoRoot)
+  }
+}
 
+function promotePackagesToLatest(version) {
+  const promoteOrder = [
+    packageSpecs.find((spec) => spec.name === 'frontron'),
+    packageSpecs.find((spec) => spec.name === 'create-frontron'),
+  ].filter(Boolean)
+
+  setDistTagForPackages(version, latestTag, promoteOrder)
+}
+
+function dryRunPublishPackages() {
   logStep('dry-running create-frontron publish')
-  runNpm(['publish', '--dry-run'], createPackageRoot)
+  runNpm(['publish', '--dry-run', '--tag', publishStagingTag], createPackageRoot)
+
+  logStep('dry-running frontron publish')
+  runNpm(['publish', '--dry-run', '--tag', publishStagingTag], frontronPackageRoot)
 }
 
 function verifyPublishReadiness() {
   verifyRelease()
   runMatrixSmoke()
+  {
+    const { nextVersion } = getPackageVersions()
+    syncFrontronCreateDependency(nextVersion)
+  }
   dryRunPublishPackages()
 }
 
@@ -445,24 +516,28 @@ function main() {
     case 'check-auth':
       assertNpmPublishAccess()
       return
+    case 'check-frontron-publish-dependency':
+      assertFrontronCreateDependencySynced()
+      return
     case 'publish-dry-run':
     case 'dry-run':
       {
         const version = syncVersions()
         assertVersionsNotPublished(version)
       }
-      verifyRelease()
-      runMatrixSmoke()
-      dryRunPublishPackages()
+      verifyPublishReadiness()
       return
     case 'publish':
     case 'release':
       assertNpmPublishAccess()
       {
         const version = syncVersions()
-        assertVersionsNotPublished(version)
         verifyPublishReadiness()
         publishPackages(version)
+        setDistTagForPackages(version, publishStagingTag)
+        verifyPublishedPackages(version, publishStagingTag)
+        verifyRegistryInstall(version)
+        promotePackagesToLatest(version)
         verifyPublishedPackages(version)
         verifyRegistryInstall(version)
       }

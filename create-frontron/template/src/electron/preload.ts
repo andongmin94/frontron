@@ -1,6 +1,8 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { contextBridge, ipcRenderer } = require("electron")
 
+// Keep these strings in sync with ipc.ts. The preload script is intentionally
+// tiny: it exposes only the window controls the renderer needs.
 const hideWindowChannel = "window:hide"
 const minimizeWindowChannel = "window:minimize"
 const toggleMaximizeWindowChannel = "window:toggle-maximize"

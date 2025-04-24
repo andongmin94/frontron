@@ -10,20 +10,22 @@
   },
   "files": [
     "index.js",
+    "scripts/tasks.mjs",
     "template",
     "dist"
   ],
   "scripts": {
-    "build": "unbuild",
-    "test": "npm run build && vitest run --exclude __tests__/release-rehearsal.spec.ts",
-    "test:package-smoke": "vitest run __tests__/package-smoke.spec.ts",
-    "test:release-smoke": "vitest run __tests__/release-rehearsal.spec.ts",
-    "release:verify": "node ../release.mjs verify",
-    "release:matrix-smoke": "node ../release.mjs matrix-smoke",
-    "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build",
-    "version": "node ../release.mjs sync-version",
-    "release": "node ../release.mjs publish"
+    "build"                : "node scripts/tasks.mjs build",
+    "test"                 : "node scripts/tasks.mjs test",
+    "test:package-smoke"   : "node scripts/tasks.mjs test:package-smoke",
+    "test:release-smoke"   : "node scripts/tasks.mjs test:release-smoke",
+    "release:verify"       : "node scripts/tasks.mjs release:verify",
+    "release:matrix-smoke" : "node scripts/tasks.mjs release:matrix-smoke",
+    "typecheck"            : "node scripts/tasks.mjs typecheck",
+    "lint"                 : "node scripts/tasks.mjs lint",
+    "prepublishOnly"       : "node scripts/tasks.mjs prepublishOnly",
+    "version"              : "node scripts/tasks.mjs version",
+    "release"              : "node scripts/tasks.mjs release"
   },
   "engines": {
     "node": ">=22.15.0"
@@ -37,19 +39,21 @@
   },
   "homepage": "https://andongmin.com/frontron/",
   "dependencies": {
-    "kolorist": "^1.8.0",
-    "minimist": "^1.2.8",
-    "prompts": "^2.4.2"
+    "kolorist" : "^1.8.0",
+    "minimist" : "^1.2.8",
+    "prompts"  : "^2.4.2"
   },
   "devDependencies": {
-    "@types/fs-extra": "^11.0.4",
-    "@types/minimist": "^1.2.5",
-    "@types/node": "^24.10.13",
-    "@types/prompts": "^2.4.9",
-    "execa": "^9.6.0",
-    "fs-extra": "^11.3.2",
-    "typescript": "^5.9.3",
-    "unbuild": "^3.6.1",
-    "vitest": "^4.0.7"
+    "@types/fs-extra" : "^11.0.4",
+    "@types/minimist" : "^1.2.5",
+    "@types/node"     : "^24.10.13",
+    "@types/prompts"  : "^2.4.9",
+    "execa"           : "^9.6.0",
+    "fs-extra"        : "^11.3.2",
+    "oxfmt"           : "^0.42.0",
+    "oxlint"          : "^1.57.0",
+    "typescript"      : "^5.9.3",
+    "unbuild"         : "^3.6.1",
+    "vitest"          : "^4.0.7"
   }
 }

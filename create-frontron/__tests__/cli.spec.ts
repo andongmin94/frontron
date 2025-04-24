@@ -1,3 +1,4 @@
+import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { SyncOptions } from 'execa'
 import { execaCommandSync } from 'execa'
@@ -9,10 +10,7 @@ const CLI_PATH = join(__dirname, '..')
 const projectName = 'test-app'
 const genPath = join(__dirname, projectName)
 
-const run = (
-  args: string[],
-  options: SyncOptions = {},
-): ReturnType<typeof execaCommandSync> => {
+const run = (args: string[], options: SyncOptions = {}): ReturnType<typeof execaCommandSync> => {
   return execaCommandSync(`node ${CLI_PATH} ${args.join(' ')}`, options)
 }
 
@@ -30,13 +28,20 @@ const createNonEmptyDir = () => {
 const reactTemplateFiles = fs
   .readdirSync(join(CLI_PATH, 'template'))
   // _gitignore is renamed to .gitignore
-  .map((filePath: string) =>
-    filePath === '_gitignore' ? '.gitignore' : filePath,
-  )
+  .map((filePath: string) => (filePath === '_gitignore' ? '.gitignore' : filePath))
   .sort()
 
-beforeAll(() => fs.remove(genPath))
-afterEach(() => fs.remove(genPath))
+function removeGeneratedProject() {
+  rmSync(genPath, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 100,
+  })
+}
+
+beforeAll(removeGeneratedProject)
+afterEach(removeGeneratedProject)
 
 test('prompts for the project name if none supplied', () => {
   const { stdout } = run([])

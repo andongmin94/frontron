@@ -65,8 +65,7 @@ async function init() {
   ensureRemovedTemplateOption(argv.template, argv.t)
 
   let targetDir = argTargetDir || defaultTargetDir
-  const getProjectName = () =>
-    targetDir === '.' ? path.basename(path.resolve()) : targetDir
+  const getProjectName = () => (targetDir === '.' ? path.basename(path.resolve()) : targetDir)
 
   let result: prompts.Answers<'projectName' | 'overwrite' | 'packageName'>
 
@@ -87,13 +86,10 @@ async function init() {
           },
         },
         {
-          type: () =>
-            !fs.existsSync(targetDir) || isEmpty(targetDir) ? null : 'select',
+          type: () => (!fs.existsSync(targetDir) || isEmpty(targetDir) ? null : 'select'),
           name: 'overwrite',
           message: () =>
-            (targetDir === '.'
-              ? 'Current directory'
-              : `Target directory "${targetDir}"`) +
+            (targetDir === '.' ? 'Current directory' : `Target directory "${targetDir}"`) +
             ' is not empty. Please choose how to proceed:',
           initial: 0,
           choices: [
@@ -125,8 +121,7 @@ async function init() {
           name: 'packageName',
           message: reset('Package name:'),
           initial: () => toValidPackageName(getProjectName()),
-          validate: (dir) =>
-            isValidPackageName(dir) || 'Invalid package.json name',
+          validate: (dir) => isValidPackageName(dir) || 'Invalid package.json name',
         },
       ],
       {
@@ -176,9 +171,7 @@ async function init() {
     write(file)
   }
 
-  const pkg = JSON.parse(
-    fs.readFileSync(path.join(templateDir, 'package.json'), 'utf-8'),
-  )
+  const pkg = JSON.parse(fs.readFileSync(path.join(templateDir, 'package.json'), 'utf-8'))
 
   const projectDisplayName = getProjectName()
   const projectPackageName = packageName || getProjectName()
@@ -202,11 +195,7 @@ async function init() {
   const cdProjectName = path.relative(cwd, root)
   console.log(`\nDone. Now run:\n`)
   if (root !== cwd) {
-    console.log(
-      `  cd ${
-        cdProjectName.includes(' ') ? `"${cdProjectName}"` : cdProjectName
-      }`,
-    )
+    console.log(`  cd ${cdProjectName.includes(' ') ? `"${cdProjectName}"` : cdProjectName}`)
   }
   switch (pkgManager) {
     case 'yarn':
@@ -239,9 +228,7 @@ function copy(src: string, dest: string) {
 }
 
 function isValidPackageName(projectName: string) {
-  return /^(?:@[a-z\d\-*~][a-z\d\-*._~]*\/)?[a-z\d\-~][a-z\d\-._~]*$/.test(
-    projectName,
-  )
+  return /^(?:@[a-z\d\-*~][a-z\d\-*._~]*\/)?[a-z\d\-~][a-z\d\-._~]*$/.test(projectName)
 }
 
 function toValidPackageName(projectName: string) {
@@ -254,9 +241,7 @@ function toValidPackageName(projectName: string) {
 }
 
 function toDefaultAppId(projectName: string) {
-  const slug = toValidPackageName(projectName)
-    .replace(/^@/, '')
-    .replace(/\//g, '-')
+  const slug = toValidPackageName(projectName).replace(/^@/, '').replace(/\//g, '-')
 
   return `com.example.${slug || 'desktop-app'}`
 }

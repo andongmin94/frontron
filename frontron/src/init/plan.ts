@@ -1,9 +1,8 @@
 import { relative } from 'node:path'
 
-import {
-  formatPackageJsonPatchChange,
-  type PackageJsonPatchPlan,
-} from './package-json'
+import { formatPackageJsonPatchChange, type PackageJsonPatchPlan } from './package-json'
+import type { TsconfigJsonPatchPlan } from './tsconfig-json'
+import type { PnpmWorkspaceYamlPatchPlan } from './pnpm-workspace-yaml'
 import type { InitConfig, InitOptions, PackageJson } from './shared'
 import { normalizePathValue } from './shared'
 
@@ -20,14 +19,19 @@ export type InitPlan = {
   config: InitConfig
   files: FileChange[]
   packageJsonPlan: PackageJsonPatchPlan
+  tsconfigJsonPlan?: TsconfigJsonPatchPlan | null
+  pnpmWorkspacePlan?: PnpmWorkspaceYamlPatchPlan | null
   warnings: string[]
   blockers: string[]
 }
 
+// createInitPlan 함수는 생성 파일, 패키지 패치, 경고와 차단 사유를 하나의 init 계획으로 묶는다.
 export function createInitPlan(input: {
   config: InitConfig
   filesToWrite: Map<string, string>
   packageJsonPlan: PackageJsonPatchPlan
+  tsconfigJsonPlan?: TsconfigJsonPatchPlan | null
+  pnpmWorkspacePlan?: PnpmWorkspaceYamlPatchPlan | null
   warnings: string[]
   blockers: string[]
   blockedFiles: string[]
@@ -70,11 +74,14 @@ export function createInitPlan(input: {
     config: input.config,
     files,
     packageJsonPlan: input.packageJsonPlan,
+    tsconfigJsonPlan: input.tsconfigJsonPlan,
+    pnpmWorkspacePlan: input.pnpmWorkspacePlan,
     warnings: input.warnings,
     blockers: input.blockers,
   }
 }
 
+// createDryRunReport 함수는 init dry-run 결과를 사람이 읽을 수 있는 리포트로 만든다.
 export function createDryRunReport(plan: InitPlan) {
   const config = plan.config
   const lines = [
@@ -118,6 +125,18 @@ export function createDryRunReport(plan: InitPlan) {
   const packageJsonChangeLines = plan.packageJsonPlan.changes.map(formatPackageJsonPatchChange)
   lines.push(...(packageJsonChangeLines.length > 0 ? packageJsonChangeLines : ['  (none)']))
 
+  lines.push('', 'tsconfig.json changes:')
+  const tsconfigJsonChangeLines =
+    plan.tsconfigJsonPlan?.changes.map((change) => `  + ${change.path}: ${change.value}`) ?? []
+  lines.push(...(tsconfigJsonChangeLines.length > 0 ? tsconfigJsonChangeLines : ['  (none)']))
+
+  lines.push('', 'pnpm-workspace.yaml changes:')
+  const pnpmWorkspaceChangeLines =
+    plan.pnpmWorkspacePlan?.changes.map(
+      (change) => `  + ${change.path}: ${String(change.value)}`,
+    ) ?? []
+  lines.push(...(pnpmWorkspaceChangeLines.length > 0 ? pnpmWorkspaceChangeLines : ['  (none)']))
+
   if (plan.warnings.length > 0) {
     lines.push('', 'Warnings:')
 
@@ -150,6 +169,7 @@ export function createDryRunReport(plan: InitPlan) {
   return lines.join('\n')
 }
 
+// createScriptFallbackWarnings 함수는 기본 script 이름이 이미 있어 대체 이름을 쓴 경우 경고를 만든다.
 export function createScriptFallbackWarnings(
   packageJson: PackageJson,
   options: InitOptions,
@@ -179,9 +199,7 @@ export function createScriptFallbackWarnings(
     },
   ]) {
     if (!entry.explicit && entry.selected !== entry.label && packageJson.scripts?.[entry.label]) {
-      warnings.push(
-        `Existing "${entry.label}" script found. Using "${entry.selected}" instead.`,
-      )
+      warnings.push(`Existing "${entry.label}" script found. Using "${entry.selected}" instead.`)
     }
   }
 

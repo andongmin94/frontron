@@ -10,18 +10,17 @@
   },
   "files": [
     "index.js",
+    "scripts/tasks.mjs",
     "dist",
     "README.md"
   ],
   "scripts": {
-    "build": "unbuild",
-    "test": "vitest run --no-file-parallelism --exclude __tests__/package-smoke.spec.ts",
-    "test:package-smoke": "vitest run --no-file-parallelism __tests__/package-smoke.spec.ts",
-    "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
-  },
-  "engines": {
-    "node": ">=22.15.0"
+    "build"              : "node scripts/tasks.mjs build",
+    "test"               : "node scripts/tasks.mjs test",
+    "test:package-smoke" : "node scripts/tasks.mjs test:package-smoke",
+    "typecheck"          : "node scripts/tasks.mjs typecheck",
+    "lint"               : "node scripts/tasks.mjs lint",
+    "prepublishOnly"     : "node scripts/tasks.mjs prepublishOnly"
   },
   "repository": {
     "type": "git",
@@ -31,10 +30,15 @@
     "url": "https://github.com/andongmin94/frontron/issues"
   },
   "homepage": "https://andongmin.com/frontron/",
+  "dependencies": {
+    "create-frontron" : "latest"
+  },
   "devDependencies": {
-    "@types/node": "^24.10.13",
-    "typescript": "^5.9.3",
-    "unbuild": "^3.6.1",
-    "vitest": "^4.0.7"
+    "@types/node" : "^24.10.13",
+    "oxfmt"       : "^0.42.0",
+    "oxlint"      : "^1.57.0",
+    "typescript"  : "^5.9.3",
+    "unbuild"     : "^3.6.1",
+    "vitest"      : "^4.0.7"
   }
 }

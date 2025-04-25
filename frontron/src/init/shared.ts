@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 
-import type { CliOutput } from '../cli'
+import type { CliOutput } from '../cli-output'
 
 export type PackageJson = {
   name?: string
@@ -69,6 +69,15 @@ export type InitAdapterId =
 
 export type RuntimeStrategy = 'static-export' | 'node-server'
 export type AdapterConfidence = 'high' | 'medium' | 'low'
+export type InitTemplateSource = 'frontron:minimal' | 'create-frontron'
+export type InitTemplateResolvedFrom = 'env' | 'repo' | 'dependency'
+
+export type InitTemplateInfo = {
+  source: InitTemplateSource
+  packageName?: string
+  packageVersion?: string | null
+  resolvedFrom?: InitTemplateResolvedFrom
+}
 
 export type AdapterDetectionResult = {
   matched: boolean
@@ -121,6 +130,7 @@ export interface InitConfig {
   productName: string
   appId: string
   preset: InitPreset
+  templateInfo: InitTemplateInfo
   allowExtraMetadataMainOverride: boolean
 }
 
@@ -148,15 +158,20 @@ export const DEFAULT_SVELTEKIT_STATIC_OUT_DIR = 'build'
 export const DEFAULT_SVELTEKIT_NODE_OUT_DIR = '.frontron/runtime/sveltekit-node'
 export const DEFAULT_GENERIC_NODE_SERVER_OUT_DIR = '.frontron/runtime/node-server'
 
+// normalizeValue 함수는 문자열 입력을 trim하고 비어 있으면 fallback을 사용한다.
 export function normalizeValue(value: string, fallback: string) {
   const normalized = value.trim()
   return normalized || fallback
 }
 
+// normalizePathValue 함수는 사용자 입력 경로를 slash 기준의 상대 경로 형태로 정규화한다.
 export function normalizePathValue(value: string, fallback: string) {
-  return normalizeValue(value, fallback).replace(/\\/g, '/').replace(/^\.\/+/, '')
+  return normalizeValue(value, fallback)
+    .replace(/\\/g, '/')
+    .replace(/^\.\/+/, '')
 }
 
+// slugify 함수는 패키지 이름을 appId에 쓸 수 있는 slug로 바꾼다.
 function slugify(value: string) {
   return value
     .trim()
@@ -167,6 +182,7 @@ function slugify(value: string) {
     .replace(/^-+|-+$/g, '')
 }
 
+// titleCase 함수는 패키지 이름을 사람이 읽는 제품명 형태로 바꾼다.
 export function titleCase(value: string) {
   return value
     .replace(/^@/, '')
@@ -178,11 +194,13 @@ export function titleCase(value: string) {
     .join(' ')
 }
 
+// createDefaultAppId 함수는 패키지 이름을 바탕으로 기본 Electron appId를 만든다.
 export function createDefaultAppId(packageName: string) {
   const slug = slugify(packageName || 'desktop-app') || 'desktop-app'
   return `com.local.${slug}`
 }
 
+// normalizePresetValue 함수는 preset 입력값을 검증하고 표준 preset 값으로 정규화한다.
 export function normalizePresetValue(
   value: string | undefined,
   fallback: InitPreset = 'minimal',
@@ -196,6 +214,7 @@ export function normalizePresetValue(
   throw new Error(`Unknown preset "${value}". Expected "minimal" or "starter-like".`)
 }
 
+// normalizeAdapterValue 함수는 어댑터 입력값을 검증하고 표준 어댑터 ID로 정규화한다.
 export function normalizeAdapterValue(
   value: string | undefined,
   fallback: InitAdapterId = 'generic-static',
@@ -211,12 +230,14 @@ export function normalizeAdapterValue(
   )
 }
 
+// usesStarterBridge 함수는 선택한 preset이 create-frontron 기반 파일을 쓰는지 확인한다.
 export function usesStarterBridge(preset: InitPreset) {
   return preset === 'starter-like'
 }
 
 type PackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun'
 
+// parseDeclaredPackageManager 함수는 packageManager 필드에서 패키지 매니저 이름을 읽는다.
 function parseDeclaredPackageManager(value: unknown): PackageManager | null {
   if (typeof value !== 'string') {
     return null
@@ -226,14 +247,19 @@ function parseDeclaredPackageManager(value: unknown): PackageManager | null {
   return name ? (name as PackageManager) : null
 }
 
+// inferLockfilePackageManager 함수는 상위 디렉터리의 lockfile을 보고 패키지 매니저를 추론한다.
 function inferLockfilePackageManager(cwd: string): PackageManager | null {
   let currentDir = resolve(cwd)
 
   while (true) {
     if (existsSync(join(currentDir, 'pnpm-lock.yaml'))) return 'pnpm'
     if (existsSync(join(currentDir, 'yarn.lock'))) return 'yarn'
-    if (existsSync(join(currentDir, 'bun.lockb')) || existsSync(join(currentDir, 'bun.lock'))) return 'bun'
-    if (existsSync(join(currentDir, 'package-lock.json')) || existsSync(join(currentDir, 'npm-shrinkwrap.json'))) {
+    if (existsSync(join(currentDir, 'bun.lockb')) || existsSync(join(currentDir, 'bun.lock')))
+      return 'bun'
+    if (
+      existsSync(join(currentDir, 'package-lock.json')) ||
+      existsSync(join(currentDir, 'npm-shrinkwrap.json'))
+    ) {
       return 'npm'
     }
 
@@ -249,6 +275,7 @@ function inferLockfilePackageManager(cwd: string): PackageManager | null {
   return null
 }
 
+// inferPackageManager 함수는 package.json과 lockfile을 기준으로 사용할 패키지 매니저를 정한다.
 export function inferPackageManager(cwd: string, packageJson?: PackageJson): PackageManager {
   const declaredPackageManager = parseDeclaredPackageManager(packageJson?.packageManager)
 

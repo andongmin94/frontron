@@ -1,28 +1,20 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
-import readline from 'node:readline/promises'
 
 import { applyInitChanges } from './init/apply'
 import { describeInitAdapterSelection, resolveInitAdapter } from './init/adapters'
-import { createDesktopScriptCommands, previewPackageJsonPatch } from './init/package-json'
-import {
-  MANIFEST_PATH,
-  createManifest,
-  type PackageJsonOwnershipClaim,
-  readExistingManifest,
-  readManifest,
-  renderManifestSource,
-  splitFileConflicts,
-} from './init/manifest'
-import {
-  createDryRunReport,
-  createInitPlan,
-  createScriptFallbackWarnings,
-} from './init/plan'
+import { createInitFileSources, addManifestSource } from './init/file-sources'
+import { previewPackageJsonPatch } from './init/package-json'
+import { readExistingManifest, readManifest, splitFileConflicts } from './init/manifest'
+import { mergePackageJsonClaims } from './init/ownership-claims'
+import { createDryRunReport, createInitPlan, createScriptFallbackWarnings } from './init/plan'
+import { previewPnpmWorkspaceYamlPatch } from './init/pnpm-workspace-yaml'
+import { askText, chooseDesktopScriptName, createReadlinePrompter } from './init/prompts'
+import { previewTsconfigJsonPatch } from './init/tsconfig-json'
+import { normalizeProjectRelativePath } from './project-paths'
 import {
   type InitContext,
   type InitOptions,
-  type InitPrompter,
   type PackageJson,
   createDefaultAppId,
   inferPackageManager,
@@ -30,172 +22,19 @@ import {
   normalizePathValue,
   normalizeValue,
   titleCase,
-  usesStarterBridge,
 } from './init/shared'
-import {
-  inferOutDir,
-  inferOutDirFromScript,
-} from './init/detect'
-import {
-  renderElectronTypesSource,
-  renderIpcSource,
-  renderMainSource,
-  renderPreloadSource,
-  resolveDevServerUrl,
-  renderServeSource,
-  renderTsconfigSource,
-  renderWindowSource,
-} from './init/runtime/renderers'
+import { writeInitSuccessReport } from './init/success-report'
+import { inferOutDir, inferOutDirFromScript } from './init/detect'
+import { getInitTemplateInfo } from './init/runtime/renderers'
 
 export type { InitContext, InitOptions, InitPrompter } from './init/shared'
 
-function createReadlinePrompter(
-  stdin: NodeJS.ReadableStream,
-  stdout: NodeJS.WritableStream,
-): InitPrompter {
-  const rl = readline.createInterface({ input: stdin, output: stdout })
-
-  return {
-    async text(message, defaultValue) {
-      const answer = await rl.question(`${message} [${defaultValue}]: `)
-      return answer.trim() || defaultValue
-    },
-    async confirm(message, defaultValue) {
-      const answer = (await rl.question(`${message} [${defaultValue ? 'Y/n' : 'y/N'}]: `))
-        .trim()
-        .toLowerCase()
-
-      if (!answer) {
-        return defaultValue
-      }
-
-      return answer === 'y' || answer === 'yes'
-    },
-    close() {
-      rl.close()
-    },
-  }
-}
-
-async function askText(
-  prompter: InitPrompter | null,
-  enabled: boolean,
-  message: string,
-  defaultValue: string,
-) {
-  if (!enabled || !prompter) {
-    return defaultValue
-  }
-
-  return prompter.text(message, defaultValue)
-}
-
-async function chooseDesktopScriptName(
-  prompter: InitPrompter | null,
-  promptEnabled: boolean,
-  packageJson: PackageJson,
-  message: string,
-  defaultValue: string,
-  takenNames: Set<string>,
-  conflictFallback: string,
-  explicitValue: boolean,
-  allowedExistingNames = new Set<string>(),
-) {
-  let candidate = normalizeValue(
-    await askText(prompter, promptEnabled, message, defaultValue),
-    defaultValue,
-  )
-
-  while (
-    (packageJson.scripts?.[candidate] && !allowedExistingNames.has(candidate)) ||
-    takenNames.has(candidate)
-  ) {
-    if (!promptEnabled || !prompter) {
-      if (!explicitValue) {
-        for (const fallback of [
-          conflictFallback,
-          `${defaultValue}:electron`,
-          `${conflictFallback}:2`,
-        ]) {
-          if (!packageJson.scripts?.[fallback] && !takenNames.has(fallback)) {
-            return fallback
-          }
-        }
-      }
-
-      throw new Error(`Script name "${candidate}" already exists. Choose a different desktop script name.`)
-    }
-
-    candidate = normalizeValue(
-      await askText(
-        prompter,
-        true,
-        `${message} (already in use; choose another name)`,
-        conflictFallback,
-      ),
-      conflictFallback,
-    )
-  }
-
-  return candidate
-}
-
+// ensureObject 함수는 기존 설정 값이 객체인지 확인하고 아니면 기본 객체를 사용한다.
 function ensureObject<T extends object>(value: unknown, fallback: T) {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as T) : fallback
 }
 
-function createSummary(config: Parameters<typeof previewPackageJsonPatch>[0]) {
-  const lines = [
-    `- preset: ${config.preset}`,
-    `- adapter: ${config.adapter}`,
-    `- adapter confidence: ${config.adapterConfidence}`,
-    ...config.adapterReasons.map((reason) => `- adapter reason: ${reason}`),
-    `- runtime strategy: ${config.runtimeStrategy}`,
-    `- frontend dev script: ${config.webDevScript}`,
-    `- frontend build script: ${config.webBuildScript}`,
-    `- Electron directory: ${config.desktopDir}`,
-    `- desktop dev script: ${config.appScript}`,
-    `- desktop build script: ${config.buildScript}`,
-    `- desktop package script: ${config.packageScript}`,
-    `- frontend output: ${config.outDir}`,
-    `- package manager: ${config.packageManager}`,
-    usesStarterBridge(config.preset) ? '- preload bridge: window.electron' : '- preload bridge: disabled',
-  ]
-
-  if (config.runtimeStrategy === 'node-server') {
-    lines.push(`- server runtime root: ${config.nodeServerSourceRoot ?? '(unset)'}`)
-    lines.push(`- server entry: ${config.nodeServerEntry ?? '(unset)'}`)
-  }
-
-  return lines.join('\n')
-}
-
-function formatInstallCommand(packageManager: ReturnType<typeof inferPackageManager>) {
-  return `${packageManager} install`
-}
-
-function formatRunScriptCommand(
-  packageManager: ReturnType<typeof inferPackageManager>,
-  scriptName: string,
-) {
-  return packageManager === 'yarn'
-    ? `yarn ${scriptName}`
-    : `${packageManager} run ${scriptName}`
-}
-
-function mergePackageJsonClaims(
-  existingClaims: PackageJsonOwnershipClaim[] = [],
-  nextClaims: PackageJsonOwnershipClaim[] = [],
-) {
-  const claims = new Map<string, PackageJsonOwnershipClaim>()
-
-  for (const claim of [...existingClaims, ...nextClaims]) {
-    claims.set(`${claim.action ?? 'set'}:${claim.path}:${JSON.stringify(claim.value)}`, claim)
-  }
-
-  return [...claims.values()]
-}
-
+// runInit 함수는 기존 웹 프로젝트에 Electron 레이어를 추가하는 init 흐름을 실행한다.
 export async function runInit(options: InitOptions, context: InitContext) {
   if (options.preset) {
     normalizePresetValue(options.preset)
@@ -221,10 +60,10 @@ export async function runInit(options: InitOptions, context: InitContext) {
     }
   }
   const allowedExistingScriptNames = existingManifest?.scripts ?? new Set<string>()
-  const prompter =
-    promptEnabled
-      ? context.prompter ?? createReadlinePrompter(context.stdin ?? process.stdin, context.stdout ?? process.stdout)
-      : null
+  const prompter = promptEnabled
+    ? (context.prompter ??
+      createReadlinePrompter(context.stdin ?? process.stdin, context.stdout ?? process.stdout))
+    : null
 
   try {
     const adapterDefaults = adapter.inferDefaults(context.cwd, packageJson)
@@ -244,12 +83,21 @@ export async function runInit(options: InitOptions, context: InitContext) {
     }
 
     if (!packageJson.scripts?.[webBuildScript]) {
-      throw new Error(`Selected web build script "${webBuildScript}" was not found in package.json.`)
+      throw new Error(
+        `Selected web build script "${webBuildScript}" was not found in package.json.`,
+      )
     }
 
-    const desktopDir = normalizePathValue(
-      await askText(prompter, promptEnabled, 'Electron source directory', options.desktopDir ?? 'electron'),
+    const desktopDir = normalizeProjectRelativePath(
+      context.cwd,
+      await askText(
+        prompter,
+        promptEnabled,
+        'Electron source directory',
+        options.desktopDir ?? 'electron',
+      ),
       options.desktopDir ?? 'electron',
+      'Electron source directory',
     )
     const takenDesktopScriptNames = new Set<string>()
     const appScript = await chooseDesktopScriptName(
@@ -315,7 +163,8 @@ export async function runInit(options: InitOptions, context: InitContext) {
       )
     }
 
-    const outDir = normalizePathValue(
+    const outDir = normalizeProjectRelativePath(
+      context.cwd,
       await askText(
         prompter,
         promptEnabled,
@@ -323,14 +172,15 @@ export async function runInit(options: InitOptions, context: InitContext) {
         inferredOutDir ?? 'dist',
       ),
       inferredOutDir ?? 'dist',
+      'Frontend build output directory',
     )
     const inferredServerRoot =
       adapter.runtimeStrategy === 'node-server'
-        ? options.serverRoot ?? adapterDefaults.nodeServerSourceRoot ?? ''
+        ? (options.serverRoot ?? adapterDefaults.nodeServerSourceRoot ?? '')
         : ''
     const inferredServerEntry =
       adapter.runtimeStrategy === 'node-server'
-        ? options.serverEntry ?? adapterDefaults.nodeServerEntry ?? ''
+        ? (options.serverEntry ?? adapterDefaults.nodeServerEntry ?? '')
         : ''
 
     if (adapter.runtimeStrategy === 'node-server' && options.yes) {
@@ -349,7 +199,8 @@ export async function runInit(options: InitOptions, context: InitContext) {
 
     const nodeServerSourceRoot =
       adapter.runtimeStrategy === 'node-server'
-        ? normalizePathValue(
+        ? normalizeProjectRelativePath(
+            context.cwd,
             await askText(
               prompter,
               promptEnabled,
@@ -357,11 +208,13 @@ export async function runInit(options: InitOptions, context: InitContext) {
               inferredServerRoot || '.output',
             ),
             inferredServerRoot || '.output',
+            'Node server runtime root',
           )
         : null
     const nodeServerEntry =
       adapter.runtimeStrategy === 'node-server'
-        ? normalizePathValue(
+        ? normalizeProjectRelativePath(
+            context.cwd,
             await askText(
               prompter,
               promptEnabled,
@@ -369,6 +222,7 @@ export async function runInit(options: InitOptions, context: InitContext) {
               inferredServerEntry || 'server/index.mjs',
             ),
             inferredServerEntry || 'server/index.mjs',
+            'Node server entry',
           )
         : null
 
@@ -392,7 +246,10 @@ export async function runInit(options: InitOptions, context: InitContext) {
       options.appId ?? createDefaultAppId(packageName),
     )
     const existingBuild = ensureObject<NonNullable<PackageJson['build']>>(packageJson.build, {})
-    const existingExtraMetadata = ensureObject<Record<string, unknown>>(existingBuild.extraMetadata, {})
+    const existingExtraMetadata = ensureObject<Record<string, unknown>>(
+      existingBuild.extraMetadata,
+      {},
+    )
     const existingExtraMetadataMain = existingExtraMetadata.main
 
     const allowExtraMetadataMainOverride =
@@ -428,38 +285,32 @@ export async function runInit(options: InitOptions, context: InitContext) {
       productName,
       appId,
       preset,
+      templateInfo: getInitTemplateInfo(preset),
       allowExtraMetadataMainOverride,
     }
 
-    const filesToWrite = new Map<string, string>([
-      [join(context.cwd, desktopDir, 'main.ts'), renderMainSource(preset)],
-      [join(context.cwd, desktopDir, 'window.ts'), renderWindowSource(preset)],
-      [join(context.cwd, desktopDir, 'serve.ts'), renderServeSource(config)],
-      [join(context.cwd, 'tsconfig.electron.json'), renderTsconfigSource(desktopDir)],
-    ])
-
-    if (usesStarterBridge(preset)) {
-      filesToWrite.set(join(context.cwd, desktopDir, 'preload.ts'), renderPreloadSource())
-      filesToWrite.set(join(context.cwd, desktopDir, 'ipc.ts'), renderIpcSource())
-      filesToWrite.set(join(context.cwd, 'src', 'types', 'electron.d.ts'), renderElectronTypesSource())
-    }
-
+    const filesToWrite = createInitFileSources(config)
     const packageJsonPatchPlan = previewPackageJsonPatch(config)
+    const tsconfigJsonPatchPlan = previewTsconfigJsonPatch(context.cwd, desktopDir)
+    const pnpmWorkspacePatchPlan = previewPnpmWorkspaceYamlPatch(context.cwd, config.packageManager)
     const packageJsonClaims = mergePackageJsonClaims(
       existingManifestDetails?.packageJsonClaims,
       packageJsonPatchPlan.ownershipClaims,
     )
-    filesToWrite.set(
-      join(context.cwd, MANIFEST_PATH),
-      renderManifestSource(
-        createManifest(
-          config,
-          filesToWrite,
-          [join(context.cwd, MANIFEST_PATH)],
-          createDesktopScriptCommands(config),
-          packageJsonClaims,
-        ),
-      ),
+    const tsconfigJsonClaims = mergePackageJsonClaims(
+      existingManifestDetails?.tsconfigJsonClaims,
+      tsconfigJsonPatchPlan?.ownershipClaims,
+    )
+    const pnpmWorkspaceClaims = mergePackageJsonClaims(
+      existingManifestDetails?.pnpmWorkspaceClaims,
+      pnpmWorkspacePatchPlan?.ownershipClaims,
+    )
+    addManifestSource(
+      config,
+      filesToWrite,
+      packageJsonClaims,
+      tsconfigJsonClaims,
+      pnpmWorkspaceClaims,
     )
 
     const conflicts = [...filesToWrite.keys()].filter((filePath) => existsSync(filePath))
@@ -470,8 +321,9 @@ export async function runInit(options: InitOptions, context: InitContext) {
       typeof existingExtraMetadataMain !== 'string'
         ? 'Existing build.extraMetadata.main must be a string to preserve existing packaging rules.'
         : null,
-      !allowExtraMetadataMainOverride &&
-      typeof existingExtraMetadataMain === 'string'
+      ...(tsconfigJsonPatchPlan?.blockers ?? []),
+      ...(pnpmWorkspacePatchPlan?.blockers ?? []),
+      !allowExtraMetadataMainOverride && typeof existingExtraMetadataMain === 'string'
         ? `Existing build.extraMetadata.main will not be overwritten: ${existingExtraMetadataMain}`
         : null,
     ].filter((blocker): blocker is string => typeof blocker === 'string')
@@ -479,10 +331,14 @@ export async function runInit(options: InitOptions, context: InitContext) {
       config,
       filesToWrite,
       packageJsonPlan: packageJsonPatchPlan,
+      tsconfigJsonPlan: tsconfigJsonPatchPlan,
+      pnpmWorkspacePlan: pnpmWorkspacePatchPlan,
       warnings: [
         ...scriptFallbackWarnings,
         ...adapterSelection.warnings,
         ...packageJsonPatchPlan.warnings,
+        ...(tsconfigJsonPatchPlan?.warnings ?? []),
+        ...(pnpmWorkspacePatchPlan?.warnings ?? []),
       ],
       blockers: packageJsonBlockers,
       blockedFiles: conflictPlan.blocked,
@@ -504,28 +360,20 @@ export async function runInit(options: InitOptions, context: InitContext) {
     }
 
     if (plan.blockers.length > 0) {
-      throw new Error(`Init aborted because package.json cannot be patched: ${plan.blockers.join('; ')}`)
+      throw new Error(
+        `Init aborted because package.json cannot be patched: ${plan.blockers.join('; ')}`,
+      )
     }
 
-    applyInitChanges(packageJsonPath, packageJsonPatchPlan.packageJson, plan)
+    applyInitChanges(
+      packageJsonPath,
+      packageJsonPatchPlan.packageJson,
+      plan,
+      tsconfigJsonPatchPlan,
+      pnpmWorkspacePatchPlan,
+    )
 
-    context.output.info(`[Frontron] Added the ${preset} Electron retrofit layer.`)
-    context.output.info(createSummary(config))
-    if (scriptFallbackWarnings.length > 0) {
-      context.output.info('')
-      context.output.info('Warnings:')
-
-      for (const warning of scriptFallbackWarnings) {
-        context.output.info(`- ${warning}`)
-      }
-    }
-    context.output.info('')
-    context.output.info('Next steps:')
-    context.output.info(`1. Run "${formatInstallCommand(config.packageManager)}" to install the new desktop dependencies.`)
-    context.output.info(`2. Run "${formatRunScriptCommand(config.packageManager, appScript)}" to start the desktop app.`)
-    context.output.info(`   The dev runner waits for ${resolveDevServerUrl(config)}.`)
-    context.output.info(`3. Run "${formatRunScriptCommand(config.packageManager, buildScript)}" to prepare the desktop build.`)
-    context.output.info(`4. Run "${formatRunScriptCommand(config.packageManager, packageScript)}" to create a packaged build when you are ready to distribute.`)
+    writeInitSuccessReport(context.output, config, scriptFallbackWarnings)
 
     return 0
   } finally {

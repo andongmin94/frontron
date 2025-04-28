@@ -51,6 +51,7 @@ export function createSplash() {
                     overflow: hidden;
                     /* font-family 적용: 정의한 Pretendard 와 폴백 폰트 */
                     font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', sans-serif;
+                    user-select: none;
                 }
                 .spinner {
                     border: 4px solid rgba(0, 0, 0, 0.1);

@@ -1,4 +1,4 @@
-import { readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
@@ -46,6 +46,91 @@ describe('frontron doctor', () => {
     expect(combined).toContain('No blockers found.')
     expect(combined).toContain('No action needed.')
     expect(combined).toContain('scripts.frontron:dev exists')
+  })
+
+  test('doctor checks pnpm workspace claims from a nested package', async () => {
+    const workspaceRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(workspaceRoot)
+    const appRoot = join(workspaceRoot, 'apps', 'web')
+
+    mkdirSync(appRoot, { recursive: true })
+    writeFileSync(join(workspaceRoot, 'pnpm-lock.yaml'), '')
+    writeFileSync(
+      join(workspaceRoot, 'pnpm-workspace.yaml'),
+      `packages:
+  - apps/*
+`,
+    )
+    writeFileSync(
+      join(appRoot, 'package.json'),
+      `${JSON.stringify(
+        {
+          name: 'nested-web-app',
+          version: '0.0.1',
+          scripts: {
+            dev: 'vite --port 5180',
+            build: 'vite build',
+          },
+          devDependencies: {
+            vite: '^8.0.1',
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    )
+    writeFileSync(
+      join(appRoot, 'vite.config.ts'),
+      `export default {
+  build: {
+    outDir: 'dist-web'
+  }
+}
+`,
+    )
+
+    const initExitCode = await runCli(['init', '--yes'], fixtures.createOutput(), {
+      cwd: appRoot,
+    })
+    expect(initExitCode).toBe(0)
+
+    const output = fixtures.createOutput()
+    const doctorExitCode = await runCli(['doctor'], output, {
+      cwd: appRoot,
+    })
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expect(doctorExitCode).toBe(0)
+    expect(combined).toContain('Status: healthy')
+    expect(combined).toContain('pnpm-workspace.yaml allowBuilds.electron matches manifest')
+    expect(combined).not.toContain('pnpm-workspace.yaml is missing')
+  })
+
+  test('doctor ignores legacy empty tsconfig ownership claims', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+
+    const initExitCode = await runCli(['init', '--yes'], fixtures.createOutput(), {
+      cwd: projectRoot,
+    })
+    expect(initExitCode).toBe(0)
+
+    const manifestPath = join(projectRoot, '.frontron', 'manifest.json')
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      tsconfigJsonClaims?: unknown[]
+    }
+    manifest.tsconfigJsonClaims = []
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+
+    const output = fixtures.createOutput()
+    const doctorExitCode = await runCli(['doctor'], output, {
+      cwd: projectRoot,
+    })
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expect(doctorExitCode).toBe(0)
+    expect(combined).toContain('Status: healthy')
+    expect(combined).not.toContain('tsconfig.json changes cannot be checked')
   })
 
   test('doctor reports missing manifest files as blockers', async () => {
@@ -146,6 +231,8 @@ describe('frontron doctor', () => {
 
     expect(doctorExitCode).toBe(0)
     expect(combined).toContain('Warnings:')
-    expect(combined).toContain('Manifest-owned package.json field has local edits: devDependencies.electron')
+    expect(combined).toContain(
+      'Manifest-owned package.json field has local edits: devDependencies.electron',
+    )
   })
 })

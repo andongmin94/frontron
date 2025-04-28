@@ -3,9 +3,120 @@ import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
 import { runCli } from '../src/cli'
+import { applyInitChanges } from '../src/init/apply'
+import { MANIFEST_PATH } from '../src/init/manifest'
+import type { InitPlan } from '../src/init/plan'
 import * as fixtures from './helpers/frontron-cli-fixtures'
 
 describe('frontron init guardrails', () => {
+  test.each([
+    [
+      'Electron source directory',
+      ['--desktop-dir', '../outside-electron'],
+      'Electron source directory must not contain ".." path segments.',
+    ],
+    [
+      'frontend output directory',
+      ['--out-dir', '../outside-dist'],
+      'Frontend build output directory must not contain ".." path segments.',
+    ],
+    [
+      'node server runtime root',
+      [
+        '--adapter',
+        'generic-node-server',
+        '--out-dir',
+        '.frontron/runtime/node-server',
+        '--server-root',
+        '../server',
+        '--server-entry',
+        'index.mjs',
+      ],
+      'Node server runtime root must not contain ".." path segments.',
+    ],
+    [
+      'node server entry',
+      [
+        '--adapter',
+        'generic-node-server',
+        '--out-dir',
+        '.frontron/runtime/node-server',
+        '--server-root',
+        'server',
+        '--server-entry',
+        '../index.mjs',
+      ],
+      'Node server entry must not contain ".." path segments.',
+    ],
+  ])('init rejects project-escaping %s', async (_label, args, expectedMessage) => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const output = fixtures.createOutput()
+
+    const exitCode = await runCli(['init', '--yes', ...args], output, {
+      cwd: projectRoot,
+    })
+    const combined = output.error.mock.calls.flat().join('\n')
+
+    expect(exitCode).toBe(1)
+    expect(combined).toContain(expectedMessage)
+    expect(existsSync(join(projectRoot, '.frontron', 'manifest.json'))).toBe(false)
+    expect(existsSync(join(projectRoot, 'electron'))).toBe(false)
+  })
+
+  test('init rolls back written files and applies the manifest only after patches succeed', () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const packageJsonBefore = readFileSync(packageJsonPath, 'utf8')
+    const generatedPath = join(projectRoot, 'electron', 'main.ts')
+    const manifestPath = join(projectRoot, MANIFEST_PATH)
+    const plan = {
+      config: {
+        cwd: projectRoot,
+      },
+      files: [
+        {
+          path: generatedPath,
+          action: 'create',
+          reason: 'test generated file',
+          content: 'generated\n',
+        },
+        {
+          path: manifestPath,
+          action: 'create',
+          reason: 'test manifest',
+          content: '{"createdFiles":[],"scripts":[]}\n',
+        },
+      ],
+      warnings: [],
+      blockers: [],
+    } as unknown as InitPlan
+
+    expect(() =>
+      applyInitChanges(
+        packageJsonPath,
+        {
+          name: 'sample-web-app',
+        },
+        plan,
+        {
+          path: join(projectRoot, 'electron'),
+          tsconfigJson: {},
+          changes: [],
+          ownershipClaims: [],
+          warnings: [],
+          blockers: [],
+        },
+      ),
+    ).toThrow('Written files were rolled back')
+
+    expect(readFileSync(packageJsonPath, 'utf8')).toBe(packageJsonBefore)
+    expect(existsSync(generatedPath)).toBe(false)
+    expect(existsSync(join(projectRoot, 'electron'))).toBe(false)
+    expect(existsSync(manifestPath)).toBe(false)
+  })
+
   test('init requires an explicit output directory when it cannot infer a non-Vite build output in --yes mode', async () => {
     const projectRoot = fixtures.createTempProjectWithScripts({
       'web:dev': 'next dev --port 3000',
@@ -65,25 +176,46 @@ describe('frontron init guardrails', () => {
       )}\n`,
     )
 
-    const exitCode = await runCli(['init', '--yes', '--app-script', 'app'], output, { cwd: projectRoot })
+    const exitCode = await runCli(['init', '--yes', '--app-script', 'app'], output, {
+      cwd: projectRoot,
+    })
     const combined = output.error.mock.calls.flat().join('\n')
 
     expect(exitCode).toBe(1)
     expect(combined).toContain('already exists')
   })
 
+  test('init rejects unsafe generated desktop script names before writing files', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const output = fixtures.createOutput()
+
+    const exitCode = await runCli(['init', '--yes', '--app-script', 'desktop dev'], output, {
+      cwd: projectRoot,
+    })
+    const combined = output.error.mock.calls.flat().join('\n')
+
+    expect(exitCode).toBe(1)
+    expect(combined).toContain('Script name "desktop dev" is invalid')
+    expect(existsSync(join(projectRoot, 'electron'))).toBe(false)
+    expect(existsSync(join(projectRoot, '.frontron', 'manifest.json'))).toBe(false)
+  })
+
   test('init keeps the root package type and emits an ESM Electron runtime', async () => {
-    const projectRoot = fixtures.createTempProjectWithScripts({
-      dev: 'vite --port 5180',
-      build: 'vite build',
-    }, {
-      viteConfigSource: `export default {
+    const projectRoot = fixtures.createTempProjectWithScripts(
+      {
+        dev: 'vite --port 5180',
+        build: 'vite build',
+      },
+      {
+        viteConfigSource: `export default {
   build: {
     outDir: 'dist-web'
   }
 }
 `,
-    })
+      },
+    )
     fixtures.tempDirs.push(projectRoot)
     const output = fixtures.createOutput()
 
@@ -118,8 +250,8 @@ describe('frontron init guardrails', () => {
     expect(packageJson.type).toBe('module')
     expect(serveSource).toContain('const runtimeDir = path.dirname(fileURLToPath(import.meta.url))')
     expect(serveSource).toContain(`JSON.stringify({ type: 'module' }, null, 2)`)
-    expect(tsconfigElectron).toContain('"module": "ESNext"')
-    expect(tsconfigElectron).toContain('"moduleResolution": "Bundler"')
+    expect(tsconfigElectron).toContain('"module": "NodeNext"')
+    expect(tsconfigElectron).toContain('"moduleResolution": "NodeNext"')
   })
 
   test('init aborts instead of silently replacing an existing build.extraMetadata.main in --yes mode', async () => {
@@ -295,6 +427,4 @@ describe('frontron init guardrails', () => {
     expect(combined).toContain('build.asarUnpack must be an array of strings')
     expect(combined).toContain('package.json changes:\n  (none)')
   })
-
-
 })

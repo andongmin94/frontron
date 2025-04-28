@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
@@ -55,6 +55,32 @@ describe('frontron clean', () => {
     expect(existsSync(join(projectRoot, 'electron', 'main.ts'))).toBe(true)
     expect(existsSync(join(projectRoot, '.frontron', 'manifest.json'))).toBe(true)
     expect(combined).toContain('No changes were written because --dry-run was used.')
+  })
+
+  test('clean ignores legacy empty tsconfig ownership claims', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+
+    const initExitCode = await runCli(['init', '--yes'], fixtures.createOutput(), {
+      cwd: projectRoot,
+    })
+    expect(initExitCode).toBe(0)
+
+    const manifestPath = join(projectRoot, '.frontron', 'manifest.json')
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      tsconfigJsonClaims?: unknown[]
+    }
+    manifest.tsconfigJsonClaims = []
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+
+    const output = fixtures.createOutput()
+    const cleanExitCode = await runCli(['clean', '--dry-run'], output, {
+      cwd: projectRoot,
+    })
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expect(cleanExitCode).toBe(0)
+    expect(combined).not.toContain('tsconfig.json changes are already missing')
   })
 
   test('clean --yes removes only manifest-owned files, scripts, and package metadata', async () => {
@@ -123,7 +149,9 @@ describe('frontron clean', () => {
     expect(cleanExitCode).toBe(0)
     expect(cleanedPackageJson.scripts['frontron:dev']).toBeUndefined()
     expect(cleanedPackageJson.devDependencies.electron).toBe('^99.0.0')
-    expect(combined).toContain('Package.json field has local edits and was left intact: devDependencies.electron')
+    expect(combined).toContain(
+      'Package.json field has local edits and was left intact: devDependencies.electron',
+    )
   })
 
   test('clean --yes removes only manifest-owned build array values', async () => {
@@ -156,6 +184,109 @@ describe('frontron clean', () => {
 
     expect(cleanExitCode).toBe(0)
     expect(cleanedPackageJson.build.files).toEqual(['user-assets{,/**/*}'])
+  })
+
+  test('clean --yes restores manifest-owned pnpm workspace build approvals', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      packageManager?: string
+    }
+
+    packageJson.packageManager = 'pnpm@11.1.2'
+    writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
+    writeFileSync(
+      join(projectRoot, 'pnpm-workspace.yaml'),
+      `packages:
+  - apps/*
+
+allowBuilds:
+  esbuild: false
+  electron: set this to true or false
+`,
+    )
+
+    const initExitCode = await runCli(['init', '--yes'], fixtures.createOutput(), {
+      cwd: projectRoot,
+    })
+    expect(initExitCode).toBe(0)
+
+    const output = fixtures.createOutput()
+    const cleanExitCode = await runCli(['clean', '--yes'], output, {
+      cwd: projectRoot,
+    })
+    const pnpmWorkspaceSource = readFileSync(join(projectRoot, 'pnpm-workspace.yaml'), 'utf8')
+
+    expect(cleanExitCode).toBe(0)
+    expect(pnpmWorkspaceSource).toContain('  esbuild: false')
+    expect(pnpmWorkspaceSource).toContain('  electron: set this to true or false')
+    expect(pnpmWorkspaceSource).not.toContain('electron-winstaller')
+  })
+
+  test('clean --yes restores the root pnpm workspace file from a nested package', async () => {
+    const workspaceRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(workspaceRoot)
+    const appRoot = join(workspaceRoot, 'apps', 'web')
+
+    mkdirSync(appRoot, { recursive: true })
+    writeFileSync(join(workspaceRoot, 'pnpm-lock.yaml'), '')
+    writeFileSync(
+      join(workspaceRoot, 'pnpm-workspace.yaml'),
+      `packages:
+  - apps/*
+
+allowBuilds:
+  esbuild: false
+  electron: set this to true or false
+`,
+    )
+    writeFileSync(
+      join(appRoot, 'package.json'),
+      `${JSON.stringify(
+        {
+          name: 'nested-web-app',
+          version: '0.0.1',
+          scripts: {
+            dev: 'vite --port 5180',
+            build: 'vite build',
+          },
+          devDependencies: {
+            vite: '^8.0.1',
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    )
+    writeFileSync(
+      join(appRoot, 'vite.config.ts'),
+      `export default {
+  build: {
+    outDir: 'dist-web'
+  }
+}
+`,
+    )
+
+    const initExitCode = await runCli(['init', '--yes'], fixtures.createOutput(), {
+      cwd: appRoot,
+    })
+    expect(initExitCode).toBe(0)
+    expect(readFileSync(join(workspaceRoot, 'pnpm-workspace.yaml'), 'utf8')).toContain(
+      '  electron-winstaller: true',
+    )
+
+    const cleanExitCode = await runCli(['clean', '--yes'], fixtures.createOutput(), {
+      cwd: appRoot,
+    })
+    const pnpmWorkspaceSource = readFileSync(join(workspaceRoot, 'pnpm-workspace.yaml'), 'utf8')
+
+    expect(cleanExitCode).toBe(0)
+    expect(pnpmWorkspaceSource).toContain('  esbuild: false')
+    expect(pnpmWorkspaceSource).toContain('  electron: set this to true or false')
+    expect(pnpmWorkspaceSource).not.toContain('electron-winstaller')
+    expect(existsSync(join(appRoot, 'pnpm-workspace.yaml'))).toBe(false)
   })
 
   test('clean --yes blocks modified manifest-owned files without --force', async () => {

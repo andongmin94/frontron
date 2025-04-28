@@ -32,7 +32,9 @@ describe('frontron update', () => {
 
     expect(updateExitCode).toBe(0)
     expect(readFileSync(packageJsonPath, 'utf8')).toBe(packageJsonBefore)
-    expect(readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')).toBe('stale generated file\n')
+    expect(readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')).toBe(
+      'stale generated file\n',
+    )
     expect(combined).toContain('Files to overwrite:')
     expect(combined).toContain('~ electron/main.ts')
     expect(combined).toContain('~ scripts.frontron:dev')
@@ -78,9 +80,13 @@ describe('frontron update', () => {
     }
 
     expect(updateExitCode).toBe(0)
-    expect(readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')).toContain('createMainWindow')
+    expect(readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')).toContain(
+      'createMainWindow',
+    )
     expect(refreshedPackageJson.scripts['frontron:dev']).toContain('--dev-app')
-    expect(refreshedManifest.fileHashes['electron/main.ts']).toBe(initialManifest.fileHashes['electron/main.ts'])
+    expect(refreshedManifest.fileHashes['electron/main.ts']).toBe(
+      initialManifest.fileHashes['electron/main.ts'],
+    )
     expect(refreshedManifest.packageJsonClaims.length).toBeGreaterThan(0)
     expect(refreshedManifest.packageJsonClaims).toEqual(initialManifest.packageJsonClaims)
   })
@@ -136,25 +142,40 @@ describe('frontron update', () => {
         files: string[]
       }
     }
-    const manifest = JSON.parse(readFileSync(join(projectRoot, '.frontron', 'manifest.json'), 'utf8')) as {
+    const manifest = JSON.parse(
+      readFileSync(join(projectRoot, '.frontron', 'manifest.json'), 'utf8'),
+    ) as {
       desktopDir: string
       appScript: string
       webDevScript: string
       webBuildScript: string
       outDir: string
       preset: string
+      templateSource?: string
+      templatePackage?: string
+      templateVersion?: string | null
+      templateResolvedFrom?: string
     }
     const serveSource = readFileSync(join(projectRoot, 'apps', 'electron', 'serve.ts'), 'utf8')
 
     expect(updateExitCode).toBe(0)
     expect(existsSync(join(projectRoot, 'electron', 'main.ts'))).toBe(false)
-    expect(readFileSync(join(projectRoot, 'apps', 'electron', 'main.ts'), 'utf8')).toContain('createMainWindow')
+    expect(readFileSync(join(projectRoot, 'apps', 'electron', 'main.ts'), 'utf8')).toContain(
+      'createWindow',
+    )
+    expect(readFileSync(join(projectRoot, 'apps', 'electron', 'main.ts'), 'utf8')).toContain(
+      'createTray',
+    )
     expect(existsSync(join(projectRoot, 'apps', 'electron', 'preload.ts'))).toBe(true)
+    expect(existsSync(join(projectRoot, 'apps', 'electron', 'dev.ts'))).toBe(true)
+    expect(existsSync(join(projectRoot, 'apps', 'electron', 'splash.ts'))).toBe(true)
+    expect(existsSync(join(projectRoot, 'apps', 'electron', 'tray.ts'))).toBe(true)
     expect(refreshedPackageJson.scripts.desktop).toContain('--dev-app')
     expect(refreshedPackageJson.scripts['desktop:build']).toContain('--prepare-build')
     expect(refreshedPackageJson.scripts['desktop:package']).toContain('electron-builder')
     expect(refreshedPackageJson.scripts['frontron:dev']).toBeUndefined()
     expect(refreshedPackageJson.build.files).toContain('web-dist{,/**/*}')
+    expect(refreshedPackageJson.build.files).toContain('public{,/**/*}')
     fixtures.expectEmbeddedString(serveSource, 'WEB_DEV_SCRIPT', 'web:dev')
     fixtures.expectEmbeddedString(serveSource, 'WEB_OUT_DIR', 'web-dist')
     expect(manifest.desktopDir).toBe('apps/electron')
@@ -163,6 +184,10 @@ describe('frontron update', () => {
     expect(manifest.webBuildScript).toBe('web:build')
     expect(manifest.outDir).toBe('web-dist')
     expect(manifest.preset).toBe('starter-like')
+    expect(manifest.templateSource).toBe('create-frontron')
+    expect(manifest.templatePackage).toBe('create-frontron')
+    expect(manifest.templateVersion).toMatch(/^\d+\.\d+\.\d+/)
+    expect(manifest.templateResolvedFrom).toBe('repo')
   })
 
   test('update refuses to run without a manifest', async () => {
@@ -177,5 +202,34 @@ describe('frontron update', () => {
 
     expect(exitCode).toBe(1)
     expect(combined).toContain('.frontron/manifest.json was not found')
+  })
+
+  test('update blocks manifest serve entries that point outside the project', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+
+    const initExitCode = await runCli(['init', '--yes'], fixtures.createOutput(), {
+      cwd: projectRoot,
+    })
+    expect(initExitCode).toBe(0)
+
+    const manifestPath = join(projectRoot, '.frontron', 'manifest.json')
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      createdFiles: string[]
+    }
+    manifest.createdFiles = [
+      '../outside/serve.ts',
+      ...manifest.createdFiles.filter((filePath) => !filePath.endsWith('/serve.ts')),
+    ]
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+
+    const output = fixtures.createOutput()
+    const exitCode = await runCli(['update', '--yes'], output, {
+      cwd: projectRoot,
+    })
+    const combined = output.error.mock.calls.flat().join('\n')
+
+    expect(exitCode).toBe(1)
+    expect(combined).toContain('Manifest serve entry points outside the project')
   })
 })

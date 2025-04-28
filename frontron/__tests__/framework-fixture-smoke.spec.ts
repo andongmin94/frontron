@@ -123,10 +123,14 @@ function runPrepareBuild(projectRoot: string) {
   stubElectronModule(projectRoot)
   transpileGeneratedServe(projectRoot)
 
-  const result = spawnSync(process.execPath, [join(projectRoot, 'dist-electron', 'serve.js'), '--prepare-build'], {
-    cwd: projectRoot,
-    encoding: 'utf8',
-  })
+  const result = spawnSync(
+    process.execPath,
+    [join(projectRoot, 'dist-electron', 'serve.js'), '--prepare-build'],
+    {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    },
+  )
 
   if (result.status !== 0) {
     throw new Error(result.stderr || result.stdout || 'prepare-build failed')
@@ -170,7 +174,9 @@ const frameworkFixtures: FrameworkFixture[] = [
       },
       {
         path: 'scripts/build-export.mjs',
-        content: createBuildScript([{ path: 'out/index.html', content: '<!doctype html><title>next export</title>' }]),
+        content: createBuildScript([
+          { path: 'out/index.html', content: '<!doctype html><title>next export</title>' },
+        ]),
       },
     ],
     buildCommands: ['build', 'export'],
@@ -276,13 +282,14 @@ const frameworkFixtures: FrameworkFixture[] = [
       {
         path: 'scripts/build.mjs',
         content: createBuildScript([
-          { path: 'build/server/index.js', content: 'console.log("remix server")\n' },
+          { path: 'build/index.js', content: 'console.log("remix server")\n' },
         ]),
       },
     ],
     buildCommands: ['build'],
     expectedPreparedPaths: [
-      '.frontron/runtime/remix-node-server/server/index.js',
+      '.frontron/runtime/remix-node-server/index.js',
+      '.frontron/runtime/remix-node-server/server.cjs',
       '.frontron/runtime/remix-node-server/public/remix.txt',
     ],
   },
@@ -367,14 +374,18 @@ describe('framework fixture smoke', () => {
     test(`prepare-build succeeds for ${fixture.name} fixtures`, async () => {
       const projectRoot = createFixtureProject(fixture)
 
-      const exitCode = await runCli(['init', '--yes', ...(fixture.initArgs ?? [])], {
-        info() {},
-        error(message) {
-          throw new Error(message)
+      const exitCode = await runCli(
+        ['init', '--yes', ...(fixture.initArgs ?? [])],
+        {
+          info() {},
+          error(message) {
+            throw new Error(message)
+          },
         },
-      }, {
-        cwd: projectRoot,
-      })
+        {
+          cwd: projectRoot,
+        },
+      )
 
       expect(exitCode).toBe(0)
 

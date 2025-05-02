@@ -51,7 +51,7 @@
     "appId": "__CREATE_APP_ID__",
     "productName": "__CREATE_APP_NAME__",
     "copyright": "Copyright (c) Template Maintainers",
-    "icon": "public/icon.ico",
+    "icon": "public/logo.svg",
     "win": {
       "target": [
         "msi",
@@ -64,9 +64,11 @@
     "portable": {
       "artifactName": "${productName}.${ext}"
     },
+    "npmRebuild": false,
     "files": [
       "dist{,/**/*}",
-      "public{,/**/*}"
+      "public{,/**/*}",
+      "!node_modules{,/**/*}"
     ],
     "directories": {
       "output": "output"

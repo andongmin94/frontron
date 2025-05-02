@@ -111,7 +111,6 @@ function spawnElectronProcess(rendererUrl: string) {
       ...childEnv,
       NODE_ENV: "development",
       ELECTRON_RENDERER_URL: rendererUrl,
-      ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
     },
   })
 

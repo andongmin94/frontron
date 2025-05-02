@@ -101,6 +101,7 @@ test('packed create-frontron can generate the restored template-owned electron s
     build?: {
       productName?: string
       appId?: string
+      icon?: string
     }
   }
 
@@ -114,11 +115,14 @@ test('packed create-frontron can generate the restored template-owned electron s
   expect(generatedPackage.main).toBe('dist/electron/main.js')
   expect(generatedPackage.build?.productName).toBe(generatedAppName)
   expect(generatedPackage.build?.appId).toContain(generatedAppName)
+  expect(generatedPackage.build?.icon).toBe('public/logo.svg')
   expect(existsSync(join(generatedAppRoot, 'src', 'electron', 'main.ts'))).toBe(true)
   expect(existsSync(join(generatedAppRoot, 'src', 'electron', 'preload.ts'))).toBe(true)
   expect(existsSync(join(generatedAppRoot, 'src', 'types', 'electron.d.ts'))).toBe(true)
   expect(existsSync(join(generatedAppRoot, 'tsconfig.electron.json'))).toBe(true)
   expect(existsSync(join(generatedAppRoot, 'frontron.config.ts'))).toBe(false)
+  expect(existsSync(join(generatedAppRoot, 'dist'))).toBe(false)
+  expect(existsSync(join(generatedAppRoot, '.npmignore'))).toBe(false)
 
   runNpm(['install'], generatedAppRoot)
   runNpm(['run', 'typecheck'], generatedAppRoot)

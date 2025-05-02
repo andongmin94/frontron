@@ -44,8 +44,11 @@ This builds the web app, compiles `src/electron/`, and packages the desktop app 
 ## Notes
 
 - The title bar uses the template preload bridge exposed on `window.electron`.
-- Production serves `dist/` from an internal `node:http` loopback server instead
-  of Express.
+- Production exposes `dist/` through the stable `frontron://app` origin. A private
+  `node:http` loopback server remains behind the Electron protocol handler, so
+  browser storage and security policy do not depend on an ephemeral port.
+- The main process preserves an app-provided Content Security Policy and supplies
+  a fallback policy when the renderer does not define one.
 - The default Electron source lives under `src/electron/`.
 - The default packaging configuration targets Windows (`msi` and `portable`) because the bundled app icon asset is Windows-first (`public/icon.ico`).
 - Before shipping a real app, replace the default metadata in `package.json` such as `name`, `productName`, `author`, and `build.appId`.

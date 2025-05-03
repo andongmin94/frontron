@@ -7,6 +7,52 @@ import { runCli } from '../src/cli'
 import * as fixtures from './helpers/frontron-cli-fixtures'
 
 describe('frontron init core flow', () => {
+  test('init owns a missing app version and clean restores the missing state', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const originalPackageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      version?: string
+    }
+
+    delete originalPackageJson.version
+    writeFileSync(packageJsonPath, `${JSON.stringify(originalPackageJson, null, 2)}\n`)
+
+    const initExitCode = await runCli(['init', '--yes'], fixtures.createOutput(), {
+      cwd: projectRoot,
+    })
+    const initializedPackageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      version?: string
+    }
+    const manifest = JSON.parse(
+      readFileSync(join(projectRoot, '.frontron', 'manifest.json'), 'utf8'),
+    ) as {
+      packageJsonClaims: Array<{
+        path: string
+        previous: { state: string }
+      }>
+    }
+
+    expect(initExitCode).toBe(0)
+    expect(initializedPackageJson.version).toBe('0.0.0')
+    expect(manifest.packageJsonClaims).toContainEqual(
+      expect.objectContaining({
+        path: 'version',
+        previous: { state: 'missing' },
+      }),
+    )
+
+    const cleanExitCode = await runCli(['clean', '--yes'], fixtures.createOutput(), {
+      cwd: projectRoot,
+    })
+    const cleanedPackageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      version?: string
+    }
+
+    expect(cleanExitCode).toBe(0)
+    expect(cleanedPackageJson.version).toBeUndefined()
+  })
+
   test('init seeds the minimal Electron layer with defaults', async () => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)
@@ -24,6 +70,7 @@ describe('frontron init core flow', () => {
       build: {
         appId: string
         productName: string
+        npmRebuild: boolean
         files: string[]
         extraMetadata: {
           main: string
@@ -32,16 +79,21 @@ describe('frontron init core flow', () => {
       devDependencies: Record<string, string>
     }
 
-    expect(readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')).toContain(
-      'createMainWindow',
-    )
+    const mainSource = readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')
+    expect(mainSource).toContain('createMainWindow')
+    expect(mainSource).toContain('export const rendererOrigin = `${rendererScheme}://app`')
+    expect(mainSource).toContain('protocol.registerSchemesAsPrivileged')
+    expect(mainSource).toContain('await registerRendererProtocol(rendererTargetUrl)')
     expect(readFileSync(join(projectRoot, 'electron', 'package.json'), 'utf8')).toContain(
       '"type": "module"',
     )
     const windowSource = readFileSync(join(projectRoot, 'electron', 'window.ts'), 'utf8')
     expect(windowSource).toContain('BrowserWindow')
-    expect(windowSource).toContain('Content-Security-Policy')
+    expect(windowSource).not.toContain('Content-Security-Policy')
+    expect(windowSource).not.toContain('onHeadersReceived')
     expect(windowSource).not.toContain('unsafe-eval')
+    expect(windowSource).toContain("webContents.on('will-frame-navigate'")
+    expect(windowSource).toContain('setWindowOpenHandler')
     expect(windowSource).toContain("mainWindow.webContents.on('context-menu'")
     const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
     fixtures.expectEmbeddedString(serveSource, 'WEB_DEV_SCRIPT', 'dev')
@@ -50,6 +102,12 @@ describe('frontron init core flow', () => {
     expect(serveSource).toContain('function createLoopbackUrlCandidates')
     expect(serveSource).toContain('const readyDevUrl = await waitForUrlReady(DEV_URL)')
     expect(serveSource).toContain('ELECTRON_RENDERER_URL: readyDevUrl')
+    expect(serveSource).toContain('HOST: LOOPBACK_HOST')
+    expect(serveSource).toContain("spawn('taskkill', args")
+    expect(serveSource).toContain('process.kill(-child.pid, signal)')
+    expect(serveSource.match(/detached: process\.platform !== 'win32'/g)).toHaveLength(3)
+    expect(serveSource).toContain('function parseByteRange')
+    expect(serveSource).toContain('await realpath(resolvedPath)')
     expect(serveSource).toContain('createRequire(import.meta.url)')
     expect(serveSource).toContain(`JSON.stringify({ type: 'module' }, null, 2)`)
     expect(readFileSync(join(projectRoot, 'tsconfig.electron.json'), 'utf8')).toContain(
@@ -93,10 +151,14 @@ describe('frontron init core flow', () => {
     expect(packageJson.scripts['frontron:build']).not.toContain('electron-builder')
     expect(packageJson.scripts['frontron:package']).toContain('vite build')
     expect(packageJson.scripts['frontron:package']).toContain('electron-builder')
+    expect(packageJson.scripts['frontron:package']).not.toContain('./node_modules/electron-builder')
+    expect(packageJson.scripts['frontron:package']).toContain('--publish never')
     expect(packageJson.build.appId).toBe('com.local.sample-web-app')
     expect(packageJson.build.productName).toBe('Sample Web App')
     expect(packageJson.build.files).toContain('dist-web{,/**/*}')
     expect(packageJson.build.files).toContain('dist-electron{,/**/*}')
+    expect(packageJson.build.files).toContain('!node_modules{,/**/*}')
+    expect(packageJson.build.npmRebuild).toBe(false)
     expect(packageJson.build.extraMetadata.main).toBe('dist-electron/main.js')
     expect(packageJson.devDependencies.electron).toBeTruthy()
     expect(packageJson.devDependencies['electron-builder']).toBeTruthy()

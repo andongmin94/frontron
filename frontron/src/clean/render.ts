@@ -35,6 +35,9 @@ export function renderCleanPlan(plan: CleanPlan, options: CleanOptions) {
       : change.claim.path,
   )
   const pnpmWorkspaceFieldsToRestore = plan.pnpmWorkspaceChanges.map((change) => change.claim.path)
+  const yarnRcFieldsToRestore = plan.yarnRcChanges.map(
+    (change) => `${change.claim.file}: ${change.claim.path}`,
+  )
 
   addList(lines, 'Files to delete:', filesToDelete, '(none)')
   lines.push('')
@@ -45,6 +48,8 @@ export function renderCleanPlan(plan: CleanPlan, options: CleanOptions) {
   addList(lines, 'tsconfig.json fields to restore:', tsconfigJsonFieldsToRestore, '(none)')
   lines.push('')
   addList(lines, 'pnpm-workspace.yaml fields to restore:', pnpmWorkspaceFieldsToRestore, '(none)')
+  lines.push('')
+  addList(lines, '.yarnrc.yml fields to restore:', yarnRcFieldsToRestore, '(none)')
   lines.push('')
   addList(lines, 'Warnings:', plan.warnings, 'No warnings found.')
   lines.push('')

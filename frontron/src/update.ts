@@ -1,12 +1,105 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, lstatSync, readFileSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 
-import { MANIFEST_PATH, readManifest } from './init/manifest'
+import { createFileHash, MANIFEST_PATH, readManifest } from './init/manifest'
 import { runInit, type InitContext, type InitOptions } from './init'
-import { isInsideDirectory } from './project-paths'
+import {
+  assertProjectPathSafe,
+  formatProjectPathBlocker,
+  inspectProjectPath,
+  isInsideDirectory,
+} from './project-paths'
+
+type Manifest = NonNullable<ReturnType<typeof readManifest>>
+
+// hasOwnString 함수는 객체가 특정 문자열 키를 직접 가지고 있는지 확인한다.
+function hasOwnString(record: Record<string, string> | undefined, key: string) {
+  return Boolean(record && Object.prototype.hasOwnProperty.call(record, key))
+}
+
+// resolveManifestProjectFile 함수는 manifest 파일 항목을 링크 없는 프로젝트 내부 경로로 해석한다.
+function resolveManifestProjectFile(cwd: string, filePath: string, label: string) {
+  if (isAbsolute(filePath)) {
+    throw new Error(`${label} must be relative: ${filePath}`)
+  }
+
+  const root = resolve(cwd)
+  const absolutePath = resolve(root, filePath)
+
+  if (!isInsideDirectory(root, absolutePath) || absolutePath === root) {
+    throw new Error(`${label} points outside the project: ${filePath}`)
+  }
+
+  const inspection = inspectProjectPath(root, absolutePath)
+
+  if (!inspection.safe) {
+    throw new Error(formatProjectPathBlocker(root, `${label} (${filePath})`, inspection))
+  }
+
+  return absolutePath
+}
+
+// collectUpdateLocalEditBlockers 함수는 강제 갱신 전에 manifest 기준과 다른 로컬 파일과 script를 찾는다.
+function collectUpdateLocalEditBlockers(cwd: string, manifest: Manifest) {
+  const blockers: string[] = []
+  const packageJsonPath = resolve(cwd, 'package.json')
+
+  assertProjectPathSafe(cwd, packageJsonPath, 'package.json')
+
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+    scripts?: Record<string, string>
+  }
+
+  for (const filePath of new Set(manifest.createdFiles)) {
+    if (filePath === MANIFEST_PATH) {
+      continue
+    }
+
+    const label = filePath.endsWith('/serve.ts') ? 'Manifest serve entry' : 'Manifest file entry'
+    const absolutePath = resolveManifestProjectFile(cwd, filePath, label)
+
+    if (!existsSync(absolutePath)) {
+      continue
+    }
+
+    const stats = lstatSync(absolutePath)
+
+    if (!stats.isFile()) {
+      throw new Error(`Manifest file entry is not a regular file: ${filePath}`)
+    }
+
+    const expectedHash = manifest.fileHashes?.[filePath]
+
+    if (!expectedHash) {
+      blockers.push(`Manifest-owned file has no recorded hash: ${filePath}`)
+      continue
+    }
+
+    if (createFileHash(readFileSync(absolutePath)) !== expectedHash) {
+      blockers.push(`Manifest-owned file has local edits: ${filePath}`)
+    }
+  }
+
+  for (const scriptName of new Set(manifest.scripts)) {
+    if (!hasOwnString(packageJson.scripts, scriptName)) {
+      continue
+    }
+
+    if (!hasOwnString(manifest.scriptCommands, scriptName)) {
+      blockers.push(`Manifest-owned script has no recorded command: ${scriptName}`)
+      continue
+    }
+
+    if (packageJson.scripts?.[scriptName] !== manifest.scriptCommands?.[scriptName]) {
+      blockers.push(`Manifest-owned script has local edits: ${scriptName}`)
+    }
+  }
+
+  return blockers
+}
 
 // inferDesktopDirFromManifest 함수는 manifest의 생성 파일 목록에서 Electron 소스 디렉터리를 추론한다.
-function inferDesktopDirFromManifest(manifest: NonNullable<ReturnType<typeof readManifest>>) {
+function inferDesktopDirFromManifest(manifest: Manifest) {
   const mainFile = manifest.createdFiles.find((filePath) => filePath.endsWith('/main.ts'))
 
   if (!mainFile) {
@@ -24,7 +117,7 @@ function stripPackageGlob(value: string) {
 }
 
 // inferOutDirFromManifest 함수는 manifest의 package.json 소유권 기록에서 렌더러 출력 경로를 추론한다.
-function inferOutDirFromManifest(manifest: NonNullable<ReturnType<typeof readManifest>>) {
+function inferOutDirFromManifest(manifest: Manifest) {
   for (const claim of manifest.packageJsonClaims ?? []) {
     if (
       claim.path !== 'build.files' ||
@@ -45,25 +138,14 @@ function inferOutDirFromManifest(manifest: NonNullable<ReturnType<typeof readMan
 }
 
 // readServeSource 함수는 manifest가 가리키는 생성된 serve.ts 원문을 안전하게 읽는다.
-function readServeSource(cwd: string, manifest: NonNullable<ReturnType<typeof readManifest>>) {
+function readServeSource(cwd: string, manifest: Manifest) {
   const serveFile = manifest.createdFiles.find((filePath) => filePath.endsWith('/serve.ts'))
 
   if (!serveFile) {
     return null
   }
 
-  if (isAbsolute(serveFile)) {
-    throw new Error(`Manifest serve entry must be relative: ${serveFile}`)
-  }
-
-  const root = resolve(cwd)
-  const servePath = resolve(root, serveFile)
-
-  // update는 기존 manifest를 신뢰하되, 파일을 읽기 전에는 항상 프로젝트 안쪽인지 확인한다.
-  // 악의적이거나 손상된 manifest가 프로젝트 밖의 파일을 읽게 만들면 안 된다.
-  if (!isInsideDirectory(root, servePath)) {
-    throw new Error(`Manifest serve entry points outside the project: ${serveFile}`)
-  }
+  const servePath = resolveManifestProjectFile(cwd, serveFile, 'Manifest serve entry')
 
   return existsSync(servePath) ? readFileSync(servePath, 'utf8') : null
 }
@@ -101,10 +183,7 @@ function readEmbeddedNullableString(source: string | null, name: string) {
 }
 
 // createManifestOptions 함수는 기존 manifest와 생성된 serve.ts에서 update에 재사용할 init 옵션을 복원한다.
-function createManifestOptions(
-  manifest: NonNullable<ReturnType<typeof readManifest>>,
-  cwd: string,
-): Partial<InitOptions> {
+function createManifestOptions(manifest: Manifest, cwd: string): Partial<InitOptions> {
   const serveSource = readServeSource(cwd, manifest)
 
   return {
@@ -135,10 +214,22 @@ function createManifestOptions(
 
 // runUpdate 함수는 manifest 설정을 바탕으로 Frontron 생성 파일과 설정을 갱신한다.
 export async function runUpdate(options: InitOptions, context: InitContext) {
+  const manifestPath = resolve(context.cwd, MANIFEST_PATH)
+
+  assertProjectPathSafe(context.cwd, manifestPath, 'Frontron manifest')
+
   const manifest = readManifest(context.cwd)
 
   if (!manifest) {
     throw new Error(`${MANIFEST_PATH} was not found. Run "frontron init" before update.`)
+  }
+
+  const localEditBlockers = collectUpdateLocalEditBlockers(context.cwd, manifest)
+
+  if (localEditBlockers.length > 0 && !options.force) {
+    throw new Error(
+      `Update aborted because manifest-owned local changes would be overwritten: ${localEditBlockers.join('; ')}. Re-run with --force to replace them.`,
+    )
   }
 
   const shouldApply = options.yes && !options.dryRun

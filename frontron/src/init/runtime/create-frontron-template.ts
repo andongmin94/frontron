@@ -95,8 +95,7 @@ function resolveCreateFrontronTemplate() {
   const candidates = createFrontronTemplateDirCandidates()
   const envCandidate = candidates.find((candidate) => candidate.resolvedFrom === 'env')
 
-  // An explicit env override is treated as authoritative so CI and local release
-  // checks fail loudly when they point at an incomplete template.
+  // 환경 변수로 지정한 템플릿은 최우선 계약으로 취급해, 파일이 빠졌다면 다른 후보로 숨기지 않고 실패한다.
   if (envCandidate) {
     const missing = findMissingTemplateFiles(envCandidate.templateDir)
 
@@ -174,7 +173,7 @@ export function readCreateFrontronTemplateFile(relativePath: string) {
   return readFileSync(path.join(resolveCreateFrontronTemplate().templateDir, relativePath), 'utf8')
 }
 
-// adaptCreateFrontronElectronSource 함수는 adaptCreateFrontronElectronSource 처리 단계를 수행한다.
+// adaptCreateFrontronElectronSource 함수는 starter와 retrofit의 디렉터리 깊이 차이에 맞게 asset 경로를 바꾼다.
 function adaptCreateFrontronElectronSource(source: string) {
   return source.split('../../public/').join('../public/')
 }

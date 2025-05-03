@@ -4,11 +4,27 @@ import {
   ELECTRON_BUILDER_VERSION,
   ELECTRON_VERSION,
   NODE_TYPES_VERSION,
+  ESBUILD_VERSION,
   TYPESCRIPT_VERSION,
   usesStarterBridge,
 } from './shared'
 import type { PackageJsonOwnershipClaim } from './manifest'
 import { cloneJsonValue, readPackageJsonPath, valuesEqual } from './package-json-path'
+
+const SEMVER_PATTERN =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
+
+const ROOT_RUNTIME_DEPENDENCY_ADAPTERS = new Set(['generic-node-server', 'sveltekit-node'])
+
+// isValidAppVersion 함수는 electron-builder가 받을 수 있는 SemVer 앱 버전인지 확인한다.
+export function isValidAppVersion(value: unknown): value is string {
+  return typeof value === 'string' && SEMVER_PATTERN.test(value)
+}
+
+// usesRootRuntimeDependencies 함수는 패키지 루트의 production dependency가 실행 시 필요한 어댑터인지 확인한다.
+function usesRootRuntimeDependencies(config: InitConfig) {
+  return ROOT_RUNTIME_DEPENDENCY_ADAPTERS.has(config.adapter)
+}
 
 // ensureArray 함수는 기존 설정 값이 문자열 배열인지 확인하고 복사본을 돌려준다.
 function ensureArray(value: unknown, label: string) {
@@ -135,9 +151,12 @@ function createPackageJsonPatchChanges(before: PackageJson, after: PackageJson) 
   const changes: PackageJsonPatchChange[] = []
 
   addRecordChanges(changes, before.scripts, after.scripts, 'scripts')
+  addRecordChanges(changes, before.dependencies, after.dependencies, 'dependencies')
   addRecordChanges(changes, before.devDependencies, after.devDependencies, 'devDependencies')
+  addScalarChange(changes, before.version, after.version, 'version')
   addScalarChange(changes, before.build?.appId, after.build?.appId, 'build.appId')
   addScalarChange(changes, before.build?.productName, after.build?.productName, 'build.productName')
+  addScalarChange(changes, before.build?.npmRebuild, after.build?.npmRebuild, 'build.npmRebuild')
   addArrayValueChanges(changes, before.build?.files, after.build?.files, 'build.files')
   addArrayValueChanges(
     changes,
@@ -227,13 +246,19 @@ function addArrayValueOwnershipClaims(
 function createPackageJsonOwnershipClaims(before: PackageJson, after: PackageJson) {
   const claims: PackageJsonOwnershipClaim[] = []
 
+  for (const dependencyName of Object.keys(after.dependencies ?? {})) {
+    addOwnershipClaim(claims, before, after, `dependencies.${dependencyName}`)
+  }
+
   for (const dependencyName of Object.keys(after.devDependencies ?? {})) {
     addOwnershipClaim(claims, before, after, `devDependencies.${dependencyName}`)
   }
 
   for (const path of [
+    'version',
     'build.appId',
     'build.productName',
+    'build.npmRebuild',
     'build.directories.output',
     'build.extraMetadata.main',
   ]) {
@@ -286,7 +311,7 @@ export function createDesktopScriptCommands(config: InitConfig) {
   return {
     [config.appScript]: `tsc -p tsconfig.electron.json && ${prepareRuntimePackageCommand} && node --no-deprecation dist-electron/serve.js --dev-app`,
     [config.buildScript]: `${config.webBuildCommand} && tsc -p tsconfig.electron.json && ${prepareRuntimePackageCommand} && node --no-deprecation dist-electron/serve.js --prepare-build`,
-    [config.packageScript]: `${config.webBuildCommand} && tsc -p tsconfig.electron.json && ${prepareRuntimePackageCommand} && node --no-deprecation dist-electron/serve.js --prepare-build && node --no-deprecation ./node_modules/electron-builder/cli.js`,
+    [config.packageScript]: `${config.webBuildCommand} && tsc -p tsconfig.electron.json && ${prepareRuntimePackageCommand} && node --no-deprecation dist-electron/serve.js --prepare-build && electron-builder --publish never`,
   }
 }
 
@@ -294,6 +319,7 @@ export function createDesktopScriptCommands(config: InitConfig) {
 export function patchPackageJson(config: InitConfig) {
   const packageJson = config.packageJson
   const scripts = { ...(packageJson.scripts ?? {}) }
+  const dependencies = { ...(packageJson.dependencies ?? {}) }
   const devDependencies = { ...(packageJson.devDependencies ?? {}) }
   const build = ensureObject<NonNullable<PackageJson['build']>>(packageJson.build, 'build', {})
   const directories = ensureObject<{ output?: string }>(build.directories, 'build.directories', {})
@@ -303,6 +329,14 @@ export function patchPackageJson(config: InitConfig) {
     {},
   )
   const files = ensureArray(build.files, 'build.files')
+
+  if (typeof packageJson.version === 'undefined') {
+    packageJson.version = '0.0.0'
+  } else if (!isValidAppVersion(packageJson.version)) {
+    throw new Error(
+      `package.json version must be a valid SemVer value for Electron packaging: ${String(packageJson.version)}`,
+    )
+  }
 
   Object.assign(scripts, createDesktopScriptCommands(config))
 
@@ -322,10 +356,37 @@ export function patchPackageJson(config: InitConfig) {
     devDependencies.typescript = TYPESCRIPT_VERSION
   }
 
+  if (
+    config.adapter === 'remix-node-server' &&
+    !dependencies['@remix-run/serve'] &&
+    !devDependencies['@remix-run/serve']
+  ) {
+    devDependencies['@remix-run/serve'] =
+      packageJson.devDependencies?.['@remix-run/serve'] ??
+      packageJson.dependencies?.['@remix-run/node'] ??
+      packageJson.devDependencies?.['@remix-run/dev'] ??
+      '^2.0.0'
+  }
+
+  if (config.adapter === 'remix-node-server' && !devDependencies.esbuild) {
+    devDependencies.esbuild = ESBUILD_VERSION
+  }
+
   build.appId ??= config.appId
   build.productName ??= config.productName
 
+  const packageRootRuntimeDependencies = usesRootRuntimeDependencies(config)
+
+  if (!packageRootRuntimeDependencies) {
+    // 자급식 산출물에는 웹 프레임워크의 빌드 전용 의존성을 다시 포함하거나 재빌드하지 않는다.
+    build.npmRebuild ??= false
+  }
+
   const filePatterns = ['dist-electron{,/**/*}', `${config.outDir}{,/**/*}`, 'package.json']
+
+  if (!packageRootRuntimeDependencies) {
+    filePatterns.push('!node_modules{,/**/*}')
+  }
 
   if (usesStarterBridge(config.preset)) {
     filePatterns.push('public{,/**/*}')
@@ -360,6 +421,9 @@ export function patchPackageJson(config: InitConfig) {
   build.extraMetadata = extraMetadata
 
   packageJson.scripts = scripts
+  if (Object.keys(dependencies).length > 0 || packageJson.dependencies) {
+    packageJson.dependencies = dependencies
+  }
   packageJson.devDependencies = devDependencies
   packageJson.build = build
 }

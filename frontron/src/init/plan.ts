@@ -5,6 +5,7 @@ import type { TsconfigJsonPatchPlan } from './tsconfig-json'
 import type { PnpmWorkspaceYamlPatchPlan } from './pnpm-workspace-yaml'
 import type { InitConfig, InitOptions, PackageJson } from './shared'
 import { normalizePathValue } from './shared'
+import type { YarnRcYamlPatchPlan } from './yarnrc-yaml'
 
 export type FileChangeAction = 'create' | 'overwrite' | 'blocked'
 
@@ -21,6 +22,7 @@ export type InitPlan = {
   packageJsonPlan: PackageJsonPatchPlan
   tsconfigJsonPlan?: TsconfigJsonPatchPlan | null
   pnpmWorkspacePlan?: PnpmWorkspaceYamlPatchPlan | null
+  yarnRcPlan?: YarnRcYamlPatchPlan | null
   warnings: string[]
   blockers: string[]
 }
@@ -32,6 +34,7 @@ export function createInitPlan(input: {
   packageJsonPlan: PackageJsonPatchPlan
   tsconfigJsonPlan?: TsconfigJsonPatchPlan | null
   pnpmWorkspacePlan?: PnpmWorkspaceYamlPatchPlan | null
+  yarnRcPlan?: YarnRcYamlPatchPlan | null
   warnings: string[]
   blockers: string[]
   blockedFiles: string[]
@@ -76,6 +79,7 @@ export function createInitPlan(input: {
     packageJsonPlan: input.packageJsonPlan,
     tsconfigJsonPlan: input.tsconfigJsonPlan,
     pnpmWorkspacePlan: input.pnpmWorkspacePlan,
+    yarnRcPlan: input.yarnRcPlan,
     warnings: input.warnings,
     blockers: input.blockers,
   }
@@ -136,6 +140,18 @@ export function createDryRunReport(plan: InitPlan) {
       (change) => `  + ${change.path}: ${String(change.value)}`,
     ) ?? []
   lines.push(...(pnpmWorkspaceChangeLines.length > 0 ? pnpmWorkspaceChangeLines : ['  (none)']))
+
+  lines.push('', '.yarnrc.yml changes:')
+  const yarnRcDisplayPath = plan.yarnRcPlan
+    ? normalizePathValue(relative(config.cwd, plan.yarnRcPlan.path), plan.yarnRcPlan.path)
+    : '.yarnrc.yml'
+  const yarnRcChangeLines =
+    plan.yarnRcPlan?.changes.map((change) => {
+      const marker = change.action === 'create' || change.action === 'add' ? '+' : '~'
+      const previous = change.previous === 'missing' ? '(missing)' : change.previous
+      return `  ${marker} ${yarnRcDisplayPath} ${change.path}: ${previous} -> ${change.value}`
+    }) ?? []
+  lines.push(...(yarnRcChangeLines.length > 0 ? yarnRcChangeLines : ['  (none)']))
 
   if (plan.warnings.length > 0) {
     lines.push('', 'Warnings:')

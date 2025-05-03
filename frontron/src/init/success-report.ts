@@ -70,8 +70,7 @@ export function writeInitSuccessReport(
     }
   }
 
-  // Keep the final instructions in one place so runInit can stay focused on
-  // planning and writing files.
+  // 마지막 안내를 이 함수에 모아 runInit이 계획 계산과 파일 적용에만 집중하게 한다.
   output.info('')
   output.info('Next steps:')
   output.info(

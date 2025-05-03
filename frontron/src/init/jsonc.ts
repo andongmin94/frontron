@@ -115,7 +115,6 @@ function stripTrailingCommas(source: string) {
 
 // parseJsonc 함수는 JSONC 원문에서 주석과 trailing comma를 제거한 뒤 JSON으로 파싱한다.
 export function parseJsonc<T>(source: string) {
-  // tsconfig.json commonly contains comments and trailing commas. We normalize
-  // just those JSONC features before handing the result to JSON.parse.
+  // tsconfig.json의 주석과 trailing comma만 정규화한 뒤 JSON.parse에 전달한다.
   return JSON.parse(stripTrailingCommas(stripJsonComments(source))) as T
 }

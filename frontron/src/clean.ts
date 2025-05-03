@@ -6,12 +6,15 @@ import { applyCleanPlan } from './clean/apply'
 import { createCleanPlan } from './clean/plan'
 import { renderCleanPlan } from './clean/render'
 import type { CleanContext, CleanOptions } from './clean/types'
+import { assertProjectPathSafe } from './project-paths'
 
 export type { CleanContext, CleanOptions, CleanOutput } from './clean/types'
 
 // runClean 함수는 frontron clean 명령의 전체 실행 흐름을 처리한다.
 export async function runClean(options: CleanOptions, context: CleanContext) {
   const packageJsonPath = join(context.cwd, 'package.json')
+
+  assertProjectPathSafe(context.cwd, packageJsonPath, 'package.json')
 
   if (!existsSync(packageJsonPath)) {
     throw new Error('package.json was not found in the current directory.')

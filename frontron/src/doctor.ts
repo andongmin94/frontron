@@ -1,15 +1,27 @@
 import { existsSync, lstatSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 
 import { createFileHash, MANIFEST_PATH, readManifest } from './init/manifest'
 import { inspectManifestClaim } from './init/manifest-claim-status'
 import { readPackageJsonPath } from './init/package-json-path'
+import { isValidAppVersion } from './init/package-json'
 import {
   findPnpmWorkspaceYamlPath,
   readPnpmWorkspaceYamlClaimValue,
 } from './init/pnpm-workspace-yaml'
 import type { PackageJson } from './init/shared'
 import { readTsconfigJson } from './init/tsconfig-json'
+import {
+  readYarnRcYamlClaimValue,
+  resolveYarnRcClaimPath,
+  YARN_RC_YAML_PATH,
+} from './init/yarnrc-yaml'
+import {
+  assertProjectPathSafe,
+  formatProjectPathBlocker,
+  inspectProjectPath,
+  isInsideDirectory,
+} from './project-paths'
 
 export interface DoctorOutput {
   info(message: string): void
@@ -63,19 +75,72 @@ function createDoctorNextSteps(manifestFound: boolean, warnings: string[], block
   return ['No action needed.']
 }
 
+// resolveDoctorManifestFile 함수는 doctor가 읽을 manifest 항목의 실제 경로가 안전한지 확인한다.
+function resolveDoctorManifestFile(cwd: string, filePath: string) {
+  const root = resolve(cwd)
+
+  if (isAbsolute(filePath)) {
+    return {
+      path: resolve(filePath),
+      blocker: `Manifest file entry must be relative: ${filePath}`,
+    }
+  }
+
+  const absolutePath = resolve(root, filePath)
+
+  if (!isInsideDirectory(root, absolutePath) || absolutePath === root) {
+    return {
+      path: absolutePath,
+      blocker: `Manifest file entry points outside the project: ${filePath}`,
+    }
+  }
+
+  const inspection = inspectProjectPath(root, absolutePath)
+
+  if (!inspection.safe) {
+    return {
+      path: absolutePath,
+      blocker: formatProjectPathBlocker(root, `Manifest file entry (${filePath})`, inspection),
+    }
+  }
+
+  return { path: absolutePath, blocker: null }
+}
+
 // runDoctor 함수는 현재 프로젝트의 Frontron 초기화 상태를 점검한다.
 export async function runDoctor(context: DoctorContext) {
   const packageJsonPath = join(context.cwd, 'package.json')
+
+  assertProjectPathSafe(context.cwd, packageJsonPath, 'package.json')
 
   if (!existsSync(packageJsonPath)) {
     throw new Error('package.json was not found in the current directory.')
   }
 
   const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as PackageJson
-  const manifest = readManifest(context.cwd)
   const warnings: string[] = []
   const blockers: string[] = []
   const checks: string[] = ['package.json found']
+  const manifestPath = resolve(context.cwd, MANIFEST_PATH)
+  const manifestInspection = inspectProjectPath(context.cwd, manifestPath)
+
+  if (!manifestInspection.safe) {
+    blockers.push(formatProjectPathBlocker(context.cwd, 'Frontron manifest', manifestInspection))
+
+    const lines = ['Frontron Doctor', '', 'Status: blocked', '']
+    addList(lines, 'Checks:', checks, '(none)')
+    lines.push('')
+    addList(lines, 'Warnings:', warnings, 'No warnings found.')
+    lines.push('')
+    addList(lines, 'Blockers:', blockers, 'No blockers found.')
+    lines.push('')
+    addList(lines, 'Next steps:', createDoctorNextSteps(true, warnings, blockers), '(none)')
+
+    context.output.info(lines.join('\n'))
+    return 1
+  }
+
+  const manifest = readManifest(context.cwd)
 
   if (!manifest) {
     warnings.push(`${MANIFEST_PATH} was not found. Run "frontron init" before doctor.`)
@@ -118,8 +183,11 @@ export async function runDoctor(context: DoctorContext) {
 
     if (tsconfigJsonClaims.length > 0) {
       const tsconfigPath = join(context.cwd, 'tsconfig.json')
+      const tsconfigInspection = inspectProjectPath(context.cwd, tsconfigPath)
 
-      if (!existsSync(tsconfigPath)) {
+      if (!tsconfigInspection.safe) {
+        blockers.push(formatProjectPathBlocker(context.cwd, 'tsconfig.json', tsconfigInspection))
+      } else if (!existsSync(tsconfigPath)) {
         warnings.push(
           'Manifest-owned tsconfig.json changes cannot be checked because tsconfig.json is missing.',
         )
@@ -147,8 +215,18 @@ export async function runDoctor(context: DoctorContext) {
 
     if (pnpmWorkspaceClaims.length > 0) {
       const pnpmWorkspacePath = findPnpmWorkspaceYamlPath(context.cwd)
+      const pnpmWorkspaceRoot = dirname(pnpmWorkspacePath)
+      const pnpmWorkspaceInspection = inspectProjectPath(pnpmWorkspaceRoot, pnpmWorkspacePath)
 
-      if (!existsSync(pnpmWorkspacePath)) {
+      if (!pnpmWorkspaceInspection.safe) {
+        blockers.push(
+          formatProjectPathBlocker(
+            pnpmWorkspaceRoot,
+            'pnpm-workspace.yaml',
+            pnpmWorkspaceInspection,
+          ),
+        )
+      } else if (!existsSync(pnpmWorkspacePath)) {
         warnings.push(
           'Manifest-owned pnpm-workspace.yaml changes cannot be checked because pnpm-workspace.yaml is missing.',
         )
@@ -166,6 +244,50 @@ export async function runDoctor(context: DoctorContext) {
           if (status.warning) warnings.push(status.warning)
         }
       }
+    }
+
+    const yarnRcClaims = manifest.yarnRcClaims ?? []
+
+    for (const claim of yarnRcClaims) {
+      const resolution = resolveYarnRcClaimPath(context.cwd, claim.file)
+
+      if (!resolution.safe) {
+        blockers.push(resolution.blocker)
+        continue
+      }
+
+      if (!existsSync(resolution.path)) {
+        warnings.push(
+          `Manifest-owned ${YARN_RC_YAML_PATH} changes cannot be checked because ${claim.file} is missing.`,
+        )
+        continue
+      }
+
+      const stats = lstatSync(resolution.path)
+
+      if (!stats.isFile()) {
+        blockers.push(`Manifest-owned ${YARN_RC_YAML_PATH} is not a regular file: ${claim.file}`)
+        continue
+      }
+
+      if (stats.nlink !== 1) {
+        blockers.push(
+          `Manifest-owned ${YARN_RC_YAML_PATH} must have exactly one hard link: ${claim.file}`,
+        )
+        continue
+      }
+
+      const current = readYarnRcYamlClaimValue(readFileSync(resolution.path, 'utf8'))
+
+      if (!current.safeToEdit) {
+        blockers.push(current.blocker ?? `Cannot safely inspect ${claim.file}.`)
+        continue
+      }
+
+      const status = inspectManifestClaim(YARN_RC_YAML_PATH, claim, current)
+
+      if (status.check) checks.push(`${claim.file}: ${status.check}`)
+      if (status.warning) warnings.push(`${claim.file}: ${status.warning}`)
     }
 
     if (manifest.preset === 'starter-like') {
@@ -186,14 +308,27 @@ export async function runDoctor(context: DoctorContext) {
     }
 
     for (const filePath of manifest.createdFiles) {
-      const absolutePath = join(context.cwd, filePath)
+      const resolvedFile = resolveDoctorManifestFile(context.cwd, filePath)
+
+      if (resolvedFile.blocker) {
+        blockers.push(resolvedFile.blocker)
+        continue
+      }
+
+      const absolutePath = resolvedFile.path
 
       if (existsSync(absolutePath)) {
-        checks.push(`${filePath} exists`)
+        const stats = lstatSync(absolutePath)
 
+        if (!stats.isFile()) {
+          blockers.push(`Manifest file entry is not a regular file: ${filePath}`)
+          continue
+        }
+
+        checks.push(`${filePath} exists`)
         const expectedHash = manifest.fileHashes?.[filePath]
 
-        if (expectedHash && !lstatSync(absolutePath).isDirectory()) {
+        if (expectedHash) {
           const currentHash = createFileHash(readFileSync(absolutePath))
 
           if (currentHash === expectedHash) {
@@ -252,13 +387,40 @@ export async function runDoctor(context: DoctorContext) {
     }
   }
 
+  if (isValidAppVersion(packageJson.version)) {
+    checks.push(`package.json version is valid (${packageJson.version})`)
+  } else {
+    blockers.push('package.json version must be a valid SemVer value for Electron packaging')
+  }
+
+  if (manifest?.adapter === 'remix-node-server') {
+    if (hasDependency(packageJson, '@remix-run/serve')) {
+      checks.push('@remix-run/serve dependency found')
+    } else {
+      blockers.push('Remix packaging requires @remix-run/serve')
+    }
+
+    if (hasDependency(packageJson, 'esbuild')) {
+      checks.push('esbuild dependency found')
+    } else {
+      blockers.push('Remix packaging requires esbuild')
+    }
+  }
+
   if (packageJson.build?.extraMetadata?.main === 'dist-electron/main.js') {
     checks.push('build.extraMetadata.main points to dist-electron/main.js')
   } else {
     blockers.push('build.extraMetadata.main must point to dist-electron/main.js')
   }
 
-  if (existsSync(join(context.cwd, 'tsconfig.electron.json'))) {
+  const electronTsconfigPath = join(context.cwd, 'tsconfig.electron.json')
+  const electronTsconfigInspection = inspectProjectPath(context.cwd, electronTsconfigPath)
+
+  if (!electronTsconfigInspection.safe) {
+    blockers.push(
+      formatProjectPathBlocker(context.cwd, 'tsconfig.electron.json', electronTsconfigInspection),
+    )
+  } else if (existsSync(electronTsconfigPath)) {
     checks.push('tsconfig.electron.json exists')
   } else {
     blockers.push('Missing tsconfig.electron.json')

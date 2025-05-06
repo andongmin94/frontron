@@ -14,12 +14,14 @@ const packageSpecs = [
     root: createPackageRoot,
     packagePath: createPackagePath,
     lockPath: join(createPackageRoot, 'package-lock.json'),
+    lintDiffPaths: ['create-frontron', 'release.mjs'],
   },
   {
     name: 'frontron',
     root: frontronPackageRoot,
     packagePath: frontronPackagePath,
     lockPath: join(frontronPackageRoot, 'package-lock.json'),
+    lintDiffPaths: ['frontron'],
   },
 ]
 const tempRoot = join(repoRoot, '.tmp')
@@ -46,6 +48,11 @@ function readJson(path) {
 
 function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`)
+}
+
+function writeFormattedPackageJson(packageRoot, packagePath, value) {
+  writeJson(packagePath, value)
+  runNode([join(packageRoot, 'scripts', 'tasks.mjs'), 'format-package-json'], packageRoot)
 }
 
 function createScratchDir(prefix) {
@@ -90,7 +97,7 @@ function writePackageVersion(spec, version) {
 
   if (packageJson.version !== version) {
     packageJson.version = version
-    writeJson(spec.packagePath, packageJson)
+    writeFormattedPackageJson(spec.root, spec.packagePath, packageJson)
     logStep(`synced ${spec.name} package.json to ${version}`)
   }
 
@@ -113,29 +120,53 @@ function writePackageVersion(spec, version) {
 
 function syncFrontronCreateDependency(version) {
   const dependencyRange = `^${version}`
+  const lockPath = join(frontronPackageRoot, 'package-lock.json')
+  const originalPackageSource = readFileSync(frontronPackagePath, 'utf8')
+  const originalLockSource = existsSync(lockPath) ? readFileSync(lockPath, 'utf8') : null
   const packageJson = readJson(frontronPackagePath)
   packageJson.dependencies ??= {}
+  packageJson.dependencies['create-frontron'] = dependencyRange
 
-  if (packageJson.dependencies['create-frontron'] !== dependencyRange) {
-    packageJson.dependencies['create-frontron'] = dependencyRange
-    writeJson(frontronPackagePath, packageJson)
-    logStep(`synced frontron dependency create-frontron to ${dependencyRange}`)
-  }
+  try {
+    writeFormattedPackageJson(frontronPackageRoot, frontronPackagePath, packageJson)
 
-  const lockPath = join(frontronPackageRoot, 'package-lock.json')
+    if (!existsSync(lockPath)) {
+      logStep(`synced frontron dependency create-frontron to ${dependencyRange}`)
+      return
+    }
 
-  if (!existsSync(lockPath)) {
-    return
-  }
+    // 아직 레지스트리에 없는 릴리스 후보도 npm ci로 검증할 수 있게 로컬 패키지로 잠근다.
+    runNpm(
+      [
+        'install',
+        '--package-lock-only',
+        '--ignore-scripts',
+        '--fund=false',
+        '--audit=false',
+        createPackageRoot,
+      ],
+      frontronPackageRoot,
+    )
+    writeFormattedPackageJson(frontronPackageRoot, frontronPackagePath, packageJson)
 
-  const lockJson = readJson(lockPath)
-  lockJson.packages ??= {}
-  lockJson.packages[''] ??= {}
-  lockJson.packages[''].dependencies ??= {}
-
-  if (lockJson.packages[''].dependencies['create-frontron'] !== dependencyRange) {
+    const lockJson = readJson(lockPath)
+    lockJson.packages ??= {}
+    lockJson.packages[''] ??= {}
+    lockJson.packages[''].dependencies ??= {}
     lockJson.packages[''].dependencies['create-frontron'] = dependencyRange
     writeJson(lockPath, lockJson)
+
+    logStep(`synced frontron dependency and lockfile to create-frontron ${dependencyRange}`)
+  } catch (error) {
+    writeFileSync(frontronPackagePath, originalPackageSource)
+
+    if (originalLockSource === null) {
+      rmSync(lockPath, { force: true })
+    } else {
+      writeFileSync(lockPath, originalLockSource)
+    }
+
+    throw error
   }
 }
 
@@ -147,6 +178,58 @@ function assertFrontronCreateDependencySynced() {
   if (actualRange !== expectedRange) {
     throw new Error(
       `frontron must depend on create-frontron "${expectedRange}" before publish. Run "node release.mjs publish" so the release script can sync and stage both packages safely.`,
+    )
+  }
+
+  const lockJson = readJson(join(frontronPackageRoot, 'package-lock.json'))
+  const lockRange = lockJson.packages?.['']?.dependencies?.['create-frontron']
+  const localPackageVersion = lockJson.packages?.['../create-frontron']?.version
+  const linkedPackage = lockJson.packages?.['node_modules/create-frontron']
+
+  if (
+    lockRange !== expectedRange ||
+    localPackageVersion !== packageJson.version ||
+    linkedPackage?.resolved !== '../create-frontron' ||
+    linkedPackage?.link !== true
+  ) {
+    throw new Error(
+      'frontron package-lock.json must link the matching local create-frontron release candidate.',
+    )
+  }
+}
+
+// assertVersionsAligned 함수는 두 npm 패키지가 같은 릴리스 버전을 가리키는지 확인한다.
+function assertVersionsAligned() {
+  const { packageVersions, nextVersion } = getPackageVersions()
+
+  if (!packageVersions.every((version) => version === nextVersion)) {
+    throw new Error(
+      `Package versions are not aligned (${packageVersions.join(', ')}). Run "node release.mjs sync-version", review the metadata changes, and commit them before publishing.`,
+    )
+  }
+
+  return nextVersion
+}
+
+// assertReleaseWorktreeClean 함수는 검토되지 않은 파일이 npm 게시물에 섞이지 않게 막는다.
+function assertReleaseWorktreeClean(phase) {
+  const result = runQuiet('git', ['status', '--porcelain=v1', '--untracked-files=all'], repoRoot)
+
+  if (result.status !== 0) {
+    throw new Error(`Unable to inspect the Git worktree ${phase}.`)
+  }
+
+  const dirtyPaths = result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter(Boolean)
+
+  if (dirtyPaths.length > 0) {
+    const preview = dirtyPaths.slice(0, 20).join('\n')
+    const remainder = dirtyPaths.length > 20 ? `\n... and ${dirtyPaths.length - 20} more` : ''
+
+    throw new Error(
+      `Refusing to publish from a dirty Git worktree ${phase}:\n${preview}${remainder}\nCommit or intentionally remove these changes first.`,
     )
   }
 }
@@ -197,6 +280,43 @@ function runNode(args, cwd) {
   run(process.execPath, args, cwd)
 }
 
+function readTrackedDiff(paths) {
+  const result = runQuiet('git', ['diff', '--no-ext-diff', '--binary', '--', ...paths], repoRoot)
+
+  if (result.status !== 0) {
+    throw new Error(`Unable to inspect the tracked diff for ${paths.join(', ')}.`)
+  }
+
+  return result.stdout
+}
+
+function runLintGate(spec) {
+  logStep(`checking ${spec.name} lint and formatting`)
+  runNpm(['run', 'check'], spec.root)
+
+  const beforeLint = readTrackedDiff(spec.lintDiffPaths)
+
+  runNpm(['run', 'lint'], spec.root)
+
+  const afterLint = readTrackedDiff(spec.lintDiffPaths)
+
+  if (afterLint !== beforeLint) {
+    const changedDiff = runQuiet(
+      'git',
+      ['diff', '--no-ext-diff', '--', ...spec.lintDiffPaths],
+      repoRoot,
+    )
+
+    if (changedDiff.stdout) {
+      process.stdout.write(changedDiff.stdout)
+    }
+
+    throw new Error(
+      `${spec.name} lint changed tracked files. Run "npm run lint" in ${spec.name} and commit the result before release verification.`,
+    )
+  }
+}
+
 function getPackageVersions() {
   const packageVersions = packageSpecs.map((spec) => readJson(spec.packagePath).version)
   const nextVersion = getHighestVersion(packageVersions)
@@ -205,6 +325,21 @@ function getPackageVersions() {
 }
 
 function assertNpmPublishAccess() {
+  if (isTrustedPublishing()) {
+    if (
+      process.env.GITHUB_ACTIONS !== 'true' ||
+      !process.env.ACTIONS_ID_TOKEN_REQUEST_URL ||
+      !process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN
+    ) {
+      throw new Error(
+        'FRONTRON_TRUSTED_PUBLISHING=1 requires a GitHub-hosted Actions job with id-token: write.',
+      )
+    }
+
+    logStep('using npm trusted publishing with GitHub Actions OIDC')
+    return
+  }
+
   logStep('checking npm publish authentication')
   const whoamiResult = runNpmQuiet(['whoami'], repoRoot)
 
@@ -217,18 +352,24 @@ function assertNpmPublishAccess() {
   const username = whoamiResult.stdout.trim()
 
   if (!username) {
-    throw new Error('npm did not return a username. Run "npm login", then retry "node release.mjs publish".')
+    throw new Error(
+      'npm did not return a username. Run "npm login", then retry "node release.mjs publish".',
+    )
   }
 
   for (const spec of packageSpecs) {
     const ownerResult = runNpmQuiet(['owner', 'ls', spec.name], repoRoot)
 
     if (ownerResult.status !== 0) {
-      throw new Error(`Unable to verify npm owners for "${spec.name}". Check npm access, then retry.`)
+      throw new Error(
+        `Unable to verify npm owners for "${spec.name}". Check npm access, then retry.`,
+      )
     }
 
     const ownerLines = ownerResult.stdout.split(/\r?\n/).map((line) => line.trim())
-    const hasPublishAccess = ownerLines.some((line) => line === username || line.startsWith(`${username} `))
+    const hasPublishAccess = ownerLines.some(
+      (line) => line === username || line.startsWith(`${username} `),
+    )
 
     if (!hasPublishAccess) {
       throw new Error(
@@ -238,6 +379,22 @@ function assertNpmPublishAccess() {
   }
 
   logStep(`npm user "${username}" can publish both packages`)
+}
+
+// isTrustedPublishing 함수는 장기 npm token 대신 GitHub Actions OIDC 게시 모드인지 확인한다.
+function isTrustedPublishing() {
+  return process.env.FRONTRON_TRUSTED_PUBLISHING === '1'
+}
+
+// assertOfficialPublishingMode 함수는 공식 릴리스가 출처 증명이 남는 OIDC 경로를 사용하게 한다.
+function assertOfficialPublishingMode() {
+  if (isTrustedPublishing() || process.env.FRONTRON_ALLOW_LOCAL_PUBLISH === '1') {
+    return
+  }
+
+  throw new Error(
+    'Official releases must run through .github/workflows/frontron-release.yml with npm trusted publishing. Set FRONTRON_ALLOW_LOCAL_PUBLISH=1 only for an intentional emergency token-based release.',
+  )
 }
 
 function versionExistsOnRegistry(spec, version) {
@@ -270,6 +427,48 @@ function assertVersionsNotPublished(version) {
   }
 }
 
+// readLocalPackageIntegrity 함수는 검증을 마친 로컬 tarball의 Subresource Integrity 값을 읽는다.
+function readLocalPackageIntegrity(spec) {
+  const result = runNpmQuiet(['pack', '--json', '--dry-run', '--ignore-scripts'], spec.root)
+
+  if (result.status !== 0) {
+    throw new Error(`Unable to calculate the local package integrity for ${spec.name}.`)
+  }
+
+  let packResult
+
+  try {
+    packResult = JSON.parse(result.stdout)
+  } catch {
+    throw new Error(`npm pack returned invalid JSON for ${spec.name}.`)
+  }
+
+  const integrity = packResult[0]?.integrity
+
+  if (typeof integrity !== 'string' || !integrity) {
+    throw new Error(`npm pack did not report an integrity value for ${spec.name}.`)
+  }
+
+  return integrity
+}
+
+// assertPublishedPackageMatchesLocal 함수는 부분 게시 재개 시 이미 올라간 tarball이 현재 후보와 같은지 확인한다.
+function assertPublishedPackageMatchesLocal(spec, version) {
+  const localIntegrity = readLocalPackageIntegrity(spec)
+  const registryIntegrity = readRegistryValue(
+    [`${spec.name}@${version}`, 'dist.integrity'],
+    `${spec.name}@${version} integrity`,
+  )
+
+  if (registryIntegrity !== localIntegrity) {
+    throw new Error(
+      `${spec.name}@${version} already exists but its registry integrity does not match the local release candidate. Bump the version instead of overwriting an immutable npm release.`,
+    )
+  }
+
+  logStep(`${spec.name}@${version} matches the local tarball; resuming the partial release`)
+}
+
 function readRegistryValue(args, description) {
   const result = runNpmQuiet(['view', ...args], repoRoot)
 
@@ -284,19 +483,72 @@ function verifyPublishedPackages(version, tag = latestTag) {
   logStep(`verifying published npm packages at ${version} with dist-tag "${tag}"`)
 
   for (const spec of packageSpecs) {
-    const publishedVersion = readRegistryValue([`${spec.name}@${version}`, 'version'], `${spec.name}@${version}`)
+    const publishedVersion = readRegistryValue(
+      [`${spec.name}@${version}`, 'version'],
+      `${spec.name}@${version}`,
+    )
 
     if (publishedVersion !== version) {
       throw new Error(`npm registry returned "${publishedVersion}" for "${spec.name}@${version}".`)
     }
 
-    const taggedVersion = readRegistryValue([spec.name, `dist-tags.${tag}`], `${spec.name} ${tag} dist-tag`)
+    const taggedVersion = readRegistryValue(
+      [spec.name, `dist-tags.${tag}`],
+      `${spec.name} ${tag} dist-tag`,
+    )
 
     if (taggedVersion !== version) {
       throw new Error(
         `npm ${tag} dist-tag for "${spec.name}" is "${taggedVersion}", expected "${version}". Publish completed but ${tag} does not point at the release.`,
       )
     }
+  }
+}
+
+// sleepSync 함수는 npm 레지스트리 메타데이터가 전파될 때까지 짧게 기다린다.
+function sleepSync(timeoutMs) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, timeoutMs)
+}
+
+// verifyPublishedProvenance 함수는 OIDC 릴리스 두 개에 Sigstore provenance가 생겼는지 확인한다.
+function verifyPublishedProvenance(version) {
+  for (const spec of packageSpecs) {
+    let attestations = null
+
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const result = runNpmQuiet(
+        ['view', `${spec.name}@${version}`, 'dist.attestations', '--json'],
+        repoRoot,
+      )
+
+      if (result.status === 0 && result.stdout.trim()) {
+        try {
+          attestations = JSON.parse(result.stdout)
+        } catch {
+          attestations = null
+        }
+      }
+
+      if (
+        typeof attestations?.url === 'string' &&
+        attestations?.provenance?.predicateType === 'https://slsa.dev/provenance/v1'
+      ) {
+        break
+      }
+
+      sleepSync(5_000)
+    }
+
+    if (
+      typeof attestations?.url !== 'string' ||
+      attestations?.provenance?.predicateType !== 'https://slsa.dev/provenance/v1'
+    ) {
+      throw new Error(
+        `${spec.name}@${version} was published but npm did not expose its provenance attestation.`,
+      )
+    }
+
+    logStep(`verified npm provenance for ${spec.name}@${version}`)
   }
 }
 
@@ -334,6 +586,7 @@ function verifyRegistryInstall(version) {
 
     installNpm([], generatedStarterRoot)
     runNpm(['run', 'typecheck'], generatedStarterRoot)
+    runNpm(['audit', 'signatures'], generatedStarterRoot)
 
     mkdirSync(join(retrofitRoot, 'scripts'), { recursive: true })
     writeJson(join(retrofitRoot, 'package.json'), {
@@ -363,7 +616,11 @@ writeFileSync('dist/index.html', '<!doctype html><title>registry retrofit</title
     )
 
     installNpm(['--save-dev', `frontron@${version}`], retrofitRoot)
-    runNpm(['exec', '--', 'frontron', 'init', '--yes', '--preset', 'starter-like', '--out-dir', 'dist'], retrofitRoot)
+    runNpm(['audit', 'signatures'], retrofitRoot)
+    runNpm(
+      ['exec', '--', 'frontron', 'init', '--yes', '--preset', 'starter-like', '--out-dir', 'dist'],
+      retrofitRoot,
+    )
     runNpm(['exec', '--', 'frontron', 'doctor'], retrofitRoot)
   } finally {
     rmSync(scratchRoot, { recursive: true, force: true })
@@ -395,29 +652,35 @@ function syncVersions() {
 }
 
 function verifyRelease() {
-  logStep('auditing frontron dependencies')
-  runNpm(['audit', '--audit-level=moderate'], frontronPackageRoot)
+  assertVersionsAligned()
+  assertFrontronCreateDependencySynced()
 
-  logStep('auditing create-frontron dependencies')
-  runNpm(['audit', '--audit-level=moderate'], createPackageRoot)
+  for (const spec of packageSpecs) {
+    logStep(`installing ${spec.name} from its lockfile`)
+    runNpm(['ci', '--fund=false', '--audit=false'], spec.root)
+  }
 
-  logStep('typechecking frontron')
-  runNpm(['run', 'typecheck'], frontronPackageRoot)
+  for (const spec of packageSpecs) {
+    logStep(`validating ${spec.name} dependency tree`)
+    runNpm(['ls', '--all'], spec.root)
 
-  logStep('testing frontron')
-  runNpm(['test'], frontronPackageRoot)
+    logStep(`auditing ${spec.name} dependencies`)
+    runNpm(['audit', '--audit-level=moderate'], spec.root)
 
-  logStep('running frontron package smoke')
-  runNpm(['run', 'test:package-smoke'], frontronPackageRoot)
+    runLintGate(spec)
 
-  logStep('typechecking create-frontron')
-  runNpm(['run', 'typecheck'], createPackageRoot)
+    logStep(`typechecking ${spec.name}`)
+    runNpm(['run', 'typecheck'], spec.root)
 
-  logStep('testing create-frontron')
-  runNpm(['test'], createPackageRoot)
+    logStep(`testing ${spec.name} with coverage thresholds`)
+    runNpm(['run', 'coverage'], spec.root)
 
-  logStep('running create-frontron package smoke')
-  runNpm(['run', 'test:package-smoke'], createPackageRoot)
+    logStep(`building ${spec.name}`)
+    runNpm(['run', 'build'], spec.root)
+
+    logStep(`running ${spec.name} package smoke`)
+    runNpm(['run', 'test:package-smoke'], spec.root)
+  }
 
   logStep('running create-frontron release smoke')
   runNpm(['run', 'test:release-smoke'], createPackageRoot)
@@ -428,7 +691,16 @@ function runMatrixSmoke(args = []) {
   runNode([join(createPackageRoot, 'scripts', 'release-matrix-smoke.mjs'), ...args], repoRoot)
 }
 
-function publishPackages(version) {
+// runPackageManagerSmoke 함수는 실제 pnpm, Yarn, Bun 프로젝트에 packed Frontron을 적용한다.
+function runPackageManagerSmoke(args = []) {
+  logStep('running package manager matrix smoke')
+  runNode(
+    [join(createPackageRoot, 'scripts', 'package-manager-matrix-smoke.mjs'), ...args],
+    repoRoot,
+  )
+}
+
+function publishPackages(version, tag = publishStagingTag) {
   const publishOrder = [
     packageSpecs.find((spec) => spec.name === 'create-frontron'),
     packageSpecs.find((spec) => spec.name === 'frontron'),
@@ -439,13 +711,20 @@ function publishPackages(version) {
   try {
     for (const spec of publishOrder) {
       if (versionExistsOnRegistry(spec, version)) {
+        assertPublishedPackageMatchesLocal(spec, version)
         logStep(`${spec.name}@${version} is already published; skipping package publish`)
         skipped.push(spec.name)
         continue
       }
 
-      logStep(`publishing ${spec.name} with dist-tag "${publishStagingTag}"`)
-      runNpm(['publish', '--tag', publishStagingTag], spec.root)
+      logStep(`publishing ${spec.name} with dist-tag "${tag}"`)
+      const publishArgs = ['publish', '--tag', tag]
+
+      if (isTrustedPublishing()) {
+        publishArgs.push('--provenance', '--access', 'public')
+      }
+
+      runNpm(publishArgs, spec.root)
       published.push(spec.name)
     }
   } catch (error) {
@@ -470,8 +749,8 @@ function setDistTagForPackages(version, tag, specs = packageSpecs) {
 
 function promotePackagesToLatest(version) {
   const promoteOrder = [
-    packageSpecs.find((spec) => spec.name === 'frontron'),
     packageSpecs.find((spec) => spec.name === 'create-frontron'),
+    packageSpecs.find((spec) => spec.name === 'frontron'),
   ].filter(Boolean)
 
   setDistTagForPackages(version, latestTag, promoteOrder)
@@ -488,11 +767,9 @@ function dryRunPublishPackages() {
 function verifyPublishReadiness() {
   verifyRelease()
   runMatrixSmoke()
-  {
-    const { nextVersion } = getPackageVersions()
-    syncFrontronCreateDependency(nextVersion)
-  }
+  runPackageManagerSmoke(['all', '--package'])
   dryRunPublishPackages()
+  assertReleaseWorktreeClean('after release verification')
 }
 
 function main() {
@@ -500,17 +777,33 @@ function main() {
   const args = process.argv.slice(3)
 
   switch (command) {
-    case 'sync-version':
-      syncVersions()
+    case 'sync-version': {
+      const version = syncVersions()
+      syncFrontronCreateDependency(version)
       return
+    }
+    case 'sync-dependency': {
+      const version = syncVersions()
+      syncFrontronCreateDependency(version)
+      return
+    }
     case 'verify':
       verifyRelease()
       return
     case 'matrix-smoke':
       runMatrixSmoke(args)
       return
+    case 'package-manager-smoke':
+      runPackageManagerSmoke(args)
+      return
     case 'registry-smoke':
-      verifyRegistryInstall(args[0] ?? readRegistryValue(['create-frontron', 'dist-tags.latest'], 'create-frontron latest dist-tag'))
+      verifyRegistryInstall(
+        args[0] ??
+          readRegistryValue(
+            ['create-frontron', 'dist-tags.latest'],
+            'create-frontron latest dist-tag',
+          ),
+      )
       return
     case 'auth':
     case 'check-auth':
@@ -520,28 +813,40 @@ function main() {
       assertFrontronCreateDependencySynced()
       return
     case 'publish-dry-run':
-    case 'dry-run':
-      {
-        const version = syncVersions()
-        assertVersionsNotPublished(version)
-      }
+    case 'dry-run': {
+      assertReleaseWorktreeClean('before release verification')
+      const version = assertVersionsAligned()
+      assertFrontronCreateDependencySynced()
+      assertVersionsNotPublished(version)
       verifyPublishReadiness()
       return
+    }
     case 'publish':
-    case 'release':
+    case 'release': {
+      assertReleaseWorktreeClean('before release verification')
+      assertOfficialPublishingMode()
       assertNpmPublishAccess()
-      {
-        const version = syncVersions()
-        verifyPublishReadiness()
-        publishPackages(version)
-        setDistTagForPackages(version, publishStagingTag)
-        verifyPublishedPackages(version, publishStagingTag)
-        verifyRegistryInstall(version)
-        promotePackagesToLatest(version)
+      const version = assertVersionsAligned()
+      assertFrontronCreateDependencySynced()
+      verifyPublishReadiness()
+
+      if (isTrustedPublishing()) {
+        publishPackages(version, latestTag)
         verifyPublishedPackages(version)
+        verifyPublishedProvenance(version)
         verifyRegistryInstall(version)
+        return
       }
+
+      publishPackages(version)
+      setDistTagForPackages(version, publishStagingTag)
+      verifyPublishedPackages(version, publishStagingTag)
+      verifyRegistryInstall(version)
+      promotePackagesToLatest(version)
+      verifyPublishedPackages(version)
+      verifyRegistryInstall(version)
       return
+    }
     default:
       throw new Error(`Unknown release command: ${command}`)
   }

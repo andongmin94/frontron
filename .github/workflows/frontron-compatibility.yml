@@ -1,0 +1,181 @@
+name: frontron-compatibility
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 18 * * 0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontron-compatibility-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CI: "1"
+  CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+jobs:
+  native-starter:
+    name: native starter / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            frontron/package-lock.json
+            create-frontron/package-lock.json
+
+      - name: Install create-frontron
+        run: npm ci
+        working-directory: create-frontron
+
+      - name: Install frontron
+        run: npm ci
+        working-directory: frontron
+
+      - name: Build native installers
+        run: node release.mjs matrix-smoke starter
+
+  public-frameworks:
+    name: ${{ matrix.case }} / ubuntu
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    strategy:
+      fail-fast: false
+      matrix:
+        case:
+          - vite
+          - vitepress
+          - generic-node-server
+          - next-export
+          - next-standalone
+          - nuxt
+          - remix
+          - sveltekit-static
+          - sveltekit-node
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            frontron/package-lock.json
+            create-frontron/package-lock.json
+
+      - name: Install create-frontron
+        run: npm ci
+        working-directory: create-frontron
+
+      - name: Install frontron
+        run: npm ci
+        working-directory: frontron
+
+      - name: Retrofit official framework project
+        run: node release.mjs matrix-smoke ${{ matrix.case }}
+
+  cross-platform-frameworks:
+    name: ${{ matrix.case }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - windows-latest
+        case:
+          - vite
+          - next-standalone
+          - nuxt
+          - remix
+          - sveltekit-node
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            frontron/package-lock.json
+            create-frontron/package-lock.json
+
+      - name: Install create-frontron
+        run: npm ci
+        working-directory: create-frontron
+
+      - name: Install frontron
+        run: npm ci
+        working-directory: frontron
+
+      - name: Retrofit representative framework project
+        run: node release.mjs matrix-smoke ${{ matrix.case }}
+
+  package-managers:
+    name: ${{ matrix.manager }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+        manager:
+          - pnpm
+          - yarn
+          - bun
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            frontron/package-lock.json
+            create-frontron/package-lock.json
+
+      - name: Install create-frontron
+        run: npm ci
+        working-directory: create-frontron
+
+      - name: Install frontron
+        run: npm ci
+        working-directory: frontron
+
+      - name: Retrofit with package manager
+        run: node release.mjs package-manager-smoke ${{ matrix.manager }} --package

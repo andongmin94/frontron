@@ -438,33 +438,10 @@ async function runLocalBinary(manager, binary, args, cwd, label) {
   return runManager(manager, commandArgs, cwd, label)
 }
 
-// isYarnWindowsVitePathFlake 함수는 linker 전환 직후 알려진 첫 Vite 경로 해석 실패만 식별한다.
-function isYarnWindowsVitePathFlake(error) {
-  if (process.platform !== 'win32' || !(error instanceof Error)) {
-    return false
-  }
-
-  const output = `${error.commandStdout ?? ''}\n${error.commandStderr ?? ''}`
-  return (
-    /(?:ERR_MODULE_NOT_FOUND|Cannot find module)/.test(output) &&
-    /(?:node_modules|\.yarn)[\\/].*vite/i.test(output)
-  )
-}
-
-// runPackageScript 함수는 script를 실행하고 Yarn Windows의 좁은 경로 flake만 한 번 재시도한다.
+// runPackageScript 함수는 각 매니저의 run 규칙으로 package.json script를 한 번만 실행한다.
 async function runPackageScript(manager, scriptName, extraArgs, cwd, label) {
   const args = ['run', scriptName, ...extraArgs]
-
-  try {
-    return await runManager(manager, args, cwd, label)
-  } catch (error) {
-    if (manager.name !== 'yarn' || !isYarnWindowsVitePathFlake(error)) {
-      throw error
-    }
-
-    logStep(`${label}: Yarn Windows Vite 경로 초기화 실패를 한 번 재시도합니다.`)
-    return runManager(manager, args, cwd, `${label} 재시도`)
-  }
+  return runManager(manager, args, cwd, label)
 }
 
 // writeJson 함수는 fixture 계약 파일을 플랫폼과 무관한 안정적인 JSON 형식으로 기록한다.
@@ -635,7 +612,13 @@ function sendRegistryError(response, statusCode, message) {
 function createProxyRequestHeaders(headers) {
   const forwarded = { ...headers, host: 'registry.npmjs.org' }
 
-  for (const name of ['authorization', 'connection', 'cookie', 'keep-alive', 'proxy-authorization']) {
+  for (const name of [
+    'authorization',
+    'connection',
+    'cookie',
+    'keep-alive',
+    'proxy-authorization',
+  ]) {
     delete forwarded[name]
   }
 
@@ -646,7 +629,13 @@ function createProxyRequestHeaders(headers) {
 function createProxyResponseHeaders(headers) {
   const forwarded = { ...headers }
 
-  for (const name of ['connection', 'keep-alive', 'proxy-authenticate', 'transfer-encoding', 'upgrade']) {
+  for (const name of [
+    'connection',
+    'keep-alive',
+    'proxy-authenticate',
+    'transfer-encoding',
+    'upgrade',
+  ]) {
     delete forwarded[name]
   }
 
@@ -698,7 +687,9 @@ function proxyRegistryRequest(request, response) {
 
   // handleProxyTimeout 함수는 registry 연결 지연이 전체 매트릭스를 무한 대기시키지 않게 한다.
   function handleProxyTimeout() {
-    upstreamRequest.destroy(new Error(`npm registry proxy timeout after ${registryProxyTimeoutMs}ms`))
+    upstreamRequest.destroy(
+      new Error(`npm registry proxy timeout after ${registryProxyTimeoutMs}ms`),
+    )
   }
 
   // handleClientAborted 함수는 package manager가 요청을 취소하면 upstream 연결도 즉시 닫는다.
@@ -976,7 +967,9 @@ function assertCandidateResolution(manager, appRoot, tarballs) {
   }
 
   if (lockfile.includes('create-frontron.tgz') || lockfile.includes('frontron.tgz')) {
-    throw new Error(`${manager.name} lockfile이 registry 후보 대신 file tarball override를 기록했습니다.`)
+    throw new Error(
+      `${manager.name} lockfile이 registry 후보 대신 file tarball override를 기록했습니다.`,
+    )
   }
 }
 
@@ -1065,13 +1058,7 @@ function assertPackagedDirectory(appRoot) {
 async function runManagerCase(manager, tarballs, registryOrigin, packageDirectory, scratchRoot) {
   const startedAt = Date.now()
   const managerVersion = await resolveManagerVersion(manager)
-  const appRoot = createViteFixture(
-    scratchRoot,
-    manager,
-    managerVersion,
-    tarballs,
-    registryOrigin,
-  )
+  const appRoot = createViteFixture(scratchRoot, manager, managerVersion, tarballs, registryOrigin)
 
   logStep(`${manager.name} ${managerVersion} case 시작: ${appRoot}`)
   await runManager(manager, manager.installArgs, appRoot, `${manager.name} 최초 install`)

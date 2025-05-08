@@ -10,7 +10,7 @@ import { nextExportAdapter, nextStandaloneAdapter } from './next'
 import { nuxtNodeServerAdapter, remixNodeServerAdapter } from './node-frameworks'
 import { svelteKitNodeAdapter, svelteKitStaticAdapter } from './sveltekit'
 
-  // 감지는 먼저 맞은 adapter를 선택하므로 구체적인 production runtime을 fallback보다 앞에 둔다.
+// 감지는 먼저 맞은 adapter를 선택하므로 구체적인 production runtime을 fallback보다 앞에 둔다.
 const INIT_ADAPTERS: readonly InitAdapter[] = [
   nextStandaloneAdapter,
   nuxtNodeServerAdapter,

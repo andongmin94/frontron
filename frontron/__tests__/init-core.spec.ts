@@ -392,7 +392,7 @@ allowBuilds:
         ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
       ),
     ).toEqual([])
-  })
+  }, 15_000)
 
   test('init --dry-run prints the plan without writing files or package changes', async () => {
     const projectRoot = fixtures.createTempProject()

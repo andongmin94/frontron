@@ -1,8 +1,6 @@
 import {
-  chmodSync,
   existsSync,
   lstatSync,
-  mkdirSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -31,14 +29,6 @@ import type { PackageJson } from '../init/shared'
 import { restoreYarnRcYamlClaim, YARN_RC_YAML_PATH } from '../init/yarnrc-yaml'
 import { restoreTsconfigJsonClaims } from './tsconfig-source'
 import type { CleanPlan } from './types'
-
-type FileSnapshot = {
-  path: string
-  safetyRoot: string
-  existed: boolean
-  content: Buffer | null
-  mode: number | null
-}
 
 // createCurrentExpectedHash 함수는 clean이 lock을 기다리는 동안 원문이 바뀌는지 확인할 해시를 만든다.
 function createCurrentExpectedHash(filePath: string) {
@@ -84,103 +74,6 @@ function restorePackageJsonClaim(packageJson: PackageJson, claim: PackageJsonOwn
   } else {
     deletePackageJsonPath(packageJson, claim.path)
   }
-}
-
-// takeFileSnapshot 함수는 clean 변경 전 원문 바이트와 파일 모드를 저장한다.
-function takeFileSnapshot(filePath: string, safetyRoot: string): FileSnapshot {
-  assertProjectPathSafe(safetyRoot, filePath, 'Clean target path')
-
-  if (!existsSync(filePath)) {
-    return {
-      path: resolve(filePath),
-      safetyRoot,
-      existed: false,
-      content: null,
-      mode: null,
-    }
-  }
-
-  const stats = lstatSync(filePath)
-
-  if (!stats.isFile()) {
-    throw new Error(`Clean target is not a regular file: ${filePath}`)
-  }
-
-  return {
-    path: resolve(filePath),
-    safetyRoot,
-    existed: true,
-    content: readFileSync(filePath),
-    mode: stats.mode,
-  }
-}
-
-// rememberSnapshot 함수는 같은 경로가 여러 변경에 포함돼도 최초 상태만 보관한다.
-function rememberSnapshot(
-  snapshots: Map<string, FileSnapshot>,
-  filePath: string,
-  safetyRoot: string,
-) {
-  const absolutePath = resolve(filePath)
-
-  if (!snapshots.has(absolutePath)) {
-    snapshots.set(absolutePath, takeFileSnapshot(absolutePath, safetyRoot))
-  }
-}
-
-// removeEmptySnapshotParents 함수는 rollback 중 새 파일을 지운 뒤 생긴 빈 폴더만 정리한다.
-function removeEmptySnapshotParents(filePath: string, safetyRoot: string) {
-  const root = resolve(safetyRoot)
-  let currentDirectory = resolve(dirname(filePath))
-
-  while (currentDirectory !== root && isInsideDirectory(root, currentDirectory)) {
-    assertProjectPathSafe(root, currentDirectory, 'Clean rollback directory')
-
-    if (!existsSync(currentDirectory) || readdirSync(currentDirectory).length > 0) {
-      return
-    }
-
-    rmdirSync(currentDirectory)
-    currentDirectory = dirname(currentDirectory)
-  }
-}
-
-// restoreFileSnapshot 함수는 스냅샷의 원문과 모드를 파일시스템에 복구한다.
-function restoreFileSnapshot(snapshot: FileSnapshot) {
-  assertProjectPathSafe(snapshot.safetyRoot, snapshot.path, 'Clean rollback target')
-
-  if (!snapshot.existed) {
-    rmSync(snapshot.path, { force: true })
-    removeEmptySnapshotParents(snapshot.path, snapshot.safetyRoot)
-    return
-  }
-
-  mkdirSync(dirname(snapshot.path), { recursive: true })
-  assertProjectPathSafe(snapshot.safetyRoot, snapshot.path, 'Clean rollback target')
-  writeFileSync(snapshot.path, snapshot.content ?? Buffer.alloc(0))
-
-  if (snapshot.mode !== null) {
-    chmodSync(snapshot.path, snapshot.mode)
-  }
-}
-
-// rollbackSnapshots 함수는 실제 변경을 시작한 파일만 스냅샷 역순으로 복구한다.
-function rollbackSnapshots(snapshots: Map<string, FileSnapshot>, mutatedPaths: Set<string>) {
-  const rollbackErrors: string[] = []
-
-  for (const snapshot of [...snapshots.values()].reverse()) {
-    if (!mutatedPaths.has(snapshot.path)) {
-      continue
-    }
-
-    try {
-      restoreFileSnapshot(snapshot)
-    } catch (error) {
-      rollbackErrors.push(`${snapshot.path}: ${(error as Error).message}`)
-    }
-  }
-
-  return rollbackErrors
 }
 
 // removeEmptyParents 함수는 파일 삭제 후 비어 있는 생성 폴더를 프로젝트 안에서만 정리한다.
@@ -327,8 +220,6 @@ export function applyCleanPlan(
   const pnpmClaimsByPath = groupClaimsByPath(plan.pnpmWorkspaceChanges)
   const yarnRcClaimsByPath = groupClaimsByPath(plan.yarnRcChanges)
   const filesToDelete = plan.files.filter((file) => file.action === 'delete')
-  const snapshots = new Map<string, FileSnapshot>()
-  const mutatedPaths = new Set<string>()
   const transactionTargets = createCleanTransactionTargets(
     projectRoot,
     packageJsonPath,
@@ -341,33 +232,9 @@ export function applyCleanPlan(
   let transaction: TransactionHandle | null = null
 
   try {
-    if (packageJsonChanged) {
-      rememberSnapshot(snapshots, packageJsonPath, projectRoot)
-    }
-
-    for (const tsconfigPath of tsconfigClaimsByPath.keys()) {
-      rememberSnapshot(snapshots, tsconfigPath, projectRoot)
-    }
-
-    for (const pnpmWorkspacePath of pnpmClaimsByPath.keys()) {
-      rememberSnapshot(snapshots, pnpmWorkspacePath, dirname(resolve(pnpmWorkspacePath)))
-    }
-
-    for (const yarnRcPath of yarnRcClaimsByPath.keys()) {
-      const safetyRoot = isInsideDirectory(projectRoot, resolve(yarnRcPath))
-        ? projectRoot
-        : dirname(resolve(yarnRcPath))
-      rememberSnapshot(snapshots, yarnRcPath, safetyRoot)
-    }
-
-    for (const file of filesToDelete) {
-      rememberSnapshot(snapshots, file.absolutePath, projectRoot)
-    }
-
     transaction = beginTransaction(projectRoot, 'clean', transactionTargets)
 
     if (packageJsonChanged) {
-      mutatedPaths.add(resolve(packageJsonPath))
       writeSafeFile(packageJsonPath, `${JSON.stringify(nextPackageJson, null, 2)}\n`, projectRoot)
     }
 
@@ -375,7 +242,6 @@ export function applyCleanPlan(
       assertProjectPathSafe(projectRoot, tsconfigPath, 'tsconfig.json')
       const source = readFileSync(tsconfigPath, 'utf8')
       const nextSource = restoreTsconfigJsonClaims(source, claims)
-      mutatedPaths.add(resolve(tsconfigPath))
       writeSafeFile(tsconfigPath, nextSource, projectRoot)
     }
 
@@ -389,7 +255,6 @@ export function applyCleanPlan(
       }
 
       assertProjectPathSafe(safetyRoot, pnpmWorkspacePath, 'pnpm-workspace.yaml')
-      mutatedPaths.add(resolve(pnpmWorkspacePath))
 
       if (source.trim()) {
         writeSafeFile(pnpmWorkspacePath, source, safetyRoot)
@@ -416,7 +281,6 @@ export function applyCleanPlan(
       }
 
       assertProjectPathSafe(safetyRoot, yarnRcPath, YARN_RC_YAML_PATH)
-      mutatedPaths.add(resolve(yarnRcPath))
 
       if (source === '' && claims.some((claim) => claim.created)) {
         rmSync(yarnRcPath, { force: true })
@@ -446,7 +310,6 @@ export function applyCleanPlan(
       }
 
       assertProjectPathSafe(projectRoot, file.absolutePath, 'Manifest file entry')
-      mutatedPaths.add(resolve(file.absolutePath))
       rmSync(file.absolutePath, { force: true })
       deletedFiles.push(file.absolutePath)
     }
@@ -454,7 +317,7 @@ export function applyCleanPlan(
     removeEmptyParents(cwd, deletedFiles)
     commitTransaction(transaction)
   } catch (error) {
-    const rollbackErrors = rollbackSnapshots(snapshots, mutatedPaths)
+    const rollbackErrors: string[] = []
 
     if (transaction) {
       try {
@@ -467,7 +330,7 @@ export function applyCleanPlan(
     const rollbackMessage =
       rollbackErrors.length > 0
         ? ` Rollback also failed for: ${rollbackErrors.join('; ')}`
-        : ' Project files were rolled back from snapshots.'
+        : ' Project files were rolled back from the persistent journal.'
 
     throw new Error(
       `Clean failed while applying project changes: ${(error as Error).message}.${rollbackMessage}`,

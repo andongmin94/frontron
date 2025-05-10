@@ -1033,26 +1033,6 @@ function collectTargetLockRoots(
   )
 }
 
-// assertExpectedTargetHashes 함수는 lock 획득 후 계획 시점 원문이 그대로인지 snapshot 전에 확인한다.
-function assertExpectedTargetHashes(targets: Iterable<ReturnType<typeof normalizeTarget>>) {
-  for (const target of targets) {
-    if (target.expectedHash === undefined) continue
-
-    const exists = existsSync(target.absolutePath)
-    let currentHash: string | null = null
-
-    if (exists) {
-      const stats = lstatSync(target.absolutePath)
-      assertSingleLinkFile(stats, 'Transaction expected-hash target')
-      currentHash = createTransactionSourceHash(readFileSync(target.absolutePath))
-    }
-
-    if (currentHash !== target.expectedHash) {
-      throw new Error(`${target.absolutePath} changed after the transaction plan was created.`)
-    }
-  }
-}
-
 // addMissingParentTargets 함수는 작업 중 새로 생길 수 있는 부모 디렉터리도 복구 대상으로 넣는다.
 function addMissingParentTargets(
   projectRoot: string,
@@ -1091,49 +1071,137 @@ function addMissingParentTargets(
   }
 }
 
-// takeSnapshot 함수는 변경 전 파일 바이트 또는 디렉터리 상태와 모드를 메모리에 담는다.
+// takeSnapshot 함수는 파일 하나의 안정된 descriptor에서 예상 해시 검증과 snapshot 생성을 함께 수행한다.
 function takeSnapshot(
   projectRoot: string,
   target: ReturnType<typeof normalizeTarget>,
 ): JournalSnapshot {
   const reference = createPathReference(projectRoot, target.absolutePath, target.absoluteSafetyRoot)
 
-  if (!existsSync(target.absolutePath)) {
-    return {
-      ...reference,
-      kind: target.kind,
-      existed: false,
-      contentBase64: null,
-      contentSha256: null,
-      mode: null,
-    }
-  }
-
   assertProjectPathSafe(
     target.absoluteSafetyRoot,
     target.absolutePath,
     'Transaction snapshot target',
   )
-  const stats = lstatSync(target.absolutePath)
-  const kindMatches = target.kind === 'file' ? stats.isFile() : stats.isDirectory()
 
-  if (!kindMatches) {
-    throw new Error(`Transaction target is not a regular ${target.kind}: ${target.absolutePath}`)
+  if (target.kind === 'directory') {
+    if (!existsSync(target.absolutePath)) {
+      return {
+        ...reference,
+        kind: target.kind,
+        existed: false,
+        contentBase64: null,
+        contentSha256: null,
+        mode: null,
+      }
+    }
+
+    const stats = lstatSync(target.absolutePath)
+
+    if (!stats.isDirectory()) {
+      throw new Error(`Transaction target is not a regular directory: ${target.absolutePath}`)
+    }
+
+    return {
+      ...reference,
+      kind: target.kind,
+      existed: true,
+      contentBase64: null,
+      contentSha256: null,
+      mode: stats.mode & 0o7777,
+    }
   }
 
-  if (target.kind === 'file') {
-    assertSingleLinkFile(stats, 'Transaction snapshot target')
-  }
+  let descriptor: number | null = null
 
-  const content = target.kind === 'file' ? readFileSync(target.absolutePath) : null
+  try {
+    try {
+      descriptor = openSync(target.absolutePath, constants.O_RDONLY)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
 
-  return {
-    ...reference,
-    kind: target.kind,
-    existed: true,
-    contentBase64: content?.toString('base64') ?? null,
-    contentSha256: content ? createTransactionSourceHash(content) : null,
-    mode: stats.mode & 0o7777,
+      assertProjectPathSafe(
+        target.absoluteSafetyRoot,
+        target.absolutePath,
+        'Transaction snapshot target',
+      )
+
+      if (existsSync(target.absolutePath)) {
+        throw new Error(`Transaction snapshot target changed while it was being opened.`)
+      }
+
+      if (target.expectedHash !== undefined && target.expectedHash !== null) {
+        throw new Error(`${target.absolutePath} changed after the transaction plan was created.`)
+      }
+
+      return {
+        ...reference,
+        kind: target.kind,
+        existed: false,
+        contentBase64: null,
+        contentSha256: null,
+        mode: null,
+      }
+    }
+
+    const initialDescriptorStats = fstatSync(descriptor)
+    assertSingleLinkFile(initialDescriptorStats, 'Transaction snapshot target')
+    assertProjectPathSafe(
+      target.absoluteSafetyRoot,
+      target.absolutePath,
+      'Transaction snapshot target',
+    )
+    const initialPathStats = lstatSync(target.absolutePath)
+    assertSingleLinkFile(initialPathStats, 'Transaction snapshot target')
+
+    if (!sameFileIdentity(initialDescriptorStats, initialPathStats)) {
+      throw new Error('Transaction snapshot target changed before it could be read.')
+    }
+
+    const content = readFileSync(descriptor)
+    const finalDescriptorStats = fstatSync(descriptor)
+    assertSingleLinkFile(finalDescriptorStats, 'Transaction snapshot target')
+    assertProjectPathSafe(
+      target.absoluteSafetyRoot,
+      target.absolutePath,
+      'Transaction snapshot target',
+    )
+    const finalPathStats = lstatSync(target.absolutePath)
+    assertSingleLinkFile(finalPathStats, 'Transaction snapshot target')
+
+    if (
+      !sameFileIdentity(initialDescriptorStats, finalDescriptorStats) ||
+      !sameFileIdentity(finalDescriptorStats, finalPathStats) ||
+      initialDescriptorStats.size !== finalDescriptorStats.size ||
+      initialDescriptorStats.mtimeMs !== finalDescriptorStats.mtimeMs ||
+      initialDescriptorStats.ctimeMs !== finalDescriptorStats.ctimeMs ||
+      (initialDescriptorStats.mode & 0o7777) !== (finalDescriptorStats.mode & 0o7777)
+    ) {
+      throw new Error('Transaction snapshot target changed while it was being read.')
+    }
+
+    const contentHash = createTransactionSourceHash(content)
+
+    if (target.expectedHash !== undefined && contentHash !== target.expectedHash) {
+      throw new Error(`${target.absolutePath} changed after the transaction plan was created.`)
+    }
+
+    return {
+      ...reference,
+      kind: target.kind,
+      existed: true,
+      contentBase64: content.toString('base64'),
+      contentSha256: contentHash,
+      mode: initialDescriptorStats.mode & 0o7777,
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new Error('Transaction snapshot target changed while it was being read.')
+    }
+
+    throw error
+  } finally {
+    if (descriptor !== null) closeSync(descriptor)
   }
 }
 
@@ -1919,7 +1987,6 @@ export function beginTransaction(
   }
 
   try {
-    assertExpectedTargetHashes(normalizedTargets.values())
     const journal = createJournal(
       projectRoot,
       operation,

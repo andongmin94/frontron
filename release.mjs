@@ -756,6 +756,34 @@ function promotePackagesToLatest(version) {
   setDistTagForPackages(version, latestTag, promoteOrder)
 }
 
+const productionPublishOperations = {
+  promotePackagesToLatest,
+  publishPackages,
+  setDistTagForPackages,
+  verifyPublishedPackages,
+  verifyPublishedProvenance,
+  verifyRegistryInstall,
+}
+
+// runPublishOrchestration 함수는 검증을 마친 릴리스의 trusted 또는 staging 게시 순서를 실행한다.
+function runPublishOrchestration(version, operations = productionPublishOperations) {
+  if (isTrustedPublishing()) {
+    operations.publishPackages(version, latestTag)
+    operations.verifyPublishedPackages(version)
+    operations.verifyPublishedProvenance(version)
+    operations.verifyRegistryInstall(version)
+    return
+  }
+
+  operations.publishPackages(version, publishStagingTag)
+  operations.setDistTagForPackages(version, publishStagingTag)
+  operations.verifyPublishedPackages(version, publishStagingTag)
+  operations.verifyRegistryInstall(version)
+  operations.promotePackagesToLatest(version)
+  operations.verifyPublishedPackages(version)
+  operations.verifyRegistryInstall(version)
+}
+
 function dryRunPublishPackages() {
   logStep('dry-running create-frontron publish')
   runNpm(['publish', '--dry-run', '--tag', publishStagingTag], createPackageRoot)
@@ -829,22 +857,7 @@ function main() {
       const version = assertVersionsAligned()
       assertFrontronCreateDependencySynced()
       verifyPublishReadiness()
-
-      if (isTrustedPublishing()) {
-        publishPackages(version, latestTag)
-        verifyPublishedPackages(version)
-        verifyPublishedProvenance(version)
-        verifyRegistryInstall(version)
-        return
-      }
-
-      publishPackages(version)
-      setDistTagForPackages(version, publishStagingTag)
-      verifyPublishedPackages(version, publishStagingTag)
-      verifyRegistryInstall(version)
-      promotePackagesToLatest(version)
-      verifyPublishedPackages(version)
-      verifyRegistryInstall(version)
+      runPublishOrchestration(version)
       return
     }
     default:

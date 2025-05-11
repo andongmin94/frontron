@@ -22,7 +22,7 @@ const tempParent = join(tmpdir(), 'frontron-package-manager-matrix-smoke')
 const commandTimeoutMs = Number(process.env.FRONTRON_PM_MATRIX_TIMEOUT_MS ?? 15 * 60 * 1000)
 const registryProxyTimeoutMs = 60 * 1000
 const maxBufferBytes = 32 * 1024 * 1024
-const nodePackageSpec = process.env.FRONTRON_PM_MATRIX_NODE ?? 'node@22'
+const nodePackageSpec = process.env.FRONTRON_PM_MATRIX_NODE ?? 'node@22.23.1'
 const activeChildren = new Set()
 let interruptedSignal = null
 const managerDefinitions = {
@@ -35,13 +35,13 @@ const managerDefinitions = {
   },
   yarn: {
     name: 'yarn',
-    packageSpec: process.env.FRONTRON_PM_MATRIX_YARN ?? '@yarnpkg/cli-dist@4',
+    packageSpec: process.env.FRONTRON_PM_MATRIX_YARN ?? '@yarnpkg/cli-dist@4.17.1',
     binary: 'yarn',
     installArgs: ['install', '--no-immutable'],
   },
   bun: {
     name: 'bun',
-    packageSpec: process.env.FRONTRON_PM_MATRIX_BUN ?? 'bun@1',
+    packageSpec: process.env.FRONTRON_PM_MATRIX_BUN ?? 'bun@1.3.14',
     binary: 'bun',
     installArgs: ['install'],
   },
@@ -107,11 +107,13 @@ Options:
 frontron:build이다. electron-builder --dir는 --package 또는
 FRONTRON_PM_MATRIX_PACKAGE=1로 명시한 경우에만 실행한다.
 
-Manager package overrides:
-  FRONTRON_PM_MATRIX_NODE=node@22
+릴리스 필수 매트릭스의 정확 버전:
+  FRONTRON_PM_MATRIX_NODE=node@22.23.1
   FRONTRON_PM_MATRIX_PNPM=pnpm@11.4.0
-  FRONTRON_PM_MATRIX_YARN=@yarnpkg/cli-dist@4
-  FRONTRON_PM_MATRIX_BUN=bun@1
+  FRONTRON_PM_MATRIX_YARN=@yarnpkg/cli-dist@4.17.1
+  FRONTRON_PM_MATRIX_BUN=bun@1.3.14
+
+위 환경 변수 override로 최신 major를 관찰하는 실행은 예정된 호환성 lane에서만 사용한다.
 
 Other environment options:
   FRONTRON_PM_MATRIX_PACKAGE=1

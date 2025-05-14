@@ -1,14 +1,12 @@
 import { Tray, Menu, nativeImage, app } from 'electron';
 import path from 'path';
 
-let tray = null;
+let tray: Tray | null;
 
-/**
- * 트레이 아이콘 생성 및 설정
- * @param {Function} getMainWindow - 메인 윈도우 객체를 반환하는 함수
- * @param {string} __dirname - 현재 디렉토리 경로
- */
-export function createTray(getMainWindow, __dirname) {
+interface MainWindowGetter {
+  (): Electron.BrowserWindow | null; // 메인 윈도우 객체를 반환하는 함수
+}
+export function createTray(getMainWindow: MainWindowGetter, __dirname: string) {
   const mainWindow = getMainWindow();
   if (tray || !mainWindow) return; // 중복 생성 방지 및 mainWindow 확인
 

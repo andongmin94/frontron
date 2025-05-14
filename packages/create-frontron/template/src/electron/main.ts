@@ -20,6 +20,8 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', (event, commandLine, workingDirectory) => {
+    // 두 번째 인스턴스가 실행될 때의 동작 정의
+    console.log('Second instance launched:', { event, commandLine, workingDirectory });
     const mainWindow = getMainWindow();
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
@@ -35,9 +37,9 @@ if (!app.requestSingleInstanceLock()) {
       setTimeout(async () => {
         try {
           // determinePort와 createWindow는 setTimeout 콜백 안에서 실행
-          const port = await determinePort(isDev, __dirname); // DEFAULT_PORT 누락 시 추가 필요
-          if (port === null) {
-            throw new Error('Failed to determine port inside setTimeout.');
+          const port = (await determinePort(isDev, __dirname)) ?? 3000; // 기본 포트 3000 설정
+          if (port === null || typeof port !== 'number') {
+            throw new Error('Failed to determine a valid port inside setTimeout.');
           }
           createWindow(port, isDev, __dirname, closeSplash); // mainWindow 생성
           createTray(getMainWindow, __dirname); // 트레이 생성
@@ -47,7 +49,7 @@ if (!app.requestSingleInstanceLock()) {
           // 지연 후 창 생성 실패 시 처리 (예: 오류 메시지, 앱 종료)
           closeSplash(); // 스플래시 닫기
           const { dialog } = await import('electron');
-          if (dialog) dialog.showErrorBox('Error', `Failed to create main window:\n${error.message}`);
+          if (dialog) dialog.showErrorBox('Error', `Failed to create main window:\n${(error as Error).message}`);
           app.quit();
         }
       }, 2000);

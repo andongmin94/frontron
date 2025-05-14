@@ -5,7 +5,7 @@
     "moduleResolution": "Node",
     "outDir": "./dist/electron", // 컴파일된 JS 파일 출력 경로
     "rootDir": "./src/electron", // TS 소스 파일 루트 경로
-    "strict": false,
+    "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true

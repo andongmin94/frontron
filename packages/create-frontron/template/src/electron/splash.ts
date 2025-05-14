@@ -7,12 +7,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // 폰트 파일 경로 설정 (public/fonts/PretendardVariable.woff2 라고 가정)
-// *** 실제 폰트 파일명과 경로에 맞게 수정하세요 ***
 const fontPath = path.join(__dirname, '../../public/fonts/PretendardVariable.woff2');
 // 경로 구분자를 웹 표준인 '/'로 변경하고 file:// 프로토콜 추가
 const fontSrcUrl = `file://${fontPath.replace(/\\/g, '/')}`;
 
-let splashWindow = null;
+let splashWindow: BrowserWindow | null;
 export function createSplash() {
   splashWindow = new BrowserWindow({
     width: 300, // 창 크기는 적절히 조절

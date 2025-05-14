@@ -6,7 +6,7 @@ import path from 'path';
  * @param {string} configPath - vite.config.ts 파일 경로
  * @returns {number | null} 추출된 포트 번호 또는 null
  */
-function getPortFromViteConfig(configPath) {
+function getPortFromViteConfig(configPath:string) {
   try {
     if (!fs.existsSync(configPath)) {
       console.log(`Vite config not found at ${configPath}, using default port.`);
@@ -48,7 +48,7 @@ function getPortFromViteConfig(configPath) {
  * @param {string} __dirname - 현재 디렉토리 경로
  * @returns {Promise<number|null>} 사용할 포트 번호 또는 실패 시 null
  */
-export async function determinePort(isDev, __dirname) {
+export async function determinePort(isDev:boolean, __dirname:string) {
   if (!isDev) {
     // --- 프로덕션 로직 (변경 없음) ---
     try {
@@ -71,7 +71,8 @@ export async function determinePort(isDev, __dirname) {
 
       return new Promise((resolve, reject) => {
         const listener = server.listen(0, 'localhost', () => {
-          const port = listener.address().port;
+          const address = listener.address();
+          const port = typeof address === 'object' && address !== null ? address.port : null;
           console.log(`Production server listening on port ${port}`);
           resolve(port);
         });

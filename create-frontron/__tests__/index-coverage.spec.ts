@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   readdirSync,
   rmSync,
   symlinkSync,
@@ -62,7 +63,9 @@ const tempDirs: string[] = []
 const childProcesses: ChildProcess[] = []
 
 function createWorkspace(label: string) {
-  const workspace = mkdtempSync(join(tmpdir(), `create-frontron-coverage-${label}-`))
+  const workspace = realpathSync.native(
+    mkdtempSync(join(tmpdir(), `create-frontron-coverage-${label}-`)),
+  )
   tempDirs.push(workspace)
   return workspace
 }
@@ -220,7 +223,7 @@ describe('runCreateFrontron branch coverage', () => {
     expect(generatedPackage.build.appId).toBe('com.example.my-app')
     expect(existsSync(join(root, '.gitignore'))).toBe(true)
     expect(existsSync(join(root, '.npmignore'))).toBe(false)
-    expect(log).toHaveBeenCalledWith('  cd "nested\\My App"')
+    expect(log).toHaveBeenCalledWith(`  cd "${join('nested', 'My App')}"`)
     expect(log).toHaveBeenCalledWith('  yarn')
     expect(log).toHaveBeenCalledWith('  yarn app')
     expect(transactionArtifacts(root)).toEqual([])

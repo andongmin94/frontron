@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   readlinkSync,
+  realpathSync,
   readdirSync,
   rmSync,
   symlinkSync,
@@ -24,7 +25,7 @@ const tempDirs: string[] = []
 
 // createTempRoot 함수는 각 테스트가 독립적으로 쓸 임시 루트를 만든다.
 function createTempRoot(label: string) {
-  const root = mkdtempSync(join(tmpdir(), `create-frontron-${label}-`))
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), `create-frontron-${label}-`)))
   tempDirs.push(root)
   return root
 }
@@ -825,14 +826,22 @@ describe('create-frontron transaction safety branches', () => {
     expect(existsSync(join(root, 'second.txt'))).toBe(false)
   })
 
-  test('살아 있는 저널 잠금 소유자가 끝날 때까지 기다린 뒤 복구한다', async () => {
+  test('살아 있는 저널 잠금 소유자가 잠금을 놓을 때까지 기다린 뒤 복구한다', async () => {
     const workspace = createTempRoot('wait-for-live-recovery')
     const root = join(workspace, 'app')
     const { lockPath } = transactionPaths(root)
     createRecoveryJournal(root)
-    const owner = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 150)'], {
-      stdio: 'ignore',
-    })
+    const owner = spawn(
+      process.execPath,
+      [
+        '--input-type=module',
+        '--eval',
+        `import { rmSync } from 'node:fs'
+setTimeout(() => rmSync(${JSON.stringify(lockPath)}, { force: true }), 300)
+`,
+      ],
+      { stdio: 'ignore' },
+    )
     const ownerResult = collectChildResult(owner)
     await waitForMilliseconds(20)
     writeFileSync(lockPath, `${JSON.stringify({ pid: owner.pid })}\n`, 'utf8')

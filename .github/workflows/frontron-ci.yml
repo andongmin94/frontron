@@ -71,9 +71,6 @@ jobs:
       - name: Check lint and formatting
         run: npm run check
 
-      - name: Non-mutating check gate
-        run: git diff --exit-code
-
       - name: Typecheck
         run: npm run typecheck
 

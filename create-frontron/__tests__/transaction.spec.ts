@@ -900,7 +900,7 @@ setTimeout(() => rmSync(${JSON.stringify(lockPath)}, { force: true }), 300)
     const root = join(workspace, 'app')
     const { lockPath } = transactionPaths(root)
     writeFileSync(lockPath, `${JSON.stringify({ pid: Number.MAX_SAFE_INTEGER })}\n`, 'utf8')
-    const lockStats = lstatSync(lockPath)
+    const lockStats = lstatSync(lockPath, { bigint: true })
     const reclaimPath = `${lockPath}.reclaim-${lockStats.dev}-${lockStats.ino}`
     fs.linkSync(lockPath, reclaimPath)
     const staleTime = new Date(Date.now() - 10_000)

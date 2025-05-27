@@ -37,6 +37,21 @@ function writeFixture(root: string, relativePath: string, content: string) {
   writeFileSync(filePath, content, 'utf8')
 }
 
+// mockPreciseFileIdentities 함수는 OS별 파일 ID 조합을 실제 Stats 동작을 유지한 채 재현한다.
+function mockPreciseFileIdentities(identities: Map<string, { dev: bigint; ino: bigint }>) {
+  const originalLstatSync = fs.lstatSync.bind(fs)
+
+  vi.spyOn(fs, 'lstatSync').mockImplementation((targetPath, options) => {
+    const stats = originalLstatSync(targetPath, options as never)
+    const identity = identities.get(String(targetPath))
+    const usesBigInt = typeof options === 'object' && options !== null && options.bigint === true
+
+    if (!identity || !usesBigInt) return stats
+
+    return Object.assign(Object.create(Object.getPrototypeOf(stats)), stats, identity) as never
+  })
+}
+
 // transactionPaths 함수는 테스트 target의 영속 저널과 잠금 경로를 계산한다.
 function transactionPaths(root: string) {
   const safeName = basename(root).replace(/[^a-zA-Z0-9._-]+/g, '-') || 'project'
@@ -783,6 +798,68 @@ describe('create-frontron transaction safety branches', () => {
     ).toThrow('Rollback also failed')
 
     expect(existsSync(transactionPaths(root).journalPath)).toBe(true)
+  })
+
+  test('Windows의 장치 ID 0에서도 정밀 inode가 같은 디렉터리를 같은 대상으로 판정한다', () => {
+    const workspace = createTempRoot('windows-zero-device')
+    const root = join(workspace, 'app')
+    const stagingRoot = join(workspace, 'staging')
+    mkdirSync(root)
+    mkdirSync(stagingRoot)
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+    mockPreciseFileIdentities(
+      new Map([
+        [root, { dev: 0n, ino: 42n }],
+        [stagingRoot, { dev: 0n, ino: 42n }],
+      ]),
+    )
+
+    expect(() => applyStagedProject(stagingRoot, root, 'merge')).toThrow(
+      'Scaffold staging directory must differ from the target project.',
+    )
+  })
+
+  test.each([
+    ['staging', 0n, 42n],
+    ['target', 42n, 0n],
+  ] as const)(
+    '판별할 수 없는 %s inode를 같은 대상으로 승인하지 않는다',
+    (_label, stagingIno, rootIno) => {
+      const workspace = createTempRoot(`unavailable-${_label}-inode`)
+      const root = join(workspace, 'app')
+      const stagingRoot = join(workspace, 'staging')
+      mkdirSync(root)
+      writeFixture(stagingRoot, 'generated.txt', 'generated\n')
+      vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+      mockPreciseFileIdentities(
+        new Map([
+          [root, { dev: 0n, ino: rootIno }],
+          [stagingRoot, { dev: 0n, ino: stagingIno }],
+        ]),
+      )
+
+      applyStagedProject(stagingRoot, root, 'merge')
+
+      expect(readFileSync(join(root, 'generated.txt'), 'utf8')).toBe('generated\n')
+    },
+  )
+
+  test('장치 ID가 있는 파일시스템에서는 dev와 inode가 모두 같은 항목만 승인한다', () => {
+    const workspace = createTempRoot('known-device-identity')
+    const root = join(workspace, 'app')
+    const stagingRoot = join(workspace, 'staging')
+    mkdirSync(root)
+    mkdirSync(stagingRoot)
+    mockPreciseFileIdentities(
+      new Map([
+        [root, { dev: 7n, ino: 84n }],
+        [stagingRoot, { dev: 7n, ino: 84n }],
+      ]),
+    )
+
+    expect(() => applyStagedProject(stagingRoot, root, 'merge')).toThrow(
+      'Scaffold staging directory must differ from the target project.',
+    )
   })
 
   test('lstat의 권한 오류를 존재하지 않음으로 오판하지 않는다', () => {

@@ -69,6 +69,9 @@ export function inspectProjectPath(root: string, target: string): ProjectPathIns
         }
       }
 
+      // 일반 파일의 hard link는 경로를 탈출하지 않으며 쓰기 안전성은 별도의 nlink 검증이 맡는다.
+      if (!stats.isDirectory()) continue
+
       const realComponent = realpathSync.native(component)
 
       if (!isInsideDirectory(realRoot, realComponent)) {

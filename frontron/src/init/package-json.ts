@@ -52,11 +52,6 @@ function ensureObject<T extends object>(value: unknown, label: string, fallback:
   throw new Error(`${label} must be an object to preserve existing packaging rules.`)
 }
 
-// clonePackageJson 함수는 package.json 객체를 안전하게 수정하기 위해 깊은 복사한다.
-function clonePackageJson(packageJson: PackageJson): PackageJson {
-  return JSON.parse(JSON.stringify(packageJson)) as PackageJson
-}
-
 // parseMajorVersion 함수는 버전 문자열에서 major 버전을 숫자로 읽어낸다.
 function parseMajorVersion(value: string | undefined) {
   const version = value?.match(/\d+(?:\.\d+){0,2}/)?.[0]
@@ -281,7 +276,7 @@ export function formatPackageJsonPatchChange(change: PackageJsonPatchChange) {
 
 // previewPackageJsonPatch 함수는 package.json 패치를 실제 적용 전 미리 계산한다.
 export function previewPackageJsonPatch(config: InitConfig): PackageJsonPatchPlan {
-  const preview = clonePackageJson(config.packageJson)
+  const preview = cloneJsonValue(config.packageJson)
   const blockers: string[] = []
 
   try {
@@ -293,7 +288,7 @@ export function previewPackageJsonPatch(config: InitConfig): PackageJsonPatchPla
     blockers.push((error as Error).message)
   }
 
-  const packageJson = blockers.length > 0 ? clonePackageJson(config.packageJson) : preview
+  const packageJson = blockers.length > 0 ? cloneJsonValue(config.packageJson) : preview
 
   return {
     packageJson,

@@ -188,8 +188,18 @@ describe('persistent transaction recovery', () => {
     const packageJsonBefore = readFileSync(packageJsonPath)
     const generatedPath = join(projectRoot, 'electron', 'main.ts')
     const manifestPath = join(projectRoot, MANIFEST_PATH)
+    const packageJson = { name: 'sample-web-app' } as PackageJson
+
+    Object.defineProperty(packageJson, 'injectedFailure', {
+      enumerable: true,
+      get() {
+        throw new Error('injected JSON serialization failure')
+      },
+    })
+
     const plan = {
       config: { cwd: projectRoot },
+      packageJsonPlan: { packageJson },
       files: [
         {
           path: generatedPath,
@@ -207,18 +217,8 @@ describe('persistent transaction recovery', () => {
       warnings: [],
       blockers: [],
     } as unknown as InitPlan
-    const packageJson = { name: 'sample-web-app' } as PackageJson
 
-    Object.defineProperty(packageJson, 'injectedFailure', {
-      enumerable: true,
-      get() {
-        throw new Error('injected JSON serialization failure')
-      },
-    })
-
-    expect(() => applyInitChanges(packageJsonPath, packageJson, plan)).toThrow(
-      'Written files were rolled back',
-    )
+    expect(() => applyInitChanges(packageJsonPath, plan)).toThrow('Written files were rolled back')
     expect(readFileSync(packageJsonPath)).toEqual(packageJsonBefore)
     expect(existsSync(generatedPath)).toBe(false)
     expect(existsSync(join(projectRoot, 'electron'))).toBe(false)
@@ -238,19 +238,6 @@ describe('persistent transaction recovery', () => {
 
     writeFileSync(generatedPath, originalGeneratedSource)
     writeFileSync(outsidePath, outsideSource)
-    const plan = {
-      config: { cwd: projectRoot },
-      files: [
-        {
-          path: generatedPath,
-          action: 'overwrite',
-          reason: 'hard-link swap failure injection',
-          content: 'changed generated source\n',
-        },
-      ],
-      warnings: [],
-      blockers: [],
-    } as unknown as InitPlan
     const packageJson = { name: 'sample-web-app' } as PackageJson
 
     Object.defineProperty(packageJson, 'injectedFailure', {
@@ -262,7 +249,22 @@ describe('persistent transaction recovery', () => {
       },
     })
 
-    expect(() => applyInitChanges(packageJsonPath, packageJson, plan)).toThrow(
+    const plan = {
+      config: { cwd: projectRoot },
+      packageJsonPlan: { packageJson },
+      files: [
+        {
+          path: generatedPath,
+          action: 'overwrite',
+          reason: 'hard-link swap failure injection',
+          content: 'changed generated source\n',
+        },
+      ],
+      warnings: [],
+      blockers: [],
+    } as unknown as InitPlan
+
+    expect(() => applyInitChanges(packageJsonPath, plan)).toThrow(
       'persistent journal: Transaction recovery target must be a regular file with exactly one hard link',
     )
     expect(readFileSync(outsidePath, 'utf8')).toBe(outsideSource)
@@ -980,12 +982,6 @@ describe('persistent transaction recovery', () => {
     writeFileSync(workspacePath, firstCommittedSource)
     commitTransaction(firstHandle)
 
-    const stalePlan = {
-      config: { cwd: appBRoot },
-      files: [],
-      warnings: [],
-      blockers: [],
-    } as unknown as InitPlan
     const staleWorkspacePlan = {
       path: workspacePath,
       source: originalSource,
@@ -1001,10 +997,18 @@ describe('persistent transaction recovery', () => {
       warnings: [],
       blockers: [],
     }
+    const stalePlan = {
+      config: { cwd: appBRoot },
+      packageJsonPlan: { packageJson: { name: 'app-b' } },
+      pnpmWorkspacePlan: staleWorkspacePlan,
+      files: [],
+      warnings: [],
+      blockers: [],
+    } as unknown as InitPlan
 
-    expect(() =>
-      applyInitChanges(packageBPath, { name: 'app-b' }, stalePlan, null, staleWorkspacePlan),
-    ).toThrow('changed after the transaction plan was created')
+    expect(() => applyInitChanges(packageBPath, stalePlan)).toThrow(
+      'changed after the transaction plan was created',
+    )
     expect(readFileSync(workspacePath, 'utf8')).toBe(firstCommittedSource)
 
     beginTransaction(appARoot, 'clean', [

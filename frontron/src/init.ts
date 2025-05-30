@@ -375,14 +375,7 @@ export async function runInit(options: InitOptions, context: InitContext) {
       )
     }
 
-    applyInitChanges(
-      packageJsonPath,
-      packageJsonPatchPlan.packageJson,
-      plan,
-      tsconfigJsonPatchPlan,
-      pnpmWorkspacePatchPlan,
-      yarnRcPatchPlan,
-    )
+    applyInitChanges(packageJsonPath, plan)
 
     writeInitSuccessReport(context.output, config, scriptFallbackWarnings)
 

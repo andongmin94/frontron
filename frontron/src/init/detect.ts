@@ -258,21 +258,16 @@ export function inferScriptName(packageJson: PackageJson, kind: 'dev' | 'build')
   return viteCandidates.length === 1 ? viteCandidates[0] : kind === 'dev' ? 'dev' : 'build'
 }
 
-// isViteBuildCommand 함수는 명령 문자열이 Vite build 실행인지 판별한다.
-function isViteBuildCommand(command: string | null | undefined) {
-  return Boolean(command && /\bvite\s+build\b/i.test(command))
-}
-
 // hasViteBuildCommand 함수는 script 명령이 Vite 빌드 명령인지 확인한다.
 export function hasViteBuildCommand(command: string | null | undefined) {
-  return isViteBuildCommand(command)
+  return Boolean(command && /\bvite\s+build\b/i.test(command))
 }
 
 // inferOutDirFromScript 함수는 build script 명령에서 출력 디렉터리를 추론한다.
 export function inferOutDirFromScript(packageJson: PackageJson, scriptName: string) {
   const command = getScriptCommand(packageJson, scriptName)
 
-  if (!command || !isViteBuildCommand(command)) {
+  if (!command || !hasViteBuildCommand(command)) {
     return null
   }
 
@@ -284,7 +279,7 @@ export function inferOutDirFromScript(packageJson: PackageJson, scriptName: stri
 export function inferViteConfigPathFromScript(packageJson: PackageJson, scriptName: string) {
   const command = getScriptCommand(packageJson, scriptName)
 
-  if (!isViteBuildCommand(command) || !command) {
+  if (!command || !hasViteBuildCommand(command)) {
     return null
   }
 
@@ -303,8 +298,11 @@ export function inferNextExportOutDirFromScript(packageJson: PackageJson, script
   return normalizePathValue(readCommandOption(command, ['--outdir', '-o']) ?? 'out', 'out')
 }
 
-// inferViteServerValue 함수는 Vite 설정 파일에서 server.port 또는 server.host 값을 추론한다.
-export function inferViteServerValue(cwd: string, key: 'port' | 'host') {
+// inferViteServerConfig 함수는 Vite 설정 파일을 한 번 순회해 server host와 port를 추론한다.
+export function inferViteServerConfig(cwd: string) {
+  let host: string | null = null
+  let port: string | null = null
+
   for (const fileName of [
     'vite.config.ts',
     'vite.config.mts',
@@ -321,26 +319,28 @@ export function inferViteServerValue(cwd: string, key: 'port' | 'host') {
 
     const source = readFileSync(filePath, 'utf8')
 
-    if (key === 'port') {
+    if (port === null) {
       const portMatch = source.match(/server\s*:\s*\{[\s\S]*?port\s*:\s*(\d{1,5})/m)
-      const port = Number.parseInt(portMatch?.[1] ?? '', 10)
+      const parsedPort = Number.parseInt(portMatch?.[1] ?? '', 10)
 
-      if (Number.isInteger(port) && port > 0 && port <= 65_535) {
-        return String(port)
+      if (Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort <= 65_535) {
+        port = String(parsedPort)
       }
-    } else {
+    }
+
+    if (host === null) {
       const hostMatch = source.match(
         /server\s*:\s*\{[\s\S]*?host\s*:\s*(?:"([^"]+)"|'([^']+)'|`([^`]+)`|([A-Za-z0-9_.:-]+))/m,
       )
-      const host = hostMatch?.slice(1).find(Boolean)
+      host = hostMatch?.slice(1).find(Boolean) ?? null
+    }
 
-      if (host) {
-        return host
-      }
+    if (host !== null && port !== null) {
+      break
     }
   }
 
-  return null
+  return { host, port }
 }
 
 // normalizeLoopbackHost 함수는 host 값을 Electron dev server용 loopback host로 정규화한다.

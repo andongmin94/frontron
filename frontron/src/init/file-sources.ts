@@ -4,21 +4,21 @@ import { createManifest, MANIFEST_PATH, renderManifestSource } from './manifest'
 import type { PackageJsonOwnershipClaim } from './manifest'
 import { createDesktopScriptCommands } from './package-json'
 import {
-  renderDevSource,
-  renderElectronTypesSource,
-  renderIpcSource,
-  renderMainSource,
-  renderPreloadSource,
   renderElectronPackageSource,
+  renderMainSource,
   renderServeSource,
-  renderSplashSource,
   renderTsconfigSource,
-  renderTraySource,
   renderWindowSource,
 } from './runtime/renderers'
+import {
+  readCreateFrontronTemplateFile,
+  renderCreateFrontronElectronFile,
+} from './runtime/create-frontron-template'
 import type { InitConfig } from './shared'
 import { usesStarterBridge } from './shared'
 import type { YarnRcOwnershipClaim } from './yarnrc-yaml'
+
+const STARTER_ELECTRON_FILES = ['preload.ts', 'ipc.ts', 'dev.ts', 'splash.ts', 'tray.ts'] as const
 
 // createInitFileSources 함수는 init이 새 프로젝트에 쓸 Electron 관련 파일 소스를 만든다.
 export function createInitFileSources(config: InitConfig) {
@@ -31,12 +31,17 @@ export function createInitFileSources(config: InitConfig) {
   ])
 
   if (usesStarterBridge(config.preset)) {
-    filesToWrite.set(join(config.cwd, config.desktopDir, 'preload.ts'), renderPreloadSource())
-    filesToWrite.set(join(config.cwd, config.desktopDir, 'ipc.ts'), renderIpcSource())
-    filesToWrite.set(join(config.cwd, config.desktopDir, 'dev.ts'), renderDevSource())
-    filesToWrite.set(join(config.cwd, config.desktopDir, 'splash.ts'), renderSplashSource())
-    filesToWrite.set(join(config.cwd, config.desktopDir, 'tray.ts'), renderTraySource())
-    filesToWrite.set(join(config.cwd, 'src', 'types', 'electron.d.ts'), renderElectronTypesSource())
+    for (const fileName of STARTER_ELECTRON_FILES) {
+      filesToWrite.set(
+        join(config.cwd, config.desktopDir, fileName),
+        renderCreateFrontronElectronFile(fileName),
+      )
+    }
+
+    filesToWrite.set(
+      join(config.cwd, 'src', 'types', 'electron.d.ts'),
+      readCreateFrontronTemplateFile('src/types/electron.d.ts'),
+    )
   }
 
   return filesToWrite

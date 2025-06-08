@@ -303,8 +303,17 @@ applyStagedProject(
 
     const childSource = `
 import { recoverScaffoldTransaction } from ${JSON.stringify(builtModuleUrl())}
-const recovered = recoverScaffoldTransaction(${JSON.stringify(root)})
-process.stdout.write(JSON.stringify(recovered))
+try {
+  const recovered = recoverScaffoldTransaction(${JSON.stringify(root)})
+  process.stdout.write(JSON.stringify(recovered))
+} catch (error) {
+  process.stderr.write(JSON.stringify({
+    name: error instanceof Error ? error.name : typeof error,
+    message: error instanceof Error ? error.message : String(error),
+    code: error && typeof error === 'object' && 'code' in error ? error.code : null,
+  }))
+  process.exitCode = 1
+}
 `
     const children = [
       spawn(process.execPath, ['--input-type=module', '--eval', childSource], { cwd: workspace }),

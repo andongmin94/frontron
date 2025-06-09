@@ -161,3 +161,18 @@
 .vp-sponsor-grid.medium .vp-sponsor-grid-image[alt='JetBrains'] {
   max-height: 100px;
 }
+
+/* 스크롤바 숨기기 (마우스 휠 스크롤은 유지) */
+::-webkit-scrollbar {
+  display: none;
+}
+
+/* Firefox용 */
+html {
+  scrollbar-width: none;
+}
+
+/* IE, Edge용 */
+body {
+  -ms-overflow-style: none;
+}

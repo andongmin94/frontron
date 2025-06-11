@@ -1,12 +1,4 @@
-import path from "path"
-import { fileURLToPath, pathToFileURL } from "url"
 import { BrowserWindow } from "electron"
-
-const fontPath = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../public/fonts/PretendardVariable.woff2"
-)
-const fontSrcUrl = pathToFileURL(fontPath).toString()
 
 let splashWindow: BrowserWindow | null = null
 
@@ -27,12 +19,6 @@ export function createSplash() {
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Loading...</title>
         <style>
-          @font-face {
-            font-family: "Pretendard";
-            src: url("${fontSrcUrl}") format("woff2");
-            font-weight: 400;
-            font-style: normal;
-          }
           body {
             display: flex;
             flex-direction: column;
@@ -41,7 +27,7 @@ export function createSplash() {
             height: 100vh;
             margin: 0;
             overflow: hidden;
-            font-family: "Pretendard", system-ui, sans-serif;
+            font-family: system-ui, sans-serif;
             user-select: none;
           }
           .spinner {

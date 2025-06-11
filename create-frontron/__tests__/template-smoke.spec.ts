@@ -29,6 +29,7 @@ test('starter template restores the template-owned electron structure', () => {
   run([projectName], { cwd: __dirname })
 
   const packageJson = fs.readJsonSync(join(genPath, 'package.json')) as {
+    private?: boolean
     scripts: Record<string, string>
     dependencies: Record<string, string>
     devDependencies: Record<string, string>
@@ -51,10 +52,16 @@ test('starter template restores the template-owned electron structure', () => {
   const electronServe = fs.readFileSync(join(genPath, 'src/electron/serve.ts'), 'utf-8')
   const electronPreload = fs.readFileSync(join(genPath, 'src/electron/preload.ts'), 'utf-8')
   const electronWindow = fs.readFileSync(join(genPath, 'src/electron/window.ts'), 'utf-8')
+  const electronSplash = fs.readFileSync(join(genPath, 'src/electron/splash.ts'), 'utf-8')
+  const electronTray = fs.readFileSync(join(genPath, 'src/electron/tray.ts'), 'utf-8')
   const electronTypes = fs.readFileSync(join(genPath, 'src/types/electron.d.ts'), 'utf-8')
   const tasksSource = fs.readFileSync(join(genPath, 'scripts/tasks.mjs'), 'utf-8')
   const htmlSource = fs.readFileSync(join(genPath, 'index.html'), 'utf-8')
+  const indexCss = fs.readFileSync(join(genPath, 'src/index.css'), 'utf-8')
+  const templateReadme = fs.readFileSync(join(genPath, 'README.md'), 'utf-8')
+  const uiEntries = fs.readdirSync(join(genPath, 'src/components/ui')).sort()
 
+  expect(packageJson.private).toBe(true)
   expect(packageJson.scripts.dev).toBe('node scripts/tasks.mjs dev')
   expect(packageJson.scripts.app).toBe('node scripts/tasks.mjs app')
   expect(packageJson.scripts.typecheck).toBe('node scripts/tasks.mjs typecheck')
@@ -64,9 +71,19 @@ test('starter template restores the template-owned electron structure', () => {
   expect(packageJson.scripts).not.toHaveProperty('web:build')
   expect(packageJson.scripts).not.toHaveProperty('app:dev')
   expect(packageJson.scripts).not.toHaveProperty('app:build')
-  expect(packageJson.dependencies).toHaveProperty('cmdk')
-  expect(packageJson.dependencies).toHaveProperty('recharts')
-  expect(packageJson.dependencies).toHaveProperty('sonner')
+  for (const dependency of [
+    'cmdk',
+    'embla-carousel-react',
+    'input-otp',
+    'next-themes',
+    'react-day-picker',
+    'react-resizable-panels',
+    'recharts',
+    'sonner',
+    'vaul',
+  ]) {
+    expect(packageJson.dependencies).not.toHaveProperty(dependency)
+  }
   expect(packageJson.dependencies).toHaveProperty('tw-animate-css')
   expect(packageJson.dependencies).not.toHaveProperty('electron')
   expect(packageJson.dependencies).not.toHaveProperty('frontron')
@@ -100,16 +117,28 @@ test('starter template restores the template-owned electron structure', () => {
   expect(electronMain).toContain('await registerRendererProtocol(rendererTargetUrl)')
   expect(electronMain).toContain('ensureRendererCsp(responseHeaders)')
   expect(electronMain).toContain('rendererUrl = `${rendererOrigin}/`')
+  expect(electronMain).toContain('await createTray()')
   expect(electronServe).toContain('function createLoopbackUrlCandidates')
   expect(electronPreload).toContain('exposeInMainWorld("electron"')
   expect(electronWindow).toContain('preload')
   expect(electronWindow).toContain('webContents.on("will-frame-navigate"')
   expect(electronWindow).toContain('setWindowOpenHandler')
+  expect(electronWindow).toContain(
+    '...(existsSync(windowIconPath) ? { icon: windowIconPath } : {})',
+  )
   expect(electronWindow).not.toContain('onHeadersReceived')
   expect(electronWindow).not.toContain('Content-Security-Policy')
+  expect(electronTray).toContain('app.getFileIcon(process.execPath)')
+  expect(electronSplash).toContain('font-family: system-ui, sans-serif')
+  expect(electronSplash).not.toContain('Pretendard')
+  expect(indexCss).toContain('@import "@fontsource-variable/geist"')
+  expect(indexCss).toContain('font-family: "Geist Variable", sans-serif')
+  expect(indexCss).not.toContain('Pretendard')
   expect(tasksSource).toContain('getElectronBuilderArgs(extraArgs)')
   expect(tasksSource).toContain('["--publish", "never", ...args]')
   expect(tasksSource).toContain('"--experimental-strip-types"')
+  expect(tasksSource).toContain('formatPackageJson()')
+  expect(tasksSource).not.toContain('case "format-package-json"')
   expect(electronServe).not.toContain('ELECTRON_DISABLE_SECURITY_WARNINGS')
   expect(htmlSource).toContain('http-equiv="Content-Security-Policy"')
   expect(electronTypes).toContain('interface Window')
@@ -125,7 +154,9 @@ test('starter template restores the template-owned electron structure', () => {
   expect(fs.existsSync(join(genPath, 'tsconfig.electron.json'))).toBe(true)
   expect(fs.existsSync(join(genPath, 'frontron.config.ts'))).toBe(false)
   expect(fs.existsSync(join(genPath, 'frontron'))).toBe(false)
-  expect(fs.existsSync(join(genPath, 'src/components/ui/button.tsx'))).toBe(true)
+  expect(uiEntries).toEqual(['button.tsx', 'dialog.tsx'])
+  expect(fs.existsSync(join(genPath, 'public/fonts/PretendardVariable.woff2'))).toBe(false)
+  expect(templateReadme).toContain('only `button.tsx` and `dialog.tsx`')
   expect(fs.existsSync(join(genPath, 'src/components/theme-provider.tsx'))).toBe(true)
-  expect(fs.existsSync(join(genPath, 'src/hooks/use-mobile.ts'))).toBe(true)
+  expect(fs.existsSync(join(genPath, 'src/hooks/use-mobile.ts'))).toBe(false)
 })

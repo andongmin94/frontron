@@ -59,7 +59,7 @@ test('prints help without prompting', () => {
   const { stdout } = run(['--help'])
 
   expect(stdout).toContain('Usage: create-frontron [project-name] [options]')
-  expect(stdout).toContain('--overwrite <yes|no|ignore>')
+  expect(stdout).toContain('--overwrite <yes|no>')
   expect(stdout).toContain('Defaults to "desktop-app"')
   expect(stdout).not.toContain('Project name:')
 })
@@ -101,15 +101,25 @@ test('rejects the removed template option', () => {
   }
 })
 
-test('accepts command line override for --overwrite', () => {
+test('rejects the removed ignore overwrite mode', () => {
   createNonEmptyDir()
-  const { stdout } = run(['.', '--overwrite', 'ignore'], { cwd: genPath })
-  expect(stdout).not.toContain(`Current directory is not empty.`)
+  expect(() => run(['.', '--overwrite', 'ignore'], { cwd: genPath })).toThrow(
+    '--overwrite must be either "yes" or "no".',
+  )
 })
 
 test('rejects an invalid command line override for --overwrite', () => {
   expect(() => run([projectName, '--overwrite', 'typo'], { cwd: __dirname })).toThrow(
-    '--overwrite must be one of "yes", "no", or "ignore".',
+    '--overwrite must be either "yes" or "no".',
+  )
+})
+
+test('rejects unknown options and extra positional arguments', () => {
+  expect(() => run([projectName, '--unknown'], { cwd: __dirname })).toThrow(
+    'Unknown option: --unknown',
+  )
+  expect(() => run([projectName, 'extra'], { cwd: __dirname })).toThrow(
+    'Unexpected positional argument: "extra"',
   )
 })
 
@@ -122,6 +132,16 @@ test('uses the final directory name for nested project metadata', () => {
   expect(packageJson.name).toBe('nested-app')
   expect(packageJson.productName).toBe('nested-app')
   expect(packageJson.build.productName).toBe('nested-app')
+})
+
+test('scaffolds into a .git-only directory without requiring overwrite', () => {
+  fs.mkdirpSync(join(genPath, '.git'))
+  fs.writeFileSync(join(genPath, '.git', 'HEAD'), 'ref: refs/heads/main\n')
+
+  run(['.'], { cwd: genPath })
+
+  expect(fs.readFileSync(join(genPath, '.git', 'HEAD'), 'utf8')).toContain('refs/heads/main')
+  expect(fs.existsSync(join(genPath, 'package.json'))).toBe(true)
 })
 
 test('replace overwrite preserves .git and removes previous project files', () => {

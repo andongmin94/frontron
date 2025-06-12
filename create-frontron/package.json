@@ -8,27 +8,25 @@
   "bin": {
     "create-frontron": "index.js"
   },
+  "exports": {
+    "./package.json": "./package.json",
+    "./template/*": "./template/*"
+  },
   "files": [
     "index.js",
-    "scripts/tasks.mjs",
     "template",
     "dist"
   ],
   "scripts": {
-    "build"                         : "node scripts/tasks.mjs build",
-    "test"                          : "node scripts/tasks.mjs test",
-    "coverage"                      : "node scripts/tasks.mjs coverage",
-    "test:package-smoke"            : "node scripts/tasks.mjs test:package-smoke",
-    "test:release-smoke"            : "node scripts/tasks.mjs test:release-smoke",
-    "release:verify"                : "node scripts/tasks.mjs release:verify",
-    "release:matrix-smoke"          : "node scripts/tasks.mjs release:matrix-smoke",
-    "release:package-manager-smoke" : "node scripts/tasks.mjs release:package-manager-smoke",
-    "typecheck"                     : "node scripts/tasks.mjs typecheck",
-    "check"                         : "node scripts/tasks.mjs check",
-    "lint"                          : "node scripts/tasks.mjs lint",
-    "prepublishOnly"                : "node scripts/tasks.mjs prepublishOnly",
-    "version"                       : "node scripts/tasks.mjs version",
-    "release"                       : "node scripts/tasks.mjs release"
+    "build"              : "node scripts/tasks.mjs build",
+    "test"               : "node scripts/tasks.mjs test",
+    "coverage"           : "node scripts/tasks.mjs coverage",
+    "test:package-smoke" : "node scripts/tasks.mjs test:package-smoke",
+    "test:release-smoke" : "node scripts/tasks.mjs test:release-smoke",
+    "typecheck"          : "node scripts/tasks.mjs typecheck",
+    "check"              : "node scripts/tasks.mjs check",
+    "lint"               : "node scripts/tasks.mjs lint",
+    "prepublishOnly"     : "node scripts/tasks.mjs prepublishOnly"
   },
   "engines": {
     "node": ">=22.15.0"

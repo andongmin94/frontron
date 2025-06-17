@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
 import { runCli } from '../src/cli'
+import { TRANSACTION_JOURNAL_PATH, TRANSACTION_LOCK_PATH } from '../src/transaction-journal'
 import * as fixtures from './helpers/frontron-cli-fixtures'
 
 describe('frontron doctor', () => {
@@ -23,6 +24,30 @@ describe('frontron doctor', () => {
     expect(combined).toContain('Run "frontron init --dry-run" to preview the retrofit plan.')
     expect(combined).not.toContain('Missing dependency: electron')
     expect(combined).not.toContain('Missing tsconfig.electron.json')
+  })
+
+  test('doctor reports pending journal and lock state without modifying it', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const journalPath = join(projectRoot, TRANSACTION_JOURNAL_PATH)
+    const lockPath = join(projectRoot, TRANSACTION_LOCK_PATH)
+    const journalSource = 'pending journal sentinel\n'
+    const lockSource = 'pending lock sentinel\n'
+
+    writeFileSync(journalPath, journalSource)
+    writeFileSync(lockPath, lockSource)
+
+    const output = fixtures.createOutput()
+    const doctorExitCode = await runCli(['doctor'], output, { cwd: projectRoot })
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expect(doctorExitCode).toBe(1)
+    expect(combined).toContain('Status: blocked')
+    expect(combined).toContain(`Pending transaction journal detected: ${TRANSACTION_JOURNAL_PATH}`)
+    expect(combined).toContain(`Pending transaction lock detected: ${TRANSACTION_LOCK_PATH}`)
+    expect(combined).toContain('Doctor did not recover or modify the pending transaction state.')
+    expect(readFileSync(journalPath, 'utf8')).toBe(journalSource)
+    expect(readFileSync(lockPath, 'utf8')).toBe(lockSource)
   })
 
   test('doctor passes after a successful init', async () => {
@@ -46,6 +71,28 @@ describe('frontron doctor', () => {
     expect(combined).toContain('No blockers found.')
     expect(combined).toContain('No action needed.')
     expect(combined).toContain('scripts.frontron:dev exists')
+  })
+
+  test('doctor blocks packaging when a required Electron dependency is missing', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      devDependencies: Record<string, string>
+    }
+    delete packageJson.devDependencies.electron
+    writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
+
+    const output = fixtures.createOutput()
+    const exitCode = await runCli(['doctor'], output, { cwd: projectRoot })
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expect(exitCode).toBe(1)
+    expect(combined).toContain('Status: blocked')
+    expect(combined).toContain('Missing required dependency: electron')
   })
 
   test('doctor checks pnpm workspace claims from a nested package', async () => {

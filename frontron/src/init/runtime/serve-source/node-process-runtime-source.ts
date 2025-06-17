@@ -1,5 +1,5 @@
-// renderNodeProcessRuntimeSource 함수는 생성되는 serve.ts의 프로세스 트리 제어와 node 서버 런타임을 만든다.
-export function renderNodeProcessRuntimeSource() {
+// renderChildProcessRuntimeSource 함수는 개발 서버와 Electron이 공유하는 프로세스 종료 코드를 만든다.
+export function renderChildProcessRuntimeSource() {
   return `// isChildProcessRunning 함수는 자식 프로세스가 아직 종료되지 않았는지 확인한다.
 function isChildProcessRunning(child: ChildProcess) {
   return child.exitCode === null && child.signalCode === null
@@ -103,8 +103,12 @@ async function terminateChildProcessTree(child: ChildProcess, timeoutMs = 5_000)
   await signalChildProcessTree(child, true)
   await waitForChildExit(child, 1_000)
 }
+`
+}
 
-// startNodeServerRuntime 함수는 패키징된 node-server 렌더러 런타임을 시작한다.
+// renderNodeServerRuntimeSource 함수는 Node 서버 전략에만 필요한 실행 코드를 만든다.
+export function renderNodeServerRuntimeSource() {
+  return `// startNodeServerRuntime 함수는 패키징된 node-server 렌더러 런타임을 시작한다.
 async function startNodeServerRuntime() {
   if (rendererProcess && rendererRuntimeUrl) {
     return rendererRuntimeUrl
@@ -178,25 +182,14 @@ async function stopNodeServerRuntime() {
   await terminateChildProcessTree(activeProcess)
 }
 
-// startRendererRuntime 함수는 현재 전략에 맞는 렌더러 런타임을 시작하고 URL을 반환한다.
+// startRendererRuntime 함수는 패키징된 Node 서버를 시작하고 접속 URL을 반환한다.
 export async function startRendererRuntime() {
-  return RUNTIME_STRATEGY === 'node-server'
-    ? startNodeServerRuntime()
-    : startStaticServer()
+  return startNodeServerRuntime()
 }
 
-// stopRendererRuntime 함수는 현재 전략에 맞게 렌더러 런타임을 종료한다.
+// stopRendererRuntime 함수는 실행 중인 Node 서버 프로세스를 종료한다.
 export async function stopRendererRuntime() {
-  if (RUNTIME_STRATEGY === 'node-server') {
-    await stopNodeServerRuntime()
-    return
-  }
-
-  await stopStaticServer()
+  await stopNodeServerRuntime()
 }
-
-// inferDevUrl 함수는 개발 모드에서 Electron이 접속할 렌더러 URL을 추론한다.
-export async function inferDevUrl() {
-  return DEV_URL
-}`
+`
 }

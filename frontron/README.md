@@ -10,7 +10,7 @@ Use `create-frontron` for new apps. Use `frontron init` when you already have a 
 - `frontron init` is the active command in this package
 - `frontron doctor` checks the generated Electron layer after init
 - `frontron clean` removes manifest-owned generated files, package scripts, and package metadata when you want to back out the retrofit layer
-- `frontron update` refreshes manifest-owned generated files, package scripts, and package metadata through the same guarded plan as `init --force`
+- `frontron update` refreshes manifest-owned generated files, package scripts, and package metadata through a guarded manifest-based plan
 - `init` can now seed a conservative `minimal` or `starter-like` Electron layer into a compatible existing web frontend project
 - the generated Electron files stay app-owned instead of introducing a starter-owned runtime contract
 - the current CLI surface is intentionally narrow: `init`, `doctor`, `clean`, and `update` are supported
@@ -42,7 +42,7 @@ npm run frontron:dev
 ```
 
 `frontron init` is the active retrofit command today.
-Use `npx frontron init --dry-run` first when you want to inspect the detected adapter, planned files, and package.json changes without writing anything.
+Use `npx frontron init --dry-run` first when you want to inspect the detected adapter, planned files, and package.json changes without applying the new plan. If a previous lifecycle command was interrupted, Frontron restores that transaction before creating the preview.
 After `init`, run your package manager install command again because the retrofit adds Electron-related dependencies to `package.json`.
 Use `npm run frontron:package` when you are ready to create the packaged desktop app; `npm run frontron:build` only prepares the desktop build output.
 When using `npm exec` directly, keep the `--` separator: `npm exec -- frontron init`.
@@ -111,8 +111,9 @@ Only manifest-owned files and values are refreshed. Local edits are reported as 
 - The protocol proxy accepts only the registered app origin, rewrites internal origin headers, preserves an app-provided CSP, and adds a conservative fallback CSP when one is missing.
 - Navigation stays inside the app origin. Only explicit `http:` and `https:` links can be handed to the system browser.
 - Generated windows keep Node integration disabled and context isolation enabled.
-- `init`, `update`, and `clean` snapshot every owned file before mutation. A durable journal is published before the first write, and the next CLI invocation automatically restores an interrupted operation.
+- `init`, `update`, and `clean` snapshot every owned file before mutation. A durable journal is published before the first write, and the next valid `init`, `update`, or `clean` invocation automatically restores an interrupted operation.
 - Project paths, manifest paths, pnpm workspace edits, symlink ancestors, and transaction journals are validated before use. An invalid recovery journal stops the command instead of guessing.
+- Help, argument errors, unknown commands, and `doctor` never trigger recovery. `doctor` reports pending journal or lock state without modifying it.
 
 ## Doctor
 
@@ -142,7 +143,9 @@ Preview a guarded refresh of manifest-owned generated files, scripts, and packag
 npx frontron update --dry-run
 ```
 
-Run `npx frontron update --yes` to apply the refresh. Internally this uses the same conflict rules as `frontron init --force`, so only manifest-owned files are overwritten.
+Run `npx frontron update --yes` to apply the refresh. Use `npx frontron update --yes --force` only when locally edited manifest-owned files or scripts should be overwritten.
+
+`update` always reuses the adapter, preset, paths, script names, product name, and app id recorded by `init`; migration override options are intentionally not accepted. The public `init --force` flow has been removed in favor of `update --yes` and `update --yes --force`.
 
 ## Compatibility verification
 

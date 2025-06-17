@@ -12,6 +12,7 @@ import {
 } from './project-paths'
 
 type Manifest = NonNullable<ReturnType<typeof readManifest>>
+type UpdateOptions = Pick<InitOptions, 'yes' | 'force' | 'dryRun'>
 
 // resolveManifestProjectFile 함수는 manifest 파일 항목을 링크 없는 프로젝트 내부 경로로 해석한다.
 function resolveManifestProjectFile(cwd: string, filePath: string, label: string) {
@@ -209,7 +210,7 @@ function createManifestOptions(manifest: Manifest, cwd: string): Partial<InitOpt
 }
 
 // runUpdate 함수는 manifest 설정을 바탕으로 Frontron 생성 파일과 설정을 갱신한다.
-export async function runUpdate(options: InitOptions, context: InitContext) {
+export async function runUpdate(options: UpdateOptions, context: InitContext) {
   const manifestPath = resolve(context.cwd, MANIFEST_PATH)
 
   assertProjectPathSafe(context.cwd, manifestPath, 'Frontron manifest')
@@ -233,7 +234,6 @@ export async function runUpdate(options: InitOptions, context: InitContext) {
   const exitCode = await runInit(
     {
       ...manifestOptions,
-      ...options,
       yes: true,
       force: true,
       dryRun: !shouldApply,

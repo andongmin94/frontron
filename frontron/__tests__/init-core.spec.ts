@@ -102,12 +102,13 @@ describe('frontron init core flow', () => {
     expect(serveSource).toContain('function createLoopbackUrlCandidates')
     expect(serveSource).toContain('const readyDevUrl = await waitForUrlReady(DEV_URL)')
     expect(serveSource).toContain('ELECTRON_RENDERER_URL: readyDevUrl')
-    expect(serveSource).toContain('HOST: LOOPBACK_HOST')
     expect(serveSource).toContain("spawn('taskkill', args")
     expect(serveSource).toContain('process.kill(-child.pid, signal)')
-    expect(serveSource.match(/detached: process\.platform !== 'win32'/g)).toHaveLength(3)
+    expect(serveSource.match(/detached: process\.platform !== 'win32'/g)).toHaveLength(2)
     expect(serveSource).toContain('function parseByteRange')
     expect(serveSource).toContain('await realpath(resolvedPath)')
+    expect(serveSource).not.toContain('function startNodeServerRuntime')
+    expect(serveSource).not.toContain('RemixBundleMetafile')
     expect(serveSource).toContain('createRequire(import.meta.url)')
     expect(serveSource).toContain(`JSON.stringify({ type: 'module' }, null, 2)`)
     expect(readFileSync(join(projectRoot, 'tsconfig.electron.json'), 'utf8')).toContain(
@@ -712,7 +713,7 @@ allowBuilds:
     )
   })
 
-  test('init treats existing target files as blockers even with --force', async () => {
+  test('init rejects public --force before inspecting or writing project files', async () => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)
     const output = fixtures.createOutput()
@@ -726,75 +727,9 @@ allowBuilds:
 
     expect(exitCode).toBe(1)
     expect(readFileSync(join(projectRoot, 'tsconfig.electron.json'), 'utf8')).toBe('{}\n')
-    expect(combined).toContain('target files already exist')
-  })
-
-  test('init --force only refreshes files and scripts recorded in the manifest', async () => {
-    const projectRoot = fixtures.createTempProject()
-    fixtures.tempDirs.push(projectRoot)
-    const output = fixtures.createOutput()
-
-    const firstExitCode = await runCli(['init', '--yes'], output, {
-      cwd: projectRoot,
-    })
-    expect(firstExitCode).toBe(0)
-
-    const packageJsonPath = join(projectRoot, 'package.json')
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
-      scripts: Record<string, string>
-    }
-    packageJson.scripts['frontron:dev'] = 'stale generated script'
-    writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
-    writeFileSync(join(projectRoot, 'electron', 'main.ts'), 'stale generated file\n')
-
-    const secondOutput = fixtures.createOutput()
-    const secondExitCode = await runCli(['init', '--yes', '--force'], secondOutput, {
-      cwd: projectRoot,
-    })
-    const refreshedPackageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
-      scripts: Record<string, string>
-    }
-
-    expect(secondExitCode).toBe(0)
-    expect(readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')).toContain(
-      'createMainWindow',
-    )
-    expect(refreshedPackageJson.scripts['frontron:dev']).toContain('--dev-app')
-    expect(refreshedPackageJson.scripts['frontron:dev:electron']).toBeUndefined()
-  }, 15_000)
-
-  test('init --dry-run --force reports manifest-owned files as overwrites', async () => {
-    const projectRoot = fixtures.createTempProject()
-    fixtures.tempDirs.push(projectRoot)
-
-    const initExitCode = await runCli(['init', '--yes'], fixtures.createOutput(), {
-      cwd: projectRoot,
-    })
-    expect(initExitCode).toBe(0)
-
-    const packageJsonPath = join(projectRoot, 'package.json')
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
-      scripts: Record<string, string>
-    }
-    packageJson.scripts['frontron:dev'] = 'stale generated script'
-    writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
-    const packageJsonBefore = readFileSync(packageJsonPath, 'utf8')
-
-    const output = fixtures.createOutput()
-    const dryRunExitCode = await runCli(['init', '--dry-run', '--force'], output, {
-      cwd: projectRoot,
-    })
-    const combined = output.info.mock.calls.flat().join('\n')
-
-    expect(dryRunExitCode).toBe(0)
-    expect(readFileSync(packageJsonPath, 'utf8')).toBe(packageJsonBefore)
-    expect(combined).toContain('Files to overwrite:')
-    expect(combined).toContain('~ electron/main.ts')
-    expect(combined).toContain('~ .frontron/manifest.json')
-    expect(combined).toContain('~ scripts.frontron:dev')
-    expect(combined).not.toContain(
-      'Existing file will not be overwritten automatically: electron/main.ts',
-    )
+    expect(combined).toContain('--force is not available for "frontron init"')
+    expect(combined).toContain('frontron update --yes')
+    expect(combined).toContain('frontron update --yes --force')
   })
 
   test('init does not duplicate required packages already listed in dependencies', async () => {

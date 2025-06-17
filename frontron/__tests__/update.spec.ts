@@ -6,6 +6,31 @@ import { runCli } from '../src/cli'
 import * as fixtures from './helpers/frontron-cli-fixtures'
 
 describe('frontron update', () => {
+  test.each([
+    '--adapter=generic-static',
+    '--preset=minimal',
+    '--desktop-dir=electron-next',
+    '--app-script=desktop:dev',
+    '--build-script=desktop:build',
+    '--package-script=desktop:package',
+    '--web-dev=web:dev',
+    '--web-build=web:build',
+    '--out-dir=web-dist',
+    '--server-root=server-dist',
+    '--server-entry=server.js',
+    '--product-name=Replacement',
+    '--app-id=com.example.replacement',
+  ])('rejects migration override %s', async (option) => {
+    const output = fixtures.createOutput()
+
+    const exitCode = await runCli(['update', option], output)
+
+    expect(exitCode).toBe(1)
+    expect(output.error.mock.calls.flat().join('\n')).toContain(
+      `Unknown option "${option}" for "frontron update"`,
+    )
+  })
+
   test('update prints the guarded refresh plan without writing unless --yes is used', async () => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)
@@ -113,6 +138,37 @@ describe('frontron update', () => {
       'createMainWindow',
     )
     expect(refreshedPackageJson.scripts['frontron:dev']).toContain('--dev-app')
+  })
+
+  test('update --dry-run --force previews overwrites without writing', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      scripts: Record<string, string>
+    }
+    packageJson.scripts['frontron:dev'] = 'local script edit'
+    writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
+    const packageJsonBefore = readFileSync(packageJsonPath, 'utf8')
+    const mainPath = join(projectRoot, 'electron', 'main.ts')
+    const mainBefore = readFileSync(mainPath, 'utf8')
+    const output = fixtures.createOutput()
+
+    const exitCode = await runCli(['update', '--dry-run', '--force'], output, {
+      cwd: projectRoot,
+    })
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expect(exitCode).toBe(0)
+    expect(readFileSync(packageJsonPath, 'utf8')).toBe(packageJsonBefore)
+    expect(readFileSync(mainPath, 'utf8')).toBe(mainBefore)
+    expect(combined).toContain('Files to overwrite:')
+    expect(combined).toContain('~ electron/main.ts')
+    expect(combined).toContain('~ scripts.frontron:dev')
+    expect(combined).toContain('No changes were written because --dry-run was used.')
   })
 
   test('update preserves custom init settings from the manifest', async () => {

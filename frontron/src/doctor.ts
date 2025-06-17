@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readFileSync } from 'node:fs'
+import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
 import { createFileHash, MANIFEST_PATH, readManifest } from './init/manifest'
@@ -23,6 +23,14 @@ import {
   inspectProjectPath,
   isInsideDirectory,
 } from './project-paths'
+import {
+  TRANSACTION_JOURNAL_PATH,
+  TRANSACTION_JOURNAL_PREPARING_PREFIX,
+  TRANSACTION_LOCK_PATH,
+  TRANSACTION_LOCK_PREPARING_PREFIX,
+  TRANSACTION_RECOVERY_LOCK_PATH,
+  TRANSACTION_RECOVERY_LOCK_PREPARING_PREFIX,
+} from './transaction-journal'
 
 export interface DoctorOutput {
   info(message: string): void
@@ -48,7 +56,18 @@ function addList(lines: string[], title: string, values: string[], emptyMessage:
 }
 
 // createDoctorNextSteps 함수는 doctor 결과에 따라 사용자가 다음에 할 일을 안내하는 문구를 만든다.
-function createDoctorNextSteps(manifestFound: boolean, warnings: string[], blockers: string[]) {
+function createDoctorNextSteps(
+  manifestFound: boolean,
+  warnings: string[],
+  blockers: string[],
+  pendingTransactionState: boolean,
+) {
+  if (pendingTransactionState) {
+    return [
+      'Run a valid init, clean, or update command to recover the pending transaction, then run doctor again.',
+    ]
+  }
+
   if (!manifestFound) {
     return ['Run "frontron init --dry-run" to preview the retrofit plan.']
   }
@@ -72,6 +91,7 @@ function writeDoctorReport(
   checks: string[],
   warnings: string[],
   blockers: string[],
+  pendingTransactionState = false,
 ) {
   const lines = ['Frontron Doctor', '', `Status: ${status}`, '']
   addList(lines, 'Checks:', checks, '(none)')
@@ -80,9 +100,47 @@ function writeDoctorReport(
   lines.push('')
   addList(lines, 'Blockers:', blockers, 'No blockers found.')
   lines.push('')
-  addList(lines, 'Next steps:', createDoctorNextSteps(manifestFound, warnings, blockers), '(none)')
+  addList(
+    lines,
+    'Next steps:',
+    createDoctorNextSteps(manifestFound, warnings, blockers, pendingTransactionState),
+    '(none)',
+  )
 
   context.output.info(lines.join('\n'))
+}
+
+const TRANSACTION_STATE_NAMES = new Set([
+  TRANSACTION_JOURNAL_PATH,
+  TRANSACTION_LOCK_PATH,
+  TRANSACTION_RECOVERY_LOCK_PATH,
+  '.frontron-transaction.lock.releasing',
+  '.frontron-transaction-recovery.lock.releasing',
+])
+
+const TRANSACTION_STATE_PREFIXES = [
+  TRANSACTION_JOURNAL_PREPARING_PREFIX,
+  TRANSACTION_LOCK_PREPARING_PREFIX,
+  TRANSACTION_RECOVERY_LOCK_PREPARING_PREFIX,
+]
+
+// collectPendingTransactionState 함수는 복구가 필요한 저널과 잠금 파일을 읽기만 한다.
+function collectPendingTransactionState(cwd: string) {
+  return readdirSync(cwd)
+    .filter(
+      (entry) =>
+        TRANSACTION_STATE_NAMES.has(entry) ||
+        TRANSACTION_STATE_PREFIXES.some((prefix) => entry.startsWith(prefix)),
+    )
+    .sort()
+}
+
+// describePendingTransactionState 함수는 발견한 트랜잭션 파일의 역할을 설명한다.
+function describePendingTransactionState(entry: string) {
+  const isJournal =
+    entry === TRANSACTION_JOURNAL_PATH || entry.startsWith(TRANSACTION_JOURNAL_PREPARING_PREFIX)
+
+  return `Pending transaction ${isJournal ? 'journal' : 'lock'} detected: ${entry}`
 }
 
 // resolveDoctorManifestFile 함수는 doctor가 읽을 manifest 항목의 실제 경로가 안전한지 확인한다.
@@ -119,6 +177,21 @@ function resolveDoctorManifestFile(cwd: string, filePath: string) {
 
 // runDoctor 함수는 현재 프로젝트의 Frontron 초기화 상태를 점검한다.
 export async function runDoctor(context: DoctorContext) {
+  const pendingTransactionState = collectPendingTransactionState(context.cwd)
+
+  if (pendingTransactionState.length > 0) {
+    writeDoctorReport(
+      context,
+      'blocked',
+      existsSync(resolve(context.cwd, MANIFEST_PATH)),
+      ['transaction state inspected without mutation'],
+      ['Doctor did not recover or modify the pending transaction state.'],
+      pendingTransactionState.map(describePendingTransactionState),
+      true,
+    )
+    return 1
+  }
+
   const packageJsonPath = join(context.cwd, 'package.json')
 
   assertProjectPathSafe(context.cwd, packageJsonPath, 'package.json')
@@ -366,7 +439,7 @@ export async function runDoctor(context: DoctorContext) {
     if (hasPackageDependency(packageJson, packageName)) {
       checks.push(`${packageName} dependency found`)
     } else {
-      warnings.push(`Missing dependency: ${packageName}`)
+      blockers.push(`Missing required dependency: ${packageName}`)
     }
   }
 

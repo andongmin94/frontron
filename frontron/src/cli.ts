@@ -43,110 +43,82 @@ export async function runCli(
   let parsed: ReturnType<typeof parseCliOptions>
 
   try {
-    const recovery = recoverPendingTransaction(cwd)
-
-    if (recovery.recovered) {
-      output.info(
-        `[Frontron] Recovered an interrupted ${recovery.operation} transaction before running the command.`,
-      )
-    }
-  } catch (error) {
-    output.error(
-      `[Frontron] Could not recover an interrupted transaction: ${(error as Error).message}`,
-    )
-    return 1
-  }
-
-  try {
     parsed = parseCliOptions(argv)
   } catch (error) {
     output.error(`[Frontron] ${(error as Error).message}`)
     return 1
   }
 
-  const command = parsed.positional[0]
+  if (parsed.help) {
+    switch (parsed.command) {
+      case 'init':
+        printInitHelp(output)
+        break
+      case 'doctor':
+        printDoctorHelp(output)
+        break
+      case 'clean':
+        printCleanHelp(output)
+        break
+      case 'update':
+        printUpdateHelp(output)
+        break
+      default:
+        printHelp(output)
+    }
 
-  if (!command || command === '--help' || command === '-h') {
+    return 0
+  }
+
+  const command = parsed.command
+
+  if (!command) {
     printHelp(output)
     return 0
   }
 
-  if (command === 'init') {
-    if (parsed.positional[1] === '--help' || parsed.positional[1] === '-h') {
-      printInitHelp(output)
-      return 0
-    }
-
+  if (command !== 'doctor') {
     try {
-      return await runInit(parsed.options, {
-        cwd,
-        output,
-        stdin: context.stdin ?? process.stdin,
-        stdout: context.stdout ?? process.stdout,
-        prompter: context.prompter,
-      })
+      const recovery = recoverPendingTransaction(cwd)
+
+      if (recovery.recovered) {
+        output.info(
+          `[Frontron] Recovered an interrupted ${recovery.operation} transaction before running the command.`,
+        )
+      }
     } catch (error) {
-      output.error(`[Frontron] ${(error as Error).message}`)
+      output.error(
+        `[Frontron] Could not recover an interrupted transaction: ${(error as Error).message}`,
+      )
       return 1
     }
   }
 
-  if (command === 'doctor') {
-    if (parsed.positional[1] === '--help' || parsed.positional[1] === '-h') {
-      printDoctorHelp(output)
-      return 0
+  try {
+    switch (command) {
+      case 'init':
+        return await runInit(parsed.options, {
+          cwd,
+          output,
+          stdin: context.stdin ?? process.stdin,
+          stdout: context.stdout ?? process.stdout,
+          prompter: context.prompter,
+        })
+      case 'doctor':
+        return await runDoctor({ cwd, output })
+      case 'clean':
+        return await runClean(parsed.options, { cwd, output })
+      case 'update':
+        return await runUpdate(parsed.options, {
+          cwd,
+          output,
+          stdin: context.stdin ?? process.stdin,
+          stdout: context.stdout ?? process.stdout,
+          prompter: context.prompter,
+        })
     }
-
-    try {
-      return await runDoctor({
-        cwd,
-        output,
-      })
-    } catch (error) {
-      output.error(`[Frontron] ${(error as Error).message}`)
-      return 1
-    }
+  } catch (error) {
+    output.error(`[Frontron] ${(error as Error).message}`)
+    return 1
   }
-
-  if (command === 'clean') {
-    if (parsed.positional[1] === '--help' || parsed.positional[1] === '-h') {
-      printCleanHelp(output)
-      return 0
-    }
-
-    try {
-      return await runClean(parsed.options, {
-        cwd,
-        output,
-      })
-    } catch (error) {
-      output.error(`[Frontron] ${(error as Error).message}`)
-      return 1
-    }
-  }
-
-  if (command === 'update') {
-    if (parsed.positional[1] === '--help' || parsed.positional[1] === '-h') {
-      printUpdateHelp(output)
-      return 0
-    }
-
-    try {
-      return await runUpdate(parsed.options, {
-        cwd,
-        output,
-        stdin: context.stdin ?? process.stdin,
-        stdout: context.stdout ?? process.stdout,
-        prompter: context.prompter,
-      })
-    } catch (error) {
-      output.error(`[Frontron] ${(error as Error).message}`)
-      return 1
-    }
-  }
-
-  output.error(
-    `[Frontron] Unknown command "${command}". Supported commands: "init", "doctor", "clean", "update".`,
-  )
-  return 1
 }

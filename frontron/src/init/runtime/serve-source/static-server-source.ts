@@ -3,11 +3,6 @@ export function renderStaticServerSource() {
   return `const forbiddenStaticPath = Symbol('forbidden-static-path')
 const invalidByteRange = Symbol('invalid-byte-range')
 
-// isFileSystemError 함수는 오류 객체에서 Node 파일 시스템 오류 코드를 읽을 수 있는지 확인한다.
-function isFileSystemError(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error && 'code' in error
-}
-
 // sendResponse 함수는 정적 서버 HTTP 응답을 상태 코드와 본문으로 마무리한다.
 function sendResponse(
   request: IncomingMessage,
@@ -387,5 +382,15 @@ async function stopStaticServer() {
       else resolve()
     })
   })
+}
+
+// startRendererRuntime 함수는 정적 렌더러 HTTP 서버를 시작하고 접속 URL을 반환한다.
+export async function startRendererRuntime() {
+  return startStaticServer()
+}
+
+// stopRendererRuntime 함수는 실행 중인 정적 렌더러 HTTP 서버를 종료한다.
+export async function stopRendererRuntime() {
+  await stopStaticServer()
 }`
 }

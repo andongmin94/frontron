@@ -36,12 +36,11 @@ export function printInitHelp(output: CliOutput) {
   output.info('Add a conservative Electron layer to an existing web frontend project.')
   output.info('')
   output.info('Options:')
-  output.info('  --dry-run                              Show the plan without writing changes.')
   output.info(
-    '  --yes, -y                              Use detected/default values without prompts; fails if required paths cannot be inferred.',
+    '  --dry-run                              Show the plan without applying it; pending recovery runs first.',
   )
   output.info(
-    '  --force                                Refresh manifest-owned files from a previous init.',
+    '  --yes, -y                              Use detected/default values without prompts; fails if required paths cannot be inferred.',
   )
   output.info(
     '  --adapter <generic-static|next-export|next-standalone|nuxt-node-server|remix-node-server|sveltekit-static|sveltekit-node|generic-node-server>',
@@ -84,7 +83,7 @@ export function printCleanHelp(output: CliOutput) {
   output.info('')
   output.info('Options:')
   output.info(
-    '  --dry-run                              Show the cleanup plan without writing changes.',
+    '  --dry-run                              Show the cleanup plan without applying it; pending recovery runs first.',
   )
   output.info('  --yes, -y                              Apply the cleanup plan.')
   output.info(
@@ -102,42 +101,10 @@ export function printUpdateHelp(output: CliOutput) {
   output.info('')
   output.info('Options:')
   output.info(
-    '  --dry-run                              Show the refresh plan without writing changes.',
+    '  --dry-run                              Show the refresh plan without applying it; pending recovery runs first.',
   )
   output.info('  --yes, -y                              Apply the refresh plan.')
   output.info(
-    '  --adapter <name>                       Override the manifest adapter for this refresh.',
+    '  --force                                Overwrite locally edited manifest-owned files and scripts.',
   )
-  output.info(
-    '  --preset <minimal|starter-like>         Override the manifest preset for this refresh.',
-  )
-  output.info(
-    '  --desktop-dir <path>                    Override the manifest Electron source directory.',
-  )
-  output.info(
-    '  --app-script <name>                     Override the manifest desktop dev script name.',
-  )
-  output.info(
-    '  --build-script <name>                   Override the manifest desktop build script name.',
-  )
-  output.info(
-    '  --package-script <name>                 Override the manifest desktop package script name.',
-  )
-  output.info(
-    '  --web-dev <name>                        Override the manifest frontend dev script name.',
-  )
-  output.info(
-    '  --web-build <name>                      Override the manifest frontend build script name.',
-  )
-  output.info(
-    '  --out-dir <path>                        Override the manifest frontend build output directory.',
-  )
-  output.info(
-    '  --server-root <path>                    Override the manifest node-server runtime root.',
-  )
-  output.info('  --server-entry <path>                   Override the manifest node-server entry.')
-  output.info(
-    '  --product-name <name>                   Override the manifest Electron product name.',
-  )
-  output.info('  --app-id <id>                           Override the manifest Electron app id.')
 }

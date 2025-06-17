@@ -51,6 +51,11 @@ import * as fixtures from './helpers/frontron-cli-fixtures'
 
 const DEAD_PROCESS_ID = 2_147_483_647
 const RECOVERY_WORKER_TEST_NAME = '__frontron_recovery_worker__'
+
+// runRecoveryCommand 함수는 실제 수명주기 명령을 실행해 대기 중인 복구를 시작한다.
+function runRecoveryCommand(projectRoot: string, output = fixtures.createOutput()) {
+  return runCli(['init', '--dry-run'], output, { cwd: projectRoot })
+}
 const TRANSACTION_LOCK_RELEASE_CLAIM_PATH = '.frontron-transaction.lock.releasing'
 
 // markJournalAsAbandoned 함수는 테스트 저널을 종료된 이전 CLI가 남긴 상태로 바꾼다.
@@ -162,7 +167,7 @@ describe('persistent transaction recovery', () => {
     markJournalAsAbandoned(projectRoot)
 
     const firstOutput = fixtures.createOutput()
-    expect(await runCli(['--help'], firstOutput, { cwd: projectRoot })).toBe(0)
+    expect(await runRecoveryCommand(projectRoot, firstOutput)).toBe(0)
     expect(readFileSync(existingPath)).toEqual(originalBytes)
     expect(existsSync(createdPath)).toBe(false)
     expect(existsSync(join(projectRoot, 'generated'))).toBe(false)
@@ -296,7 +301,7 @@ describe('persistent transaction recovery', () => {
     rmdirSync(existingDirectory)
     markJournalAsAbandoned(projectRoot)
 
-    expect(await runCli(['--help'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+    expect(await runRecoveryCommand(projectRoot)).toBe(0)
     expect(readFileSync(existingFile, 'utf8')).toBe('original main\n')
 
     if (process.platform !== 'win32') {
@@ -392,7 +397,7 @@ describe('persistent transaction recovery', () => {
 
     writeFileSync(preparingPath, '{"partiallyWritten":')
 
-    expect(await runCli(['--help'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+    expect(await runRecoveryCommand(projectRoot)).toBe(0)
     expect(existsSync(preparingPath)).toBe(false)
     expect(readFileSync(packageJsonPath)).toEqual(packageJsonBefore)
   })
@@ -514,12 +519,26 @@ describe('persistent transaction recovery', () => {
     const originalSource = 'packages:\n  - apps/*\n'
 
     mkdirSync(appRoot, { recursive: true })
+    writeFileSync(
+      join(appRoot, 'package.json'),
+      `${JSON.stringify(
+        {
+          name: 'nested-web-app',
+          version: '0.0.1',
+          scripts: { dev: 'vite', build: 'vite build' },
+          devDependencies: { vite: '^8.0.1' },
+        },
+        null,
+        2,
+      )}\n`,
+    )
+    writeFileSync(join(appRoot, 'vite.config.ts'), 'export default {}\n')
     writeFileSync(pnpmWorkspacePath, originalSource)
     beginTransaction(appRoot, 'init', [{ path: pnpmWorkspacePath, safetyRoot: workspaceRoot }])
     writeFileSync(pnpmWorkspacePath, 'changed: true\n')
     markJournalAsAbandoned(appRoot)
 
-    expect(await runCli(['--help'], fixtures.createOutput(), { cwd: appRoot })).toBe(0)
+    expect(await runRecoveryCommand(appRoot)).toBe(0)
     expect(readFileSync(pnpmWorkspacePath, 'utf8')).toBe(originalSource)
     expect(existsSync(join(appRoot, TRANSACTION_JOURNAL_PATH))).toBe(false)
   })
@@ -544,7 +563,7 @@ describe('persistent transaction recovery', () => {
     writeFileSync(journalPath, `${JSON.stringify(journal, null, 2)}\n`)
 
     const output = fixtures.createOutput()
-    expect(await runCli(['--help'], output, { cwd: projectRoot })).toBe(1)
+    expect(await runRecoveryCommand(projectRoot, output)).toBe(1)
     expect(readFileSync(outsidePath, 'utf8')).toBe('outside remains unchanged\n')
     expect(existsSync(journalPath)).toBe(true)
     expect(output.error.mock.calls.flat().join('\n')).toContain('points outside the project')
@@ -567,7 +586,7 @@ describe('persistent transaction recovery', () => {
     writeFileSync(journalPath, `${JSON.stringify(journal, null, 2)}\n`)
 
     const output = fixtures.createOutput()
-    expect(await runCli(['--help'], output, { cwd: projectRoot })).toBe(1)
+    expect(await runRecoveryCommand(projectRoot, output)).toBe(1)
     expect(readFileSync(packageJsonPath, 'utf8')).toBe(
       'changed but preserved until safe recovery\n',
     )
@@ -740,7 +759,7 @@ describe('persistent transaction recovery', () => {
       writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`)
     }
 
-    expect(await runCli(['--help'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+    expect(await runRecoveryCommand(projectRoot)).toBe(0)
     expect(readFileSync(packageJsonPath, 'utf8')).toBe(originalSource)
     expect(existsSync(journalPath)).toBe(false)
     expect(existsSync(lockPath)).toBe(false)
@@ -763,7 +782,7 @@ describe('persistent transaction recovery', () => {
     markJournalAsAbandoned(projectRoot)
 
     const output = fixtures.createOutput()
-    expect(await runCli(['--help'], output, { cwd: projectRoot })).toBe(1)
+    expect(await runRecoveryCommand(projectRoot, output)).toBe(1)
     expect(readFileSync(join(movedDirectory, 'state.txt'), 'utf8')).toBe(
       'outside must not be overwritten\n',
     )
@@ -773,7 +792,7 @@ describe('persistent transaction recovery', () => {
     unlinkSync(nestedDirectory)
     renameSync(movedDirectory, nestedDirectory)
 
-    expect(await runCli(['--help'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+    expect(await runRecoveryCommand(projectRoot)).toBe(0)
     expect(readFileSync(targetPath, 'utf8')).toBe('original\n')
     expect(existsSync(join(projectRoot, TRANSACTION_JOURNAL_PATH))).toBe(false)
   })
@@ -852,7 +871,7 @@ describe('persistent transaction recovery', () => {
     expect(lstatSync(journalPath).nlink).toBe(2)
     expect(lstatSync(lockPath).nlink).toBe(2)
 
-    expect(await runCli(['--help'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+    expect(await runRecoveryCommand(projectRoot)).toBe(0)
     expect(readFileSync(targetPath, 'utf8')).toBe('original\n')
     expect(existsSync(journalPreparingPath)).toBe(false)
     expect(existsSync(lockPreparingPath)).toBe(false)
@@ -881,7 +900,7 @@ describe('persistent transaction recovery', () => {
     chmodSync(targetPath, 0o444)
     markJournalAsAbandoned(projectRoot)
 
-    expect(await runCli(['--help'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+    expect(await runRecoveryCommand(projectRoot)).toBe(0)
     expect(readFileSync(targetPath, 'utf8')).toBe('original read-only source\n')
 
     if (process.platform !== 'win32') {

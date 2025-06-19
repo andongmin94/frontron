@@ -10,7 +10,6 @@
   },
   "files": [
     "index.js",
-    "scripts/tasks.mjs",
     "dist",
     "README.md",
     "LICENSE"

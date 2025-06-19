@@ -8,6 +8,8 @@ const command = process.argv[2]
 const extraArgs = process.argv.slice(3)
 const lintPaths = ['src', '__tests__', 'scripts', 'build.config.ts', 'vitest.config.ts', 'index.js']
 const packageJsonPaths = ['package.json']
+const publishGuardTokenEnvironment = 'FRONTRON_RELEASE_PUBLISH_TOKEN'
+const publishGuardFileEnvironment = 'FRONTRON_RELEASE_PUBLISH_TOKEN_FILE'
 
 function run(executable, args, options = {}) {
   const result = spawnSync(executable, args, {
@@ -63,6 +65,27 @@ function runNode(args = []) {
 
 function runBuild() {
   runBin('unbuild')
+}
+
+function assertReleasePublishGuard() {
+  const token = process.env[publishGuardTokenEnvironment]
+  const tokenPath = process.env[publishGuardFileEnvironment]
+  let expectedToken = null
+
+  if (tokenPath) {
+    try {
+      expectedToken = readFileSync(tokenPath, 'utf8')
+    } catch {
+      expectedToken = null
+    }
+  }
+
+  if (!token || !/^[a-f0-9]{64}$/.test(token) || token !== expectedToken) {
+    console.error(
+      '[tasks] Direct npm publish is disabled. Run "node release.mjs publish" from the repository root.',
+    )
+    process.exit(1)
+  }
 }
 
 function alignObjectSection(lines, sectionName) {
@@ -182,8 +205,9 @@ switch (command) {
     runCheck()
     break
   case 'prepublishOnly':
+    assertReleasePublishGuard()
     runBuild()
-    runNode(['../release.mjs', 'check-frontron-publish-dependency', ...extraArgs])
+    runNode(['../release.mjs', 'check-metadata', ...extraArgs])
     break
   case 'lint':
     runLint()

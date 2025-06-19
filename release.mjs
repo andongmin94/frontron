@@ -1,4 +1,6 @@
+import { randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
@@ -27,6 +29,8 @@ const packageSpecs = [
 const tempRoot = join(repoRoot, '.tmp')
 const publishStagingTag = 'frontron-staged'
 const latestTag = 'latest'
+const publishGuardTokenEnvironment = 'FRONTRON_RELEASE_PUBLISH_TOKEN'
+const publishGuardFileEnvironment = 'FRONTRON_RELEASE_PUBLISH_TOKEN_FILE'
 
 function getNpmInvocation(args) {
   if (process.platform === 'win32') {
@@ -238,11 +242,12 @@ function logStep(message) {
   console.log(`[release] ${message}`)
 }
 
-function run(command, args, cwd) {
+function run(command, args, cwd, env) {
   const result = spawnSync(command, args, {
     cwd,
     encoding: 'utf8',
     stdio: 'pipe',
+    env,
   })
 
   if (result.stdout) {
@@ -263,12 +268,14 @@ function runQuiet(command, args, cwd) {
     cwd,
     encoding: 'utf8',
     stdio: 'pipe',
+    // 큰 바이너리 변경이 있는 로컬 검증에서도 Git diff를 끝까지 비교한다.
+    maxBuffer: 64 * 1024 * 1024,
   })
 }
 
-function runNpm(args, cwd) {
+function runNpm(args, cwd, env) {
   const invocation = getNpmInvocation(args)
-  run(invocation.command, invocation.args, cwd)
+  run(invocation.command, invocation.args, cwd, env)
 }
 
 function runNpmQuiet(args, cwd) {
@@ -278,6 +285,23 @@ function runNpmQuiet(args, cwd) {
 
 function runNode(args, cwd) {
   run(process.execPath, args, cwd)
+}
+
+function runGuardedNpmPublish(args, cwd) {
+  const guardRoot = mkdtempSync(join(tmpdir(), 'frontron-publish-guard-'))
+  const tokenPath = join(guardRoot, 'token')
+  const token = randomBytes(32).toString('hex')
+
+  try {
+    writeFileSync(tokenPath, token, { encoding: 'utf8', flag: 'wx', mode: 0o600 })
+    runNpm(args, cwd, {
+      ...process.env,
+      [publishGuardTokenEnvironment]: token,
+      [publishGuardFileEnvironment]: tokenPath,
+    })
+  } finally {
+    rmSync(guardRoot, { recursive: true, force: true })
+  }
 }
 
 function readTrackedDiff(paths) {
@@ -724,7 +748,7 @@ function publishPackages(version, tag = publishStagingTag) {
         publishArgs.push('--provenance', '--access', 'public')
       }
 
-      runNpm(publishArgs, spec.root)
+      runGuardedNpmPublish(publishArgs, spec.root)
       published.push(spec.name)
     }
   } catch (error) {
@@ -786,10 +810,10 @@ function runPublishOrchestration(version, operations = productionPublishOperatio
 
 function dryRunPublishPackages() {
   logStep('dry-running create-frontron publish')
-  runNpm(['publish', '--dry-run', '--tag', publishStagingTag], createPackageRoot)
+  runGuardedNpmPublish(['publish', '--dry-run', '--tag', publishStagingTag], createPackageRoot)
 
   logStep('dry-running frontron publish')
-  runNpm(['publish', '--dry-run', '--tag', publishStagingTag], frontronPackageRoot)
+  runGuardedNpmPublish(['publish', '--dry-run', '--tag', publishStagingTag], frontronPackageRoot)
 }
 
 function verifyPublishReadiness() {
@@ -801,16 +825,17 @@ function verifyPublishReadiness() {
 }
 
 function main() {
-  const command = process.argv[2] ?? 'publish'
+  const command = process.argv[2]
   const args = process.argv.slice(3)
+
+  if (!command) {
+    throw new Error(
+      'Missing release command. Pass an explicit command such as "verify" or "publish".',
+    )
+  }
 
   switch (command) {
     case 'sync-version': {
-      const version = syncVersions()
-      syncFrontronCreateDependency(version)
-      return
-    }
-    case 'sync-dependency': {
       const version = syncVersions()
       syncFrontronCreateDependency(version)
       return
@@ -833,15 +858,14 @@ function main() {
           ),
       )
       return
-    case 'auth':
     case 'check-auth':
       assertNpmPublishAccess()
       return
-    case 'check-frontron-publish-dependency':
+    case 'check-metadata':
+      assertVersionsAligned()
       assertFrontronCreateDependencySynced()
       return
-    case 'publish-dry-run':
-    case 'dry-run': {
+    case 'publish-dry-run': {
       assertReleaseWorktreeClean('before release verification')
       const version = assertVersionsAligned()
       assertFrontronCreateDependencySynced()
@@ -849,8 +873,7 @@ function main() {
       verifyPublishReadiness()
       return
     }
-    case 'publish':
-    case 'release': {
+    case 'publish': {
       assertReleaseWorktreeClean('before release verification')
       assertOfficialPublishingMode()
       assertNpmPublishAccess()

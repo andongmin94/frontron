@@ -125,6 +125,7 @@ test('packed create-frontron can generate the restored template-owned electron s
   expect(existsSync(join(generatedAppRoot, '.npmignore'))).toBe(false)
 
   runNpm(['install'], generatedAppRoot)
+  runNpm(['audit', '--audit-level=moderate'], generatedAppRoot)
   runNpm(['run', 'typecheck'], generatedAppRoot)
   runNpm(['run', 'build', '--', '--dir'], generatedAppRoot)
 

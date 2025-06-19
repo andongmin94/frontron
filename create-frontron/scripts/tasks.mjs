@@ -18,6 +18,8 @@ const lintPaths = [
   'index.js',
 ]
 const releaseScriptPath = join(root, '..', 'release.mjs')
+const publishGuardTokenEnvironment = 'FRONTRON_RELEASE_PUBLISH_TOKEN'
+const publishGuardFileEnvironment = 'FRONTRON_RELEASE_PUBLISH_TOKEN_FILE'
 
 if (existsSync(releaseScriptPath)) {
   lintPaths.push(releaseScriptPath)
@@ -79,6 +81,27 @@ function runNode(args = []) {
 
 function runBuild() {
   runBin('unbuild')
+}
+
+function assertReleasePublishGuard() {
+  const token = process.env[publishGuardTokenEnvironment]
+  const tokenPath = process.env[publishGuardFileEnvironment]
+  let expectedToken = null
+
+  if (tokenPath) {
+    try {
+      expectedToken = readFileSync(tokenPath, 'utf8')
+    } catch {
+      expectedToken = null
+    }
+  }
+
+  if (!token || !/^[a-f0-9]{64}$/.test(token) || token !== expectedToken) {
+    console.error(
+      '[tasks] Direct npm publish is disabled. Run "node release.mjs publish" from the repository root.',
+    )
+    process.exit(1)
+  }
 }
 
 function alignObjectSection(lines, sectionName) {
@@ -205,15 +228,6 @@ switch (command) {
       ...extraArgs,
     ])
     break
-  case 'release:verify':
-    runNode(['../release.mjs', 'verify', ...extraArgs])
-    break
-  case 'release:matrix-smoke':
-    runNode(['../release.mjs', 'matrix-smoke', ...extraArgs])
-    break
-  case 'release:package-manager-smoke':
-    runNode(['../release.mjs', 'package-manager-smoke', ...extraArgs])
-    break
   case 'typecheck':
     runBin('tsc', ['--noEmit', ...extraArgs])
     break
@@ -221,13 +235,8 @@ switch (command) {
     runCheck()
     break
   case 'prepublishOnly':
+    assertReleasePublishGuard()
     runBuild()
-    break
-  case 'version':
-    runNode(['../release.mjs', 'sync-version', ...extraArgs])
-    break
-  case 'release':
-    runNode(['../release.mjs', 'publish', ...extraArgs])
     break
   case 'lint':
     runLint()

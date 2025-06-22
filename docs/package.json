@@ -8,12 +8,12 @@
     "docs-serve": "vitepress serve"
   },
   "devDependencies": {
-    "@shikijs/vitepress-twoslash": "^3.2.2",
-    "@types/express": "^5.0.1",
+    "@shikijs/vitepress-twoslash": "^3.7.0",
+    "@types/express": "^5.0.3",
     "vitepress": "1.6.3",
-    "vue": "^3.5.13"
+    "vue": "^3.5.17"
   },
   "dependencies": {
-    "feed": "^4.2.2"
+    "feed": "^5.1.0"
   }
 }

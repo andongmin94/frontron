@@ -58,9 +58,19 @@ import { applyStagedProject, recoverScaffoldTransaction, runCreateFrontron } fro
 
 const packageRoot = resolve(__dirname, '..')
 const initialCwd = process.cwd()
+const initialPlatform = process.platform
 const initialUserAgent = process.env.npm_config_user_agent
 const tempDirs: string[] = []
 const childProcesses: ChildProcess[] = []
+
+// setProcessPlatform 함수는 운영체제 전용 복구 경로를 모든 CI 환경에서 검증하게 한다.
+function setProcessPlatform(platform: NodeJS.Platform) {
+  Object.defineProperty(process, 'platform', {
+    configurable: true,
+    enumerable: true,
+    value: platform,
+  })
+}
 
 function createWorkspace(label: string) {
   const workspace = realpathSync.native(
@@ -135,6 +145,7 @@ beforeEach(() => {
 
 afterEach(() => {
   process.chdir(initialCwd)
+  setProcessPlatform(initialPlatform)
 
   if (typeof initialUserAgent === 'undefined') {
     delete process.env.npm_config_user_agent
@@ -583,6 +594,27 @@ describe('transaction lock, journal, and rollback coverage', () => {
     writeFixture(stagingRoot, 'package.json', '{"name":"app"}\n')
 
     applyStagedProject(stagingRoot, root, 'replace')
+
+    expect(readFileSync(join(root, 'package.json'), 'utf8')).toContain('"app"')
+    expect(transactionArtifacts(root)).toEqual([])
+  })
+
+  test('accepts Windows fsync limitations while committing a scaffold', () => {
+    const workspace = createWorkspace('windows-fsync-limitations')
+    const root = join(workspace, 'app')
+    const stagingRoot = join(workspace, 'staging')
+    const syncError = Object.assign(new Error('injected Windows fsync limitation'), {
+      code: 'EACCES',
+    })
+    const originalOpenSync = fs.openSync.bind(fs)
+    writeFixture(stagingRoot, 'package.json', '{"name":"app"}\n')
+    setProcessPlatform('win32')
+    vi.spyOn(fs, 'openSync').mockImplementation(((...args: unknown[]) => {
+      if (args[1] === 'r' || args[1] === 'r+') throw syncError
+      return Reflect.apply(originalOpenSync, undefined, args) as number
+    }) as typeof fs.openSync)
+
+    applyStagedProject(stagingRoot, root, 'merge')
 
     expect(readFileSync(join(root, 'package.json'), 'utf8')).toContain('"app"')
     expect(transactionArtifacts(root)).toEqual([])

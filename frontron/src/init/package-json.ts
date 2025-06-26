@@ -6,7 +6,6 @@ import {
   NODE_TYPES_VERSION,
   ESBUILD_VERSION,
   TYPESCRIPT_VERSION,
-  usesStarterBridge,
 } from './shared'
 import type { PackageJsonOwnershipClaim } from './manifest'
 import { cloneJsonValue, readPackageJsonPath, valuesEqual } from './package-json-path'
@@ -383,9 +382,7 @@ export function patchPackageJson(config: InitConfig) {
     filePatterns.push('!node_modules{,/**/*}')
   }
 
-  if (usesStarterBridge(config.preset)) {
-    filePatterns.push('public{,/**/*}')
-  }
+  filePatterns.push('public{,/**/*}')
 
   for (const pattern of filePatterns) {
     if (!files.includes(pattern)) {

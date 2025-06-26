@@ -123,19 +123,19 @@ function writePackageVersion(spec, version) {
 }
 
 function syncFrontronCreateDependency(version) {
-  const dependencyRange = `^${version}`
+  const dependencyVersion = version
   const lockPath = join(frontronPackageRoot, 'package-lock.json')
   const originalPackageSource = readFileSync(frontronPackagePath, 'utf8')
   const originalLockSource = existsSync(lockPath) ? readFileSync(lockPath, 'utf8') : null
   const packageJson = readJson(frontronPackagePath)
   packageJson.dependencies ??= {}
-  packageJson.dependencies['create-frontron'] = dependencyRange
+  packageJson.dependencies['create-frontron'] = dependencyVersion
 
   try {
     writeFormattedPackageJson(frontronPackageRoot, frontronPackagePath, packageJson)
 
     if (!existsSync(lockPath)) {
-      logStep(`synced frontron dependency create-frontron to ${dependencyRange}`)
+      logStep(`synced frontron dependency create-frontron to ${dependencyVersion}`)
       return
     }
 
@@ -157,10 +157,10 @@ function syncFrontronCreateDependency(version) {
     lockJson.packages ??= {}
     lockJson.packages[''] ??= {}
     lockJson.packages[''].dependencies ??= {}
-    lockJson.packages[''].dependencies['create-frontron'] = dependencyRange
+    lockJson.packages[''].dependencies['create-frontron'] = dependencyVersion
     writeJson(lockPath, lockJson)
 
-    logStep(`synced frontron dependency and lockfile to create-frontron ${dependencyRange}`)
+    logStep(`synced frontron dependency and lockfile to create-frontron ${dependencyVersion}`)
   } catch (error) {
     writeFileSync(frontronPackagePath, originalPackageSource)
 
@@ -176,22 +176,22 @@ function syncFrontronCreateDependency(version) {
 
 function assertFrontronCreateDependencySynced() {
   const packageJson = readJson(frontronPackagePath)
-  const expectedRange = `^${packageJson.version}`
-  const actualRange = packageJson.dependencies?.['create-frontron']
+  const expectedVersion = packageJson.version
+  const actualVersion = packageJson.dependencies?.['create-frontron']
 
-  if (actualRange !== expectedRange) {
+  if (actualVersion !== expectedVersion) {
     throw new Error(
-      `frontron must depend on create-frontron "${expectedRange}" before publish. Run "node release.mjs publish" so the release script can sync and stage both packages safely.`,
+      `frontron must depend on the exact create-frontron version "${expectedVersion}" before publish. Run "node release.mjs publish" so the release script can sync and stage both packages safely.`,
     )
   }
 
   const lockJson = readJson(join(frontronPackageRoot, 'package-lock.json'))
-  const lockRange = lockJson.packages?.['']?.dependencies?.['create-frontron']
+  const lockVersion = lockJson.packages?.['']?.dependencies?.['create-frontron']
   const localPackageVersion = lockJson.packages?.['../create-frontron']?.version
   const linkedPackage = lockJson.packages?.['node_modules/create-frontron']
 
   if (
-    lockRange !== expectedRange ||
+    lockVersion !== expectedVersion ||
     localPackageVersion !== packageJson.version ||
     linkedPackage?.resolved !== '../create-frontron' ||
     linkedPackage?.link !== true
@@ -641,10 +641,7 @@ writeFileSync('dist/index.html', '<!doctype html><title>registry retrofit</title
 
     installNpm(['--save-dev', `frontron@${version}`], retrofitRoot)
     runNpm(['audit', 'signatures'], retrofitRoot)
-    runNpm(
-      ['exec', '--', 'frontron', 'init', '--yes', '--preset', 'starter-like', '--out-dir', 'dist'],
-      retrofitRoot,
-    )
+    runNpm(['exec', '--', 'frontron', 'init', '--yes', '--out-dir', 'dist'], retrofitRoot)
     runNpm(['exec', '--', 'frontron', 'doctor'], retrofitRoot)
   } finally {
     rmSync(scratchRoot, { recursive: true, force: true })

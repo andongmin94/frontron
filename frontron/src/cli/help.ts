@@ -48,7 +48,6 @@ export function printInitHelp(output: CliOutput) {
   output.info(
     '                                                   Override runtime adapter auto-detection.',
   )
-  output.info('  --preset <minimal|starter-like>         Choose the Electron retrofit preset.')
   output.info('  --desktop-dir <path>                    Electron source directory.')
   output.info('  --app-script <name>                     Desktop dev script name.')
   output.info('  --build-script <name>                   Desktop build script name.')

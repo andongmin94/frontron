@@ -14,7 +14,7 @@ export type FrontronManifest = {
   adapterConfidence: string
   adapterReasons: string[]
   strategy: string
-  preset: string
+  preset?: string
   desktopDir?: string
   appScript?: string
   buildScript?: string
@@ -171,7 +171,6 @@ export function createManifest(
     adapterConfidence: config.adapterConfidence,
     adapterReasons: config.adapterReasons,
     strategy: config.runtimeStrategy,
-    preset: config.preset,
     desktopDir: config.desktopDir,
     appScript: config.appScript,
     buildScript: config.buildScript,

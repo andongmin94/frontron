@@ -36,7 +36,7 @@
   },
   "homepage": "https://andongmin.com/frontron/",
   "dependencies": {
-    "create-frontron" : "^0.13.4"
+    "create-frontron" : "0.13.4"
   },
   "devDependencies": {
     "@types/node"         : "^24.10.13",

@@ -3,6 +3,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path'
 
 import { createFileHash, MANIFEST_PATH, readManifest } from './init/manifest'
 import { inspectManifestClaim } from './init/manifest-claim-status'
+import { getInitTemplateInfo } from './init/runtime/renderers'
 import { hasOwnString, readPackageJsonPath } from './init/package-json-path'
 import { isValidAppVersion } from './init/package-json'
 import { hasPackageDependency } from './init/detect'
@@ -349,21 +350,31 @@ export async function runDoctor(context: DoctorContext) {
     if (status.warning) warnings.push(`${claim.file}: ${status.warning}`)
   }
 
-  if (manifest.preset === 'starter-like') {
+  try {
+    const templateInfo = getInitTemplateInfo()
+
     if (
       manifest.templateSource === 'create-frontron' &&
       manifest.templatePackage === 'create-frontron'
     ) {
-      checks.push(
-        manifest.templateVersion
-          ? `create-frontron template metadata found (${manifest.templateVersion})`
-          : 'create-frontron template metadata found',
-      )
+      if (manifest.templateVersion === templateInfo.packageVersion) {
+        checks.push(
+          `create-frontron template version matches frontron (${templateInfo.packageVersion})`,
+        )
+      } else {
+        warnings.push(
+          `${MANIFEST_PATH} uses create-frontron@${manifest.templateVersion ?? 'unknown'}, but this frontron release requires create-frontron@${templateInfo.packageVersion}. Run "frontron update --yes" to refresh it.`,
+        )
+      }
     } else {
       warnings.push(
         `${MANIFEST_PATH} does not include create-frontron template metadata. Run "frontron update --yes" to refresh it.`,
       )
     }
+  } catch (error) {
+    blockers.push(
+      `Unable to validate the required create-frontron template: ${error instanceof Error ? error.message : String(error)}`,
+    )
   }
 
   for (const filePath of manifest.createdFiles) {

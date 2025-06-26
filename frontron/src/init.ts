@@ -19,7 +19,6 @@ import {
   type PackageJson,
   createDefaultAppId,
   inferPackageManager,
-  normalizePresetValue,
   normalizePathValue,
   normalizeValue,
   titleCase,
@@ -37,10 +36,6 @@ function ensureObject<T extends object>(value: unknown, fallback: T) {
 
 // runInit 함수는 기존 웹 프로젝트에 Electron 레이어를 추가하는 init 흐름을 실행한다.
 export async function runInit(options: InitOptions, context: InitContext) {
-  if (options.preset) {
-    normalizePresetValue(options.preset)
-  }
-
   const packageJsonPath = join(context.cwd, 'package.json')
 
   if (!existsSync(packageJsonPath)) {
@@ -142,15 +137,6 @@ export async function runInit(options: InitOptions, context: InitContext) {
       buildScript,
       packageScript,
     })
-    const preset = normalizePresetValue(
-      await askText(
-        prompter,
-        promptEnabled,
-        'Preset (minimal|starter-like)',
-        options.preset ?? 'minimal',
-      ),
-      'minimal',
-    )
     const webBuildCommand = adapter.resolveBuildCommand(packageJson, webBuildScript)
     const inferredOutDir =
       options.outDir ??
@@ -285,8 +271,7 @@ export async function runInit(options: InitOptions, context: InitContext) {
       nodeServerCopyTargets: adapterDefaults.nodeServerCopyTargets ?? [],
       productName,
       appId,
-      preset,
-      templateInfo: getInitTemplateInfo(preset),
+      templateInfo: getInitTemplateInfo(),
       allowExtraMetadataMainOverride,
     }
 

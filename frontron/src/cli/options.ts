@@ -25,7 +25,6 @@ const INIT_VALUE_OPTIONS = new Map<string, InitValueOption>([
   ['--server-entry', 'serverEntry'],
   ['--product-name', 'productName'],
   ['--app-id', 'appId'],
-  ['--preset', 'preset'],
 ])
 
 // splitOptionArgument 함수는 --option=value 형태를 옵션 이름과 값으로 나눈다.

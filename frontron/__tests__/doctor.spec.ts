@@ -71,6 +71,30 @@ describe('frontron doctor', () => {
     expect(combined).toContain('No blockers found.')
     expect(combined).toContain('No action needed.')
     expect(combined).toContain('scripts.frontron:dev exists')
+    expect(combined).toContain('create-frontron template version matches frontron')
+  })
+
+  test('doctor warns when the manifest records a different create-frontron version', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const manifestPath = join(projectRoot, '.frontron', 'manifest.json')
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      templateVersion?: string | null
+    }
+    manifest.templateVersion = '0.0.0'
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+
+    const output = fixtures.createOutput()
+    const doctorExitCode = await runCli(['doctor'], output, { cwd: projectRoot })
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expect(doctorExitCode).toBe(0)
+    expect(combined).toContain('Status: warnings')
+    expect(combined).toContain('uses create-frontron@0.0.0')
+    expect(combined).toContain('frontron update --yes')
   })
 
   test('doctor blocks packaging when a required Electron dependency is missing', async () => {

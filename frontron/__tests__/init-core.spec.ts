@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import * as ts from 'typescript'
 import { describe, expect, test } from 'vitest'
@@ -53,7 +53,7 @@ describe('frontron init core flow', () => {
     expect(cleanedPackageJson.version).toBeUndefined()
   })
 
-  test('init seeds the minimal Electron layer with defaults', async () => {
+  test('init seeds the create-frontron Electron template with defaults', async () => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)
     const output = fixtures.createOutput()
@@ -80,7 +80,7 @@ describe('frontron init core flow', () => {
     }
 
     const mainSource = readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')
-    expect(mainSource).toContain('createMainWindow')
+    expect(mainSource).toContain('createWindow')
     expect(mainSource).toContain('export const rendererOrigin = `${rendererScheme}://app`')
     expect(mainSource).toContain('protocol.registerSchemesAsPrivileged')
     expect(mainSource).toContain('await registerRendererProtocol(rendererTargetUrl)')
@@ -92,9 +92,9 @@ describe('frontron init core flow', () => {
     expect(windowSource).not.toContain('Content-Security-Policy')
     expect(windowSource).not.toContain('onHeadersReceived')
     expect(windowSource).not.toContain('unsafe-eval')
-    expect(windowSource).toContain("webContents.on('will-frame-navigate'")
+    expect(windowSource).toContain('webContents.on("will-frame-navigate"')
     expect(windowSource).toContain('setWindowOpenHandler')
-    expect(windowSource).toContain("mainWindow.webContents.on('context-menu'")
+    expect(windowSource).toContain('mainWindow.webContents.on("context-menu"')
     const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
     fixtures.expectEmbeddedString(serveSource, 'WEB_DEV_SCRIPT', 'dev')
     fixtures.expectEmbeddedString(serveSource, 'DEV_URL', 'http://localhost:5180')
@@ -159,13 +159,14 @@ describe('frontron init core flow', () => {
     expect(packageJson.build.files).toContain('dist-web{,/**/*}')
     expect(packageJson.build.files).toContain('dist-electron{,/**/*}')
     expect(packageJson.build.files).toContain('!node_modules{,/**/*}')
+    expect(packageJson.build.files).toContain('public{,/**/*}')
     expect(packageJson.build.npmRebuild).toBe(false)
     expect(packageJson.build.extraMetadata.main).toBe('dist-electron/main.js')
     expect(packageJson.devDependencies.electron).toBeTruthy()
     expect(packageJson.devDependencies['electron-builder']).toBeTruthy()
     expect(packageJson.devDependencies.typescript).toBeTruthy()
     expect(combined).toContain('Next steps:')
-    expect(combined).toContain('- Electron template: frontron minimal')
+    expect(combined).toContain('- Electron template: create-frontron@')
     expect(combined).toContain('1. Run "npm install" to install the new desktop dependencies.')
     expect(combined).toContain('2. Run "npm run frontron:dev" to start the desktop app.')
     expect(combined).toContain('   The dev runner waits for http://localhost:5180.')
@@ -179,11 +180,13 @@ describe('frontron init core flow', () => {
     expect(manifest.adapterReasons).toContain('vite config file found.')
     expect(manifest.adapterReasons).toContain('package.json has a Vite build script.')
     expect(manifest.strategy).toBe('static-export')
-    expect(manifest.templateSource).toBe('frontron:minimal')
-    expect(manifest.templatePackage).toBeUndefined()
-    expect(manifest.templateVersion).toBeUndefined()
-    expect(manifest.templateResolvedFrom).toBeUndefined()
+    expect(manifest.templateSource).toBe('create-frontron')
+    expect(manifest.templatePackage).toBe('create-frontron')
+    expect(manifest.templateVersion).toMatch(/^\d+\.\d+\.\d+/)
+    expect(manifest.templateResolvedFrom).toBe('repo')
     expect(manifest.createdFiles).toContain('electron/main.ts')
+    expect(manifest.createdFiles).toContain('electron/preload.ts')
+    expect(manifest.createdFiles).toContain('src/types/electron.d.ts')
     expect(manifest.createdFiles).toContain('electron/package.json')
     expect(manifest.createdFiles).toContain('tsconfig.electron.json')
     expect(manifest.createdFiles).toContain('.frontron/manifest.json')
@@ -497,7 +500,6 @@ allowBuilds:
         'desktop',
         'desktop:build',
         'desktop:package',
-        'minimal',
         'dist-web',
         'Sample Desktop',
         'com.example.sample',
@@ -515,7 +517,7 @@ allowBuilds:
     }
 
     expect(readFileSync(join(projectRoot, 'apps', 'electron', 'main.ts'), 'utf8')).toContain(
-      'createMainWindow',
+      'createWindow',
     )
     expect(packageJson.scripts.desktop).toContain('tsc -p tsconfig.electron.json')
     expect(packageJson.scripts.desktop).toContain('dist-electron/package.json')
@@ -529,12 +531,12 @@ allowBuilds:
     expect(packageJson.build.productName).toBe('Sample Desktop')
   })
 
-  test('init supports the starter-like preset from the create-frontron Electron template', async () => {
+  test('init always reads Electron sources from the matching create-frontron template', async () => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)
     const output = fixtures.createOutput()
 
-    const exitCode = await runCli(['init', '--yes', '--preset', 'starter-like'], output, {
+    const exitCode = await runCli(['init', '--yes'], output, {
       cwd: projectRoot,
     })
 
@@ -553,8 +555,21 @@ allowBuilds:
       templateVersion?: string | null
       templateResolvedFrom?: string
     }
+    const frontronPackageJson = JSON.parse(
+      readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+    ) as { version: string }
+    const createFrontronPackageJson = JSON.parse(
+      readFileSync(new URL('../../create-frontron/package.json', import.meta.url), 'utf8'),
+    ) as { version: string }
+    const templateMainSource = readFileSync(
+      new URL('../../create-frontron/template/src/electron/main.ts', import.meta.url),
+      'utf8',
+    )
 
     expect(combined).toContain('- Electron template: create-frontron@')
+    expect(readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')).toBe(
+      templateMainSource.split('../../public/').join('../public/'),
+    )
     expect(readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')).toContain('createSplash')
     expect(readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')).toContain('createTray')
     expect(readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')).toContain(
@@ -590,11 +605,12 @@ allowBuilds:
     expect(packageJson.build.files).toContain('public{,/**/*}')
     expect(manifest.templateSource).toBe('create-frontron')
     expect(manifest.templatePackage).toBe('create-frontron')
-    expect(manifest.templateVersion).toMatch(/^\d+\.\d+\.\d+/)
+    expect(createFrontronPackageJson.version).toBe(frontronPackageJson.version)
+    expect(manifest.templateVersion).toBe(frontronPackageJson.version)
     expect(manifest.templateResolvedFrom).toBe('repo')
   })
 
-  test('starter-like preset fails clearly when FRONTRON_CREATE_TEMPLATE_DIR is incomplete', async () => {
+  test('init fails clearly when FRONTRON_CREATE_TEMPLATE_DIR is incomplete', async () => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)
     const partialTemplateDir = join(projectRoot, 'partial-template')
@@ -606,15 +622,116 @@ allowBuilds:
     process.env.FRONTRON_CREATE_TEMPLATE_DIR = partialTemplateDir
 
     try {
-      const exitCode = await runCli(['init', '--yes', '--preset', 'starter-like'], output, {
+      const exitCode = await runCli(['init', '--yes'], output, {
         cwd: projectRoot,
       })
       const combined = output.error.mock.calls.flat().join('\n')
 
       expect(exitCode).toBe(1)
       expect(combined).toContain(
-        'FRONTRON_CREATE_TEMPLATE_DIR does not contain a complete create-frontron template',
+        'FRONTRON_CREATE_TEMPLATE_DIR must point to a complete create-frontron@',
       )
+      expect(existsSync(join(projectRoot, 'electron', 'main.ts'))).toBe(false)
+    } finally {
+      if (typeof previousTemplateDir === 'undefined') {
+        delete process.env.FRONTRON_CREATE_TEMPLATE_DIR
+      } else {
+        process.env.FRONTRON_CREATE_TEMPLATE_DIR = previousTemplateDir
+      }
+    }
+  })
+
+  test('init discovers new TypeScript modules added to the create-frontron Electron template', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const templatePackageRoot = join(projectRoot, 'extended-create-frontron')
+    const templateDir = join(templatePackageRoot, 'template')
+    const output = fixtures.createOutput()
+    const previousTemplateDir = process.env.FRONTRON_CREATE_TEMPLATE_DIR
+    const frontronPackageJson = JSON.parse(
+      readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+    ) as { version: string }
+
+    cpSync(new URL('../../create-frontron/template', import.meta.url), templateDir, {
+      recursive: true,
+    })
+    writeFileSync(
+      join(templatePackageRoot, 'package.json'),
+      `${JSON.stringify(
+        {
+          name: 'create-frontron',
+          version: frontronPackageJson.version,
+        },
+        null,
+        2,
+      )}\n`,
+    )
+    writeFileSync(
+      join(templateDir, 'src', 'electron', 'future-module.ts'),
+      'export const futureTemplateFeature = true\n',
+    )
+    process.env.FRONTRON_CREATE_TEMPLATE_DIR = templateDir
+
+    try {
+      const exitCode = await runCli(['init', '--yes'], output, { cwd: projectRoot })
+
+      expect(exitCode).toBe(0)
+      expect(readFileSync(join(projectRoot, 'electron', 'future-module.ts'), 'utf8')).toBe(
+        'export const futureTemplateFeature = true\n',
+      )
+      expect(readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')).toContain(
+        'export const startRendererServer = startRendererRuntime',
+      )
+
+      const conflictProjectRoot = fixtures.createTempProject()
+      const conflictOutput = fixtures.createOutput()
+      fixtures.tempDirs.push(conflictProjectRoot)
+      mkdirSync(join(conflictProjectRoot, 'electron'))
+      writeFileSync(
+        join(conflictProjectRoot, 'electron', 'future-module.ts'),
+        'export const appOwnedFeature = true\n',
+      )
+
+      expect(await runCli(['init', '--yes'], conflictOutput, { cwd: conflictProjectRoot })).toBe(1)
+      expect(conflictOutput.error.mock.calls.flat().join('\n')).toContain(
+        'Init aborted because one or more target files already exist: electron/future-module.ts',
+      )
+      expect(readFileSync(join(conflictProjectRoot, 'electron', 'future-module.ts'), 'utf8')).toBe(
+        'export const appOwnedFeature = true\n',
+      )
+      expect(existsSync(join(conflictProjectRoot, 'electron', 'main.ts'))).toBe(false)
+    } finally {
+      if (typeof previousTemplateDir === 'undefined') {
+        delete process.env.FRONTRON_CREATE_TEMPLATE_DIR
+      } else {
+        process.env.FRONTRON_CREATE_TEMPLATE_DIR = previousTemplateDir
+      }
+    }
+  })
+
+  test('init rejects a complete create-frontron template from a different version', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const templatePackageRoot = join(projectRoot, 'mismatched-create-frontron')
+    const templateDir = join(templatePackageRoot, 'template')
+    const output = fixtures.createOutput()
+    const previousTemplateDir = process.env.FRONTRON_CREATE_TEMPLATE_DIR
+
+    cpSync(new URL('../../create-frontron/template', import.meta.url), templateDir, {
+      recursive: true,
+    })
+    writeFileSync(
+      join(templatePackageRoot, 'package.json'),
+      `${JSON.stringify({ name: 'create-frontron', version: '999.0.0' }, null, 2)}\n`,
+    )
+    process.env.FRONTRON_CREATE_TEMPLATE_DIR = templateDir
+
+    try {
+      const exitCode = await runCli(['init', '--yes'], output, { cwd: projectRoot })
+      const combined = output.error.mock.calls.flat().join('\n')
+
+      expect(exitCode).toBe(1)
+      expect(combined).toContain('create-frontron@999.0.0 does not match frontron@')
       expect(existsSync(join(projectRoot, 'electron', 'main.ts'))).toBe(false)
     } finally {
       if (typeof previousTemplateDir === 'undefined') {
@@ -645,7 +762,6 @@ allowBuilds:
       'desktop:build',
       'frontron:package',
       'desktop:package',
-      'minimal',
       'dist',
       'Sample Web App',
       'com.local.sample-web-app',

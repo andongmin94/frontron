@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
@@ -107,9 +107,69 @@ describe('frontron update', () => {
     })
 
     expect(exitCode).toBe(0)
-    expect(readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')).toContain(
-      'createMainWindow',
+    expect(readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')).toContain('createWindow')
+  })
+
+  test('update migrates a legacy minimal manifest to the exact-version template flow', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const manifestPath = join(projectRoot, '.frontron', 'manifest.json')
+    const templateOnlyFiles = [
+      'electron/preload.ts',
+      'electron/ipc.ts',
+      'electron/dev.ts',
+      'electron/splash.ts',
+      'electron/tray.ts',
+      'src/types/electron.d.ts',
+    ]
+    const legacyManifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      preset?: string
+      templateSource?: string
+      templatePackage?: string
+      templateVersion?: string | null
+      templateResolvedFrom?: string
+      createdFiles: string[]
+      fileHashes?: Record<string, string>
+    }
+
+    legacyManifest.preset = 'minimal'
+    legacyManifest.templateSource = 'frontron:minimal'
+    delete legacyManifest.templatePackage
+    delete legacyManifest.templateVersion
+    delete legacyManifest.templateResolvedFrom
+    legacyManifest.createdFiles = legacyManifest.createdFiles.filter(
+      (filePath) => !templateOnlyFiles.includes(filePath),
     )
+
+    for (const filePath of templateOnlyFiles) {
+      rmSync(join(projectRoot, filePath), { force: true })
+      delete legacyManifest.fileHashes?.[filePath]
+    }
+
+    writeFileSync(manifestPath, `${JSON.stringify(legacyManifest, null, 2)}\n`)
+
+    expect(await runCli(['update', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const migratedManifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      preset?: string
+      templateSource?: string
+      templatePackage?: string
+      templateVersion?: string | null
+      createdFiles: string[]
+    }
+
+    for (const filePath of templateOnlyFiles) {
+      expect(existsSync(join(projectRoot, filePath))).toBe(true)
+      expect(migratedManifest.createdFiles).toContain(filePath)
+    }
+
+    expect(migratedManifest.preset).toBeUndefined()
+    expect(migratedManifest.templateSource).toBe('create-frontron')
+    expect(migratedManifest.templatePackage).toBe('create-frontron')
+    expect(migratedManifest.templateVersion).toMatch(/^\d+\.\d+\.\d+/)
   })
 
   test('update --yes --force replaces locally edited manifest-owned files and scripts', async () => {
@@ -134,9 +194,7 @@ describe('frontron update', () => {
     }
 
     expect(exitCode).toBe(0)
-    expect(readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')).toContain(
-      'createMainWindow',
-    )
+    expect(readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')).toContain('createWindow')
     expect(refreshedPackageJson.scripts['frontron:dev']).toContain('--dev-app')
   })
 
@@ -182,8 +240,6 @@ describe('frontron update', () => {
       [
         'init',
         '--yes',
-        '--preset',
-        'starter-like',
         '--desktop-dir',
         'apps/electron',
         '--app-script',
@@ -230,7 +286,6 @@ describe('frontron update', () => {
       webDevScript: string
       webBuildScript: string
       outDir: string
-      preset: string
       templateSource?: string
       templatePackage?: string
       templateVersion?: string | null
@@ -263,7 +318,6 @@ describe('frontron update', () => {
     expect(manifest.webDevScript).toBe('web:dev')
     expect(manifest.webBuildScript).toBe('web:build')
     expect(manifest.outDir).toBe('web-dist')
-    expect(manifest.preset).toBe('starter-like')
     expect(manifest.templateSource).toBe('create-frontron')
     expect(manifest.templatePackage).toBe('create-frontron')
     expect(manifest.templateVersion).toMatch(/^\d+\.\d+\.\d+/)

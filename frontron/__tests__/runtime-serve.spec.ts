@@ -46,8 +46,12 @@ function createStaticConfig(cwd: string): InitConfig {
     nodeServerCopyTargets: [],
     productName: 'Runtime Test',
     appId: 'com.local.runtime-test',
-    preset: 'minimal',
-    templateInfo: { source: 'frontron:minimal' },
+    templateInfo: {
+      source: 'create-frontron',
+      packageName: 'create-frontron',
+      packageVersion: '0.0.0-test',
+      resolvedFrom: 'repo',
+    },
     allowExtraMetadataMainOverride: false,
   }
 }

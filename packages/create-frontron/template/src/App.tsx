@@ -6,7 +6,7 @@ import viteLogo from "/vite.svg";
 
 import "./App.css";
 
-function App() {
+function App({ ipcRenderer }: any) {
   const [count, setCount] = useState(0);
   const [nodeInfo, setNodeInfo] = useState("테스트 중...");
 

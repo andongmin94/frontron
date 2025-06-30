@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Copy, Minus, Square, X } from "lucide-react";
@@ -59,14 +59,8 @@ function Button({
   );
 }
 
-export default function TitleBar() {
+export default function TitleBar({ ipcRenderer }: any) {
   const [isMaximized, setIsMaximized] = useState(false);
-  const [ipcRenderer, setIpcRenderer] = useState<any>(null);
-
-  // 컴포넌트 마운트시 한 번만 ipcRenderer 가져오기
-  useEffect(() => {
-    setIpcRenderer(require("electron").ipcRenderer);
-  }, []);
 
   const minimize = () => {
     ipcRenderer.send("minimize");

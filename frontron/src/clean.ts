@@ -20,8 +20,9 @@ export async function runClean(options: CleanOptions, context: CleanContext) {
     throw new Error('package.json was not found in the current directory.')
   }
 
-  const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as PackageJson
-  const plan = createCleanPlan(context.cwd, packageJson, options)
+  const packageJsonSource = readFileSync(packageJsonPath, 'utf8')
+  const packageJson = JSON.parse(packageJsonSource) as PackageJson
+  const plan = createCleanPlan(context.cwd, packageJson, packageJsonSource, options)
   const shouldApply = options.yes && !options.dryRun
 
   if (!shouldApply) {

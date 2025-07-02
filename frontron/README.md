@@ -102,7 +102,7 @@ npx frontron update --dry-run
 npx frontron update --yes
 ```
 
-Only manifest-owned files and values are refreshed. Local edits are reported as conflicts unless `--force` is explicitly used. If the template is missing, incomplete, or from a different version, Frontron stops with a diagnostic instead of generating from stale internal sources.
+Only manifest-owned files and values are refreshed. Files removed from the matching template are removed from the project only after their recorded ownership and current contents are verified. Local edits are reported as conflicts unless `--force` is explicitly used; forced updates also replace edited manifest-owned package fields with the matching template values. If the template is missing, incomplete, or from a different version, Frontron stops with a diagnostic instead of generating from stale internal sources.
 
 ## Runtime and recovery
 
@@ -110,7 +110,7 @@ Only manifest-owned files and values are refreshed. Local edits are reported as 
 - The protocol proxy accepts only the registered app origin, rewrites internal origin headers, preserves an app-provided CSP, and adds a conservative fallback CSP when one is missing.
 - Navigation stays inside the app origin. Only explicit `http:` and `https:` links can be handed to the system browser.
 - Generated windows keep Node integration disabled and context isolation enabled.
-- `init`, `update`, and `clean` snapshot every owned file before mutation. A durable journal is published before the first write, and the next valid `init`, `update`, or `clean` invocation automatically restores an interrupted operation.
+- `init`, `update`, and `clean` snapshot every owned file before mutation. Each write or removal revalidates the same single-link file through an open descriptor, and rollback restores only files the active process actually began mutating. A durable journal is published before the first write, and the next valid `init`, `update`, or `clean` invocation automatically restores an interrupted operation.
 - Project paths, manifest paths, pnpm workspace edits, symlink ancestors, and transaction journals are validated before use. An invalid recovery journal stops the command instead of guessing.
 - Help, argument errors, unknown commands, and `doctor` never trigger recovery. `doctor` reports pending journal or lock state without modifying it.
 
@@ -148,7 +148,7 @@ Run `npx frontron update --yes` to apply the refresh. Use `npx frontron update -
 
 ## Compatibility verification
 
-The repository tests the minimum Node.js `22.15.0` runtime, active LTS Node.js 24, and current Node.js 26 on Windows, macOS, and Linux. A scheduled compatibility workflow creates public Vite, VitePress, Next.js export/standalone, Nuxt, Remix v2, and SvelteKit static/node projects on Linux, repeats representative Vite, Next standalone, Nuxt, Remix, and SvelteKit node packaging on Windows and macOS, packages native starter artifacts, launches real packaged Electron renderers, and runs pnpm, Yarn, and Bun retrofit lifecycles on all three operating systems.
+The repository tests the minimum Node.js `22.15.0` runtime, active LTS Node.js 24, and current Node.js 26 on Windows, macOS, and Linux. The compatibility workflow creates public Vite, VitePress, Next.js export/standalone, Nuxt, Remix v2, and SvelteKit static/node projects on Linux, repeats representative projects on Windows and macOS, exercises development and packaged Electron lifecycles, and runs pnpm, Yarn, Bun, and nested pnpm workspace retrofit checks. The npm release workflow cannot publish until this reusable compatibility gate succeeds.
 
 Detection is intentionally evidence-based rather than magical. Custom monorepos or build pipelines should start with `frontron init --dry-run`, use an explicit adapter when necessary, and run `frontron doctor` before packaging. `generic-node-server` remains the escape hatch for a custom server root and entry.
 

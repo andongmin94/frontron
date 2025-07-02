@@ -280,14 +280,40 @@ require(\${JSON.stringify(serveCliPath)})
 
 ${
   usesNodeServer
-    ? `// prepareNodeServerBuild 함수는 node-server 런타임 파일을 패키징 위치로 복사하고 정리한다.
+    ? `// isSameOrNestedPath 함수는 두 절대 경로가 같거나 한 경로가 다른 경로 안에 있는지 확인한다.
+function isSameOrNestedPath(parentPath: string, candidatePath: string) {
+  const pathFromParent = path.relative(parentPath, candidatePath)
+  const pointsOutside = pathFromParent === '..' || pathFromParent.startsWith(\`..\${path.sep}\`)
+
+  return pathFromParent === '' || (!pointsOutside && !path.isAbsolute(pathFromParent))
+}
+
+// 삭제 대상과 원본이 겹치면 rmSync가 빌드 원본을 훼손하므로 실행 시점에도 다시 막는다.
+function assertDisjointNodeServerRuntimePaths(sourceRuntimeDir: string, stagedRuntimeDir: string) {
+  if (
+    !isSameOrNestedPath(sourceRuntimeDir, stagedRuntimeDir) &&
+    !isSameOrNestedPath(stagedRuntimeDir, sourceRuntimeDir)
+  ) {
+    return
+  }
+
+  throw new Error(
+    'Refusing to stage an overlapping node-server runtime: source="' +
+      sourceRuntimeDir +
+      '", output="' +
+      stagedRuntimeDir +
+      '".',
+  )
+}
+
+// prepareNodeServerBuild 함수는 node-server 런타임 파일을 패키징 위치로 복사하고 정리한다.
 async function prepareNodeServerBuild() {
   if (!NODE_SERVER_SOURCE_ROOT || !NODE_SERVER_ENTRY) {
     throw new Error('A node-server adapter must define both a source runtime root and a server entry.')
   }
 
   const sourceRuntimeDir = path.resolve(ROOT_DIR, NODE_SERVER_SOURCE_ROOT)
-  const sourceServerEntryCandidates = ${usesRemixRuntime ? "['index.js', 'server/index.js']" : '[NODE_SERVER_ENTRY]'}
+  const sourceServerEntryCandidates = ${usesRemixRuntime ? "NODE_SERVER_SOURCE_ENTRY ? [NODE_SERVER_SOURCE_ENTRY] : ['index.js', 'server/index.js']" : '[NODE_SERVER_ENTRY]'}
   const sourceServerEntryName = sourceServerEntryCandidates.find((entry) =>
     existsSync(path.join(sourceRuntimeDir, entry)),
   )
@@ -300,6 +326,7 @@ async function prepareNodeServerBuild() {
     )
   }
 
+  assertDisjointNodeServerRuntimePaths(sourceRuntimeDir, stagedRuntimeDir)
   rmSync(stagedRuntimeDir, { recursive: true, force: true })
   mkdirSync(stagedRuntimeDir, { recursive: true })
 

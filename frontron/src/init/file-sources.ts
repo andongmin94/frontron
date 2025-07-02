@@ -9,32 +9,28 @@ import {
   renderTsconfigSource,
 } from './runtime/renderers'
 import {
-  listCreateFrontronElectronFiles,
-  readCreateFrontronTemplateFile,
-  renderCreateFrontronElectronFile,
+  loadCreateFrontronTemplate,
+  type CreateFrontronTemplateSnapshot,
 } from './runtime/create-frontron-template'
 import type { InitConfig } from './shared'
 import type { YarnRcOwnershipClaim } from './yarnrc-yaml'
 
 // createInitFileSources 함수는 init이 새 프로젝트에 쓸 Electron 관련 파일 소스를 만든다.
-export function createInitFileSources(config: InitConfig) {
+export function createInitFileSources(
+  config: InitConfig,
+  template: CreateFrontronTemplateSnapshot = loadCreateFrontronTemplate(),
+) {
   const filesToWrite = new Map<string, string>([
     [join(config.cwd, config.desktopDir, 'serve.ts'), renderServeSource(config)],
     [join(config.cwd, config.desktopDir, 'package.json'), renderElectronPackageSource()],
     [join(config.cwd, 'tsconfig.electron.json'), renderTsconfigSource(config.desktopDir)],
   ])
 
-  for (const fileName of listCreateFrontronElectronFiles()) {
-    filesToWrite.set(
-      join(config.cwd, config.desktopDir, fileName),
-      renderCreateFrontronElectronFile(fileName),
-    )
+  for (const [fileName, source] of template.electronFiles) {
+    filesToWrite.set(join(config.cwd, config.desktopDir, fileName), source)
   }
 
-  filesToWrite.set(
-    join(config.cwd, 'src', 'types', 'electron.d.ts'),
-    readCreateFrontronTemplateFile('src/types/electron.d.ts'),
-  )
+  filesToWrite.set(join(config.cwd, 'src', 'types', 'electron.d.ts'), template.electronTypeSource)
 
   return filesToWrite
 }

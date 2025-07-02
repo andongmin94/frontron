@@ -27,6 +27,9 @@ export function createSummary(config: InitConfig) {
 
   if (config.runtimeStrategy === 'node-server') {
     lines.push(`- server runtime root: ${config.nodeServerSourceRoot ?? '(unset)'}`)
+    if (config.nodeServerSourceEntry) {
+      lines.push(`- server source entry: ${config.nodeServerSourceEntry}`)
+    }
     lines.push(`- server entry: ${config.nodeServerEntry ?? '(unset)'}`)
   }
 

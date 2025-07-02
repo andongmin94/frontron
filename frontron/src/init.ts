@@ -2,370 +2,133 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
 import { applyInitChanges } from './init/apply'
-import { describeInitAdapterSelection, resolveInitAdapter } from './init/adapters'
-import { createInitFileSources, addManifestSource } from './init/file-sources'
-import { previewPackageJsonPatch } from './init/package-json'
-import { readExistingManifest, readManifest, splitFileConflicts } from './init/manifest'
-import { mergePackageJsonClaims } from './init/ownership-claims'
-import { createDryRunReport, createInitPlan, createScriptFallbackWarnings } from './init/plan'
-import { previewPnpmWorkspaceYamlPatch } from './init/pnpm-workspace-yaml'
-import { askText, chooseDesktopScriptName, createReadlinePrompter } from './init/prompts'
-import { previewTsconfigJsonPatch } from './init/tsconfig-json'
-import { mergeYarnRcClaims, previewYarnRcYamlPatch } from './init/yarnrc-yaml'
-import { normalizeProjectRelativePath } from './project-paths'
-import {
-  type InitContext,
-  type InitOptions,
-  type PackageJson,
-  createDefaultAppId,
-  inferPackageManager,
-  normalizePathValue,
-  normalizeValue,
-  titleCase,
-} from './init/shared'
+import { createInitProjectPlan } from './init/create-plan'
+import { readExistingManifest, readManifest } from './init/manifest'
+import { createDryRunReport, type InitPlan } from './init/plan'
+import { createReadlinePrompter } from './init/prompts'
+import { resolveInitConfig } from './init/resolve-config'
+import { loadCreateFrontronTemplate } from './init/runtime/create-frontron-template'
+import type { InitContext, InitOptions, InitPrompter, PackageJson } from './init/shared'
+import { normalizePathValue } from './init/shared'
 import { writeInitSuccessReport } from './init/success-report'
-import { inferOutDir, inferOutDirFromScript } from './init/detect'
-import { getInitTemplateInfo } from './init/runtime/renderers'
 
 export type { InitContext, InitOptions, InitPrompter } from './init/shared'
 
-// ensureObject 함수는 기존 설정 값이 객체인지 확인하고 아니면 기본 객체를 사용한다.
-function ensureObject<T extends object>(value: unknown, fallback: T) {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as T) : fallback
+type InitProjectInput = {
+  packageJsonPath: string
+  packageJsonSource: string
+  packageJson: PackageJson
+  template: ReturnType<typeof loadCreateFrontronTemplate>
+  existingManifest: ReturnType<typeof readExistingManifest>
+  existingManifestDetails: ReturnType<typeof readManifest>
 }
 
-// runInit 함수는 기존 웹 프로젝트에 Electron 레이어를 추가하는 init 흐름을 실행한다.
-export async function runInit(options: InitOptions, context: InitContext) {
-  const packageJsonPath = join(context.cwd, 'package.json')
+// 강제 재설정에서는 이전 소유권 정보를 이어 쓰되, 손상된 manifest는 새 설치처럼 처리한다.
+function readExistingManifestDetails(cwd: string, force: boolean) {
+  if (!force) return null
+
+  try {
+    return readManifest(cwd)
+  } catch {
+    return null
+  }
+}
+
+// init에 필요한 프로젝트 원문과 create-frontron 템플릿 스냅샷을 한 번만 읽는다.
+function readInitProjectInput(cwd: string, force: boolean): InitProjectInput {
+  const packageJsonPath = join(cwd, 'package.json')
 
   if (!existsSync(packageJsonPath)) {
     throw new Error('package.json was not found in the current directory.')
   }
 
-  const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as PackageJson
-  const adapter = resolveInitAdapter(context.cwd, packageJson, options.adapter)
-  const promptEnabled = !options.yes && !options.dryRun
-  const existingManifest = options.force ? readExistingManifest(context.cwd) : null
-  let existingManifestDetails: ReturnType<typeof readManifest> = null
+  const packageJsonSource = readFileSync(packageJsonPath, 'utf8')
 
-  if (options.force) {
-    try {
-      existingManifestDetails = readManifest(context.cwd)
-    } catch {
-      existingManifestDetails = null
-    }
+  return {
+    packageJsonPath,
+    packageJsonSource,
+    packageJson: JSON.parse(packageJsonSource) as PackageJson,
+    template: loadCreateFrontronTemplate(),
+    existingManifest: force ? readExistingManifest(cwd) : null,
+    existingManifestDetails: readExistingManifestDetails(cwd, force),
   }
-  const allowedExistingScriptNames = existingManifest?.scripts ?? new Set<string>()
+}
+
+// 대화형 실행에만 readline 프롬프터를 만들고, 자동·dry-run 실행에는 만들지 않는다.
+function createInitPrompter(
+  options: InitOptions,
+  context: InitContext,
+): { promptEnabled: boolean; prompter: InitPrompter | null } {
+  const promptEnabled = !options.yes && !options.dryRun
   const prompter = promptEnabled
     ? (context.prompter ??
       createReadlinePrompter(context.stdin ?? process.stdin, context.stdout ?? process.stdout))
     : null
 
+  return { promptEnabled, prompter }
+}
+
+// 실제 쓰기 전에 계획에 남은 파일 충돌과 설정 차단 사유를 사용자에게 명확히 알린다.
+function assertInitPlanCanApply(cwd: string, plan: InitPlan) {
+  const blockedFiles = plan.files.filter((file) => file.action === 'blocked')
+
+  if (blockedFiles.length > 0) {
+    const paths = blockedFiles
+      .map((file) => normalizePathValue(relative(cwd, file.path), file.path))
+      .join(', ')
+
+    throw new Error(`Init aborted because one or more target files already exist: ${paths}`)
+  }
+
+  if (plan.blockers.length > 0) {
+    throw new Error(
+      `Init aborted because package.json cannot be patched: ${plan.blockers.join('; ')}`,
+    )
+  }
+}
+
+// 여러 패치 단계에서 같은 경고가 합쳐져도 성공 보고에는 한 번만 표시한다.
+function deduplicateWarnings(warnings: string[]) {
+  return [...new Set(warnings)]
+}
+
+// 기존 웹 프로젝트를 읽고 설정을 해석한 뒤, 하나의 계획을 원자적으로 적용한다.
+export async function runInit(options: InitOptions, context: InitContext) {
+  const project = readInitProjectInput(context.cwd, options.force)
+  const promptSession = createInitPrompter(options, context)
+
   try {
-    const adapterDefaults = adapter.inferDefaults(context.cwd, packageJson)
-    const inferredWebDevScript = options.webDevScript ?? adapterDefaults.webDevScript
-    const inferredWebBuildScript = options.webBuildScript ?? adapterDefaults.webBuildScript
-    const webDevScript = normalizeValue(
-      await askText(prompter, promptEnabled, 'Web dev script name', inferredWebDevScript),
-      inferredWebDevScript,
-    )
-    const webBuildScript = normalizeValue(
-      await askText(prompter, promptEnabled, 'Web build script name', inferredWebBuildScript),
-      inferredWebBuildScript,
-    )
-
-    if (!packageJson.scripts?.[webDevScript]) {
-      throw new Error(`Selected web dev script "${webDevScript}" was not found in package.json.`)
-    }
-
-    if (!packageJson.scripts?.[webBuildScript]) {
-      throw new Error(
-        `Selected web build script "${webBuildScript}" was not found in package.json.`,
-      )
-    }
-
-    const desktopDir = normalizeProjectRelativePath(
-      context.cwd,
-      await askText(
-        prompter,
-        promptEnabled,
-        'Electron source directory',
-        options.desktopDir ?? 'electron',
-      ),
-      options.desktopDir ?? 'electron',
-      'Electron source directory',
-    )
-    const takenDesktopScriptNames = new Set<string>()
-    const appScript = await chooseDesktopScriptName(
-      prompter,
-      promptEnabled,
-      packageJson,
-      'Desktop dev script name',
-      options.appScript ?? 'frontron:dev',
-      takenDesktopScriptNames,
-      'frontron:dev:electron',
-      Boolean(options.appScript),
-      allowedExistingScriptNames,
-    )
-    takenDesktopScriptNames.add(appScript)
-    const buildScript = await chooseDesktopScriptName(
-      prompter,
-      promptEnabled,
-      packageJson,
-      'Desktop build script name',
-      options.buildScript ?? 'frontron:build',
-      takenDesktopScriptNames,
-      'frontron:build:electron',
-      Boolean(options.buildScript),
-      allowedExistingScriptNames,
-    )
-    takenDesktopScriptNames.add(buildScript)
-    const packageScript = await chooseDesktopScriptName(
-      prompter,
-      promptEnabled,
-      packageJson,
-      'Desktop package script name',
-      options.packageScript ?? 'frontron:package',
-      takenDesktopScriptNames,
-      'frontron:package:electron',
-      Boolean(options.packageScript),
-      allowedExistingScriptNames,
-    )
-    takenDesktopScriptNames.add(packageScript)
-    const scriptFallbackWarnings = createScriptFallbackWarnings(packageJson, options, {
-      appScript,
-      buildScript,
-      packageScript,
-    })
-    const webBuildCommand = adapter.resolveBuildCommand(packageJson, webBuildScript)
-    const inferredOutDir =
-      options.outDir ??
-      adapterDefaults.outDir ??
-      inferOutDirFromScript(packageJson, webBuildScript) ??
-      inferOutDir(context.cwd)
-
-    if (!inferredOutDir && options.yes) {
-      throw new Error(
-        `Unable to infer the frontend build output for "${webBuildScript}". Pass --out-dir or run without --yes.`,
-      )
-    }
-
-    const outDir = normalizeProjectRelativePath(
-      context.cwd,
-      await askText(
-        prompter,
-        promptEnabled,
-        'Frontend build output directory',
-        inferredOutDir ?? 'dist',
-      ),
-      inferredOutDir ?? 'dist',
-      'Frontend build output directory',
-    )
-    const inferredServerRoot =
-      adapter.runtimeStrategy === 'node-server'
-        ? (options.serverRoot ?? adapterDefaults.nodeServerSourceRoot ?? '')
-        : ''
-    const inferredServerEntry =
-      adapter.runtimeStrategy === 'node-server'
-        ? (options.serverEntry ?? adapterDefaults.nodeServerEntry ?? '')
-        : ''
-
-    if (adapter.runtimeStrategy === 'node-server' && options.yes) {
-      if (!inferredServerRoot) {
-        throw new Error(
-          `Unable to infer the node server runtime root for adapter "${adapter.id}". Pass --server-root or run without --yes.`,
-        )
-      }
-
-      if (!inferredServerEntry) {
-        throw new Error(
-          `Unable to infer the node server entry for adapter "${adapter.id}". Pass --server-entry or run without --yes.`,
-        )
-      }
-    }
-
-    const nodeServerSourceRoot =
-      adapter.runtimeStrategy === 'node-server'
-        ? normalizeProjectRelativePath(
-            context.cwd,
-            await askText(
-              prompter,
-              promptEnabled,
-              'Node server runtime root',
-              inferredServerRoot || '.output',
-            ),
-            inferredServerRoot || '.output',
-            'Node server runtime root',
-          )
-        : null
-    const nodeServerEntry =
-      adapter.runtimeStrategy === 'node-server'
-        ? normalizeProjectRelativePath(
-            context.cwd,
-            await askText(
-              prompter,
-              promptEnabled,
-              'Node server entry',
-              inferredServerEntry || 'server/index.mjs',
-            ),
-            inferredServerEntry || 'server/index.mjs',
-            'Node server entry',
-          )
-        : null
-
-    const packageName = packageJson.name ?? 'desktop-app'
-    const productName = normalizeValue(
-      await askText(
-        prompter,
-        promptEnabled,
-        'Product name',
-        options.productName ?? titleCase(packageName),
-      ),
-      options.productName ?? titleCase(packageName),
-    )
-    const appId = normalizeValue(
-      await askText(
-        prompter,
-        promptEnabled,
-        'App ID',
-        options.appId ?? createDefaultAppId(packageName),
-      ),
-      options.appId ?? createDefaultAppId(packageName),
-    )
-    const existingBuild = ensureObject<NonNullable<PackageJson['build']>>(packageJson.build, {})
-    const existingExtraMetadata = ensureObject<Record<string, unknown>>(
-      existingBuild.extraMetadata,
-      {},
-    )
-    const existingExtraMetadataMain = existingExtraMetadata.main
-
-    const allowExtraMetadataMainOverride =
-      typeof existingExtraMetadataMain === 'undefined' ||
-      existingExtraMetadataMain === 'dist-electron/main.js' ||
-      options.force
-
-    const adapterSelection = describeInitAdapterSelection(
-      adapter,
-      options.adapter,
-      context.cwd,
-      packageJson,
-    )
-    const config = {
+    const resolved = await resolveInitConfig({
       cwd: context.cwd,
-      packageJson,
-      packageManager: inferPackageManager(context.cwd, packageJson),
-      adapter: adapter.id,
-      adapterConfidence: adapterSelection.confidence,
-      adapterReasons: adapterSelection.reasons,
-      runtimeStrategy: adapter.runtimeStrategy,
-      desktopDir,
-      appScript,
-      buildScript,
-      packageScript,
-      webDevScript,
-      webBuildScript,
-      webBuildCommand,
-      outDir,
-      nodeServerSourceRoot,
-      nodeServerEntry,
-      nodeServerCopyTargets: adapterDefaults.nodeServerCopyTargets ?? [],
-      productName,
-      appId,
-      templateInfo: getInitTemplateInfo(),
-      allowExtraMetadataMainOverride,
-    }
-
-    const filesToWrite = createInitFileSources(config)
-    const packageJsonPatchPlan = previewPackageJsonPatch(config)
-    const tsconfigJsonPatchPlan = previewTsconfigJsonPatch(context.cwd, desktopDir)
-    const pnpmWorkspacePatchPlan = previewPnpmWorkspaceYamlPatch(context.cwd, config.packageManager)
-    const yarnRcPatchPlan = previewYarnRcYamlPatch(context.cwd, config.packageManager)
-    const packageJsonClaims = mergePackageJsonClaims(
-      existingManifestDetails?.packageJsonClaims,
-      packageJsonPatchPlan.ownershipClaims,
-    )
-    const tsconfigJsonClaims = mergePackageJsonClaims(
-      existingManifestDetails?.tsconfigJsonClaims,
-      tsconfigJsonPatchPlan?.ownershipClaims,
-    )
-    const pnpmWorkspaceClaims = mergePackageJsonClaims(
-      existingManifestDetails?.pnpmWorkspaceClaims,
-      pnpmWorkspacePatchPlan?.ownershipClaims,
-    )
-    const yarnRcClaims = mergeYarnRcClaims(
-      existingManifestDetails?.yarnRcClaims,
-      yarnRcPatchPlan?.ownershipClaims,
-    )
-    addManifestSource(
-      config,
-      filesToWrite,
-      packageJsonClaims,
-      tsconfigJsonClaims,
-      pnpmWorkspaceClaims,
-      yarnRcClaims,
-    )
-
-    const conflicts = [...filesToWrite.keys()].filter((filePath) => existsSync(filePath))
-    const conflictPlan = splitFileConflicts(context.cwd, conflicts, options.force, existingManifest)
-    const packageJsonBlockers = [
-      ...packageJsonPatchPlan.blockers,
-      typeof existingExtraMetadataMain !== 'undefined' &&
-      typeof existingExtraMetadataMain !== 'string'
-        ? 'Existing build.extraMetadata.main must be a string to preserve existing packaging rules.'
-        : null,
-      ...(tsconfigJsonPatchPlan?.blockers ?? []),
-      ...(pnpmWorkspacePatchPlan?.blockers ?? []),
-      ...(yarnRcPatchPlan?.blockers ?? []),
-      !allowExtraMetadataMainOverride && typeof existingExtraMetadataMain === 'string'
-        ? `Existing build.extraMetadata.main will not be overwritten: ${existingExtraMetadataMain}`
-        : null,
-    ].filter((blocker): blocker is string => typeof blocker === 'string')
-    const plan = createInitPlan({
-      config,
-      filesToWrite,
-      packageJsonPlan: packageJsonPatchPlan,
-      tsconfigJsonPlan: tsconfigJsonPatchPlan,
-      pnpmWorkspacePlan: pnpmWorkspacePatchPlan,
-      yarnRcPlan: yarnRcPatchPlan,
-      warnings: [
-        ...scriptFallbackWarnings,
-        ...adapterSelection.warnings,
-        ...packageJsonPatchPlan.warnings,
-        ...(tsconfigJsonPatchPlan?.warnings ?? []),
-        ...(pnpmWorkspacePatchPlan?.warnings ?? []),
-        ...(yarnRcPatchPlan?.warnings ?? []),
-      ],
-      blockers: packageJsonBlockers,
-      blockedFiles: conflictPlan.blocked,
-      overwriteFiles: conflictPlan.safeToOverwrite,
+      packageJson: project.packageJson,
+      options,
+      prompter: promptSession.prompter,
+      promptEnabled: promptSession.promptEnabled,
+      allowedExistingScriptNames: project.existingManifest?.scripts ?? new Set<string>(),
+      template: project.template,
+    })
+    const plan = createInitProjectPlan({
+      config: resolved.config,
+      template: project.template,
+      packageJsonSource: project.packageJsonSource,
+      existingManifest: project.existingManifest,
+      existingManifestDetails: project.existingManifestDetails,
+      force: options.force,
+      configurationWarnings: resolved.successWarnings,
+      packageMetadataBlockers: resolved.packageMetadataBlockers,
     })
 
     if (options.dryRun) {
       context.output.info(createDryRunReport(plan))
-
       return 0
     }
 
-    if (conflictPlan.blocked.length > 0) {
-      throw new Error(
-        `Init aborted because one or more target files already exist: ${conflictPlan.blocked
-          .map((filePath) => normalizePathValue(relative(context.cwd, filePath), filePath))
-          .join(', ')}`,
-      )
-    }
-
-    if (plan.blockers.length > 0) {
-      throw new Error(
-        `Init aborted because package.json cannot be patched: ${plan.blockers.join('; ')}`,
-      )
-    }
-
-    applyInitChanges(packageJsonPath, plan)
-
-    writeInitSuccessReport(context.output, config, scriptFallbackWarnings)
+    assertInitPlanCanApply(context.cwd, plan)
+    applyInitChanges(project.packageJsonPath, plan)
+    writeInitSuccessReport(context.output, resolved.config, deduplicateWarnings(plan.warnings))
 
     return 0
   } finally {
-    await prompter?.close()
+    await promptSession.prompter?.close()
   }
 }

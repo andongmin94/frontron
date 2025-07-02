@@ -16,18 +16,6 @@ export function createReadlinePrompter(
       const answer = await rl.question(`${message} [${defaultValue}]: `)
       return answer.trim() || defaultValue
     },
-    // confirm 메서드는 yes/no 답변을 받아 boolean 값으로 바꾼다.
-    async confirm(message, defaultValue) {
-      const answer = (await rl.question(`${message} [${defaultValue ? 'Y/n' : 'y/N'}]: `))
-        .trim()
-        .toLowerCase()
-
-      if (!answer) {
-        return defaultValue
-      }
-
-      return answer === 'y' || answer === 'yes'
-    },
     // close 메서드는 readline 인터페이스를 닫아 터미널 리소스를 정리한다.
     close() {
       rl.close()

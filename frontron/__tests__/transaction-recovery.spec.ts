@@ -1,7 +1,8 @@
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import {
   chmodSync,
   existsSync,
+  fchmodSync,
   fstatSync,
   fsyncSync,
   linkSync,
@@ -22,7 +23,10 @@ vi.mock('node:fs', async (importOriginal) => {
 
   return {
     ...actual,
+    chmodSync: vi.fn(actual.chmodSync),
+    fchmodSync: vi.fn(actual.fchmodSync),
     fsyncSync: vi.fn(actual.fsyncSync),
+    lstatSync: vi.fn(actual.lstatSync),
     readFileSync: vi.fn(actual.readFileSync),
   }
 })
@@ -46,6 +50,7 @@ import {
   TRANSACTION_LOCK_PATH,
   TRANSACTION_RECOVERY_LOCK_PATH,
   TRANSACTION_RECOVERY_LOCK_PREPARING_PREFIX,
+  writeTransactionFile,
 } from '../src/transaction-journal'
 import * as fixtures from './helpers/frontron-cli-fixtures'
 
@@ -131,6 +136,64 @@ function createIoError() {
   })
 }
 
+// installModeReplacementRace 함수는 권한 완화 직후 경로를 다른 inode로 바꾸는 경쟁을 재현한다.
+// path chmod 구현은 새 inode까지 건드리지만 descriptor-first 구현은 고정한 inode만 원복해야 한다.
+function installModeReplacementRace(
+  targetPath: string,
+  replacementPath: string,
+  parkedPath: string,
+) {
+  const targetIdentity = lstatSync(targetPath, { bigint: true })
+  const chmodMock = vi.mocked(chmodSync)
+  const fchmodMock = vi.mocked(fchmodSync)
+  const chmodImplementation = chmodMock.getMockImplementation()
+  const fchmodImplementation = fchmodMock.getMockImplementation()
+  let swapped = false
+
+  if (!chmodImplementation || !fchmodImplementation) {
+    throw new Error('Filesystem mode mocks are not initialized.')
+  }
+
+  const swapPath = () => {
+    renameSync(targetPath, parkedPath)
+    renameSync(replacementPath, targetPath)
+    swapped = true
+  }
+
+  chmodMock.mockImplementation(((...args: Parameters<typeof chmodSync>) => {
+    Reflect.apply(chmodImplementation, undefined, args)
+    const [path, mode] = args
+
+    if (!swapped && path === targetPath && typeof mode === 'number' && (mode & 0o200) !== 0) {
+      swapPath()
+    }
+  }) as typeof chmodSync)
+
+  fchmodMock.mockImplementation(((...args: Parameters<typeof fchmodSync>) => {
+    const [descriptor, mode] = args
+    const descriptorIdentity = fstatSync(descriptor, { bigint: true })
+    Reflect.apply(fchmodImplementation, undefined, args)
+    const descriptorIsTarget =
+      targetIdentity.ino !== 0n &&
+      descriptorIdentity.ino === targetIdentity.ino &&
+      (targetIdentity.dev === 0n ||
+        descriptorIdentity.dev === 0n ||
+        descriptorIdentity.dev === targetIdentity.dev)
+
+    if (!swapped && descriptorIsTarget && typeof mode === 'number' && (mode & 0o200) !== 0) {
+      swapPath()
+    }
+  }) as typeof fchmodSync)
+
+  return {
+    didSwap: () => swapped,
+    restoreMocks() {
+      chmodMock.mockImplementation(chmodImplementation)
+      fchmodMock.mockImplementation(fchmodImplementation)
+    },
+  }
+}
+
 test.runIf(Boolean(process.env.FRONTRON_RECOVERY_WORKER_ROOT))(RECOVERY_WORKER_TEST_NAME, () => {
   const projectRoot = process.env.FRONTRON_RECOVERY_WORKER_ROOT
   const resultPath = process.env.FRONTRON_RECOVERY_WORKER_RESULT
@@ -145,6 +208,74 @@ test.runIf(Boolean(process.env.FRONTRON_RECOVERY_WORKER_ROOT))(RECOVERY_WORKER_T
 })
 
 describe('persistent transaction recovery', () => {
+  test('recovery tolerates a preparing lock removed after directory enumeration', () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const preparingPath = join(
+      projectRoot,
+      `${TRANSACTION_RECOVERY_LOCK_PREPARING_PREFIX}${DEAD_PROCESS_ID}-vanished.json`,
+    )
+    const lstatMock = vi.mocked(lstatSync)
+    const lstatImplementation = lstatMock.getMockImplementation()
+    let injectedRace = false
+
+    if (!lstatImplementation) throw new Error('Filesystem stat mock is not initialized.')
+
+    writeFileSync(preparingPath, '{}\n')
+    lstatMock.mockImplementation(((...args: Parameters<typeof lstatSync>) => {
+      if (!injectedRace && args[0] === preparingPath) {
+        injectedRace = true
+        unlinkSync(preparingPath)
+        throw Object.assign(
+          new Error(`ENOENT: no such file or directory, lstat '${preparingPath}'`),
+          {
+            code: 'ENOENT',
+            path: preparingPath,
+            syscall: 'lstat',
+          },
+        )
+      }
+
+      return Reflect.apply(lstatImplementation, undefined, args)
+    }) as typeof lstatSync)
+
+    try {
+      expect(recoverPendingTransaction(projectRoot)).toEqual({
+        recovered: false,
+        operation: null,
+        cleanedPreparingJournals: 0,
+      })
+      expect(injectedRace).toBe(true)
+    } finally {
+      lstatMock.mockImplementation(lstatImplementation)
+    }
+  })
+
+  test('a rejected transactional write preserves an external edit made after the snapshot', () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const targetPath = join(projectRoot, 'owned.txt')
+    const originalSource = 'original\n'
+    const externalSource = 'external edit\n'
+    writeFileSync(targetPath, originalSource)
+
+    const handle = beginTransaction(projectRoot, 'init', [
+      {
+        path: targetPath,
+        safetyRoot: projectRoot,
+        expectedHash: createTransactionSourceHash(originalSource),
+      },
+    ])
+    writeFileSync(targetPath, externalSource)
+
+    expect(() => writeTransactionFile(handle, targetPath, 'frontron write\n', projectRoot)).toThrow(
+      'changed after the transaction snapshot was created',
+    )
+    expect(() => rollbackTransaction(handle)).not.toThrow()
+    expect(readFileSync(targetPath, 'utf8')).toBe(externalSource)
+    expect(existsSync(join(projectRoot, TRANSACTION_JOURNAL_PATH))).toBe(false)
+  })
+
   test('the next CLI run restores bytes and mode, removes new files, and is repeat-safe', async () => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)
@@ -636,6 +767,131 @@ describe('persistent transaction recovery', () => {
     expect(readFileSync(packageJsonPath, 'utf8')).toBe(originalSource)
   })
 
+  test('commit rejects a snapshot kind mismatch without discarding the journal', () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const targetPath = join(projectRoot, 'state.txt')
+
+    writeFileSync(targetPath, 'original file state\n')
+    const handle = beginTransaction(projectRoot, 'init', [
+      { path: targetPath, safetyRoot: projectRoot },
+    ])
+
+    unlinkSync(targetPath)
+    mkdirSync(targetPath)
+
+    expect(() => commitTransaction(handle)).toThrow('kind does not match its snapshot')
+    expect(existsSync(join(projectRoot, TRANSACTION_JOURNAL_PATH))).toBe(true)
+
+    rmdirSync(targetPath)
+    writeFileSync(targetPath, 'ordinary changed file\n')
+    rollbackTransaction(handle)
+    expect(readFileSync(targetPath, 'utf8')).toBe('original file state\n')
+  })
+
+  test.runIf(process.platform !== 'win32')(
+    'commit rejects a special-file snapshot target without discarding the journal',
+    () => {
+      const projectRoot = fixtures.createTempProject()
+      fixtures.tempDirs.push(projectRoot)
+      const targetPath = join(projectRoot, 'state.pipe')
+      const handle = beginTransaction(projectRoot, 'init', [
+        { path: targetPath, safetyRoot: projectRoot },
+      ])
+      const mkfifo = spawnSync('mkfifo', [targetPath], { encoding: 'utf8' })
+
+      if (mkfifo.error) throw mkfifo.error
+      expect(mkfifo.status, mkfifo.stderr).toBe(0)
+      expect(() => commitTransaction(handle)).toThrow('neither a regular file nor a directory')
+      expect(existsSync(join(projectRoot, TRANSACTION_JOURNAL_PATH))).toBe(true)
+
+      unlinkSync(targetPath)
+      rollbackTransaction(handle)
+    },
+  )
+
+  test('commit restores a read-only anchor mode without chmod on a replaced path', () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const targetPath = join(projectRoot, 'read-only-result.txt')
+    const replacementPath = join(projectRoot, 'replacement.txt')
+    const parkedPath = join(projectRoot, 'parked-result.txt')
+
+    writeFileSync(targetPath, 'original result\n')
+    chmodSync(targetPath, 0o444)
+    const handle = beginTransaction(projectRoot, 'init', [
+      { path: targetPath, safetyRoot: projectRoot },
+    ])
+    chmodSync(targetPath, 0o644)
+    writeFileSync(targetPath, 'committed result\n')
+    chmodSync(targetPath, 0o444)
+    writeFileSync(replacementPath, 'replacement stays untouched\n')
+    chmodSync(replacementPath, 0o644)
+    const replacementWriteBits = lstatSync(replacementPath).mode & 0o222
+    const race = installModeReplacementRace(targetPath, replacementPath, parkedPath)
+
+    try {
+      expect(() => commitTransaction(handle)).toThrow(
+        'Transaction result changed before it could be synchronized',
+      )
+    } finally {
+      race.restoreMocks()
+    }
+
+    expect(race.didSwap()).toBe(true)
+    expect(readFileSync(targetPath, 'utf8')).toBe('replacement stays untouched\n')
+    expect(lstatSync(targetPath).mode & 0o222).toBe(replacementWriteBits)
+    expect(lstatSync(parkedPath).mode & 0o222).toBe(0)
+    expect(existsSync(join(projectRoot, TRANSACTION_JOURNAL_PATH))).toBe(true)
+
+    chmodSync(targetPath, 0o644)
+    unlinkSync(targetPath)
+    renameSync(parkedPath, targetPath)
+    commitTransaction(handle)
+  })
+
+  test('rollback restores a read-only anchor mode without chmod on a replaced path', () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const targetPath = join(projectRoot, 'read-only-state.txt')
+    const replacementPath = join(projectRoot, 'replacement.txt')
+    const parkedPath = join(projectRoot, 'parked-state.txt')
+
+    writeFileSync(targetPath, 'original state\n')
+    chmodSync(targetPath, 0o444)
+    const handle = beginTransaction(projectRoot, 'clean', [
+      { path: targetPath, safetyRoot: projectRoot },
+    ])
+    chmodSync(targetPath, 0o644)
+    writeFileSync(targetPath, 'changed state\n')
+    chmodSync(targetPath, 0o444)
+    writeFileSync(replacementPath, 'replacement stays untouched\n')
+    chmodSync(replacementPath, 0o644)
+    const replacementWriteBits = lstatSync(replacementPath).mode & 0o222
+    const race = installModeReplacementRace(targetPath, replacementPath, parkedPath)
+
+    try {
+      expect(() => rollbackTransaction(handle)).toThrow(
+        'Transaction recovery file changed before restoration',
+      )
+    } finally {
+      race.restoreMocks()
+    }
+
+    expect(race.didSwap()).toBe(true)
+    expect(readFileSync(targetPath, 'utf8')).toBe('replacement stays untouched\n')
+    expect(readFileSync(parkedPath, 'utf8')).toBe('changed state\n')
+    expect(lstatSync(targetPath).mode & 0o222).toBe(replacementWriteBits)
+    expect(lstatSync(parkedPath).mode & 0o222).toBe(0)
+    expect(existsSync(join(projectRoot, TRANSACTION_JOURNAL_PATH))).toBe(true)
+
+    chmodSync(targetPath, 0o644)
+    unlinkSync(targetPath)
+    renameSync(parkedPath, targetPath)
+    rollbackTransaction(handle)
+    expect(readFileSync(targetPath, 'utf8')).toBe('original state\n')
+  })
+
   test('rollback rejects a replacement hard link without changing its outside inode', () => {
     const projectRoot = fixtures.createTempProject()
     const outsideRoot = fixtures.createTempProject()
@@ -795,6 +1051,34 @@ describe('persistent transaction recovery', () => {
     expect(await runRecoveryCommand(projectRoot)).toBe(0)
     expect(readFileSync(targetPath, 'utf8')).toBe('original\n')
     expect(existsSync(join(projectRoot, TRANSACTION_JOURNAL_PATH))).toBe(false)
+  })
+
+  test('recovery validates every snapshot kind before restoring any bytes', () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const firstPath = join(projectRoot, 'first.txt')
+    const secondPath = join(projectRoot, 'second.txt')
+
+    writeFileSync(firstPath, 'first original\n')
+    writeFileSync(secondPath, 'second original\n')
+    beginTransaction(projectRoot, 'clean', [
+      { path: firstPath, safetyRoot: projectRoot },
+      { path: secondPath, safetyRoot: projectRoot },
+    ])
+    writeFileSync(firstPath, 'first changed but not partially restored\n')
+    unlinkSync(secondPath)
+    mkdirSync(secondPath)
+    markJournalAsAbandoned(projectRoot)
+
+    expect(() => recoverPendingTransaction(projectRoot)).toThrow('kind does not match its snapshot')
+    expect(readFileSync(firstPath, 'utf8')).toBe('first changed but not partially restored\n')
+    expect(existsSync(join(projectRoot, TRANSACTION_JOURNAL_PATH))).toBe(true)
+
+    rmdirSync(secondPath)
+    writeFileSync(secondPath, 'second changed\n')
+    expect(recoverPendingTransaction(projectRoot).recovered).toBe(true)
+    expect(readFileSync(firstPath, 'utf8')).toBe('first original\n')
+    expect(readFileSync(secondPath, 'utf8')).toBe('second original\n')
   })
 
   test('two processes cannot restore the same pending journal concurrently', async () => {

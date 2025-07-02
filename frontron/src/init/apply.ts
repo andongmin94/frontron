@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
 import { addTsconfigExcludeValues } from '../clean/tsconfig-source'
@@ -7,7 +7,9 @@ import {
   beginTransaction,
   commitTransaction,
   createTransactionSourceHash,
+  removeTransactionFile,
   rollbackTransaction,
+  writeTransactionFile,
   type TransactionHandle,
   type TransactionTarget,
 } from '../transaction-journal'
@@ -17,32 +19,31 @@ import type { TsconfigJsonPatchPlan } from './tsconfig-json'
 import type { PnpmWorkspaceYamlPatchPlan } from './pnpm-workspace-yaml'
 import type { YarnRcYamlPatchPlan } from './yarnrc-yaml'
 
-// createCurrentExpectedHash 함수는 lock 대기 중 파일이 바뀌는지 확인할 현재 원문 해시를 만든다.
-function createCurrentExpectedHash(filePath: string) {
-  return existsSync(filePath) ? createTransactionSourceHash(readFileSync(filePath)) : null
-}
-
 // createPlannedSourceExpectedHash 함수는 계획 원문과 생성 여부를 transaction expected hash로 바꾼다.
-function createPlannedSourceExpectedHash(filePath: string, source: string, created: boolean) {
+function createPlannedSourceExpectedHash(source: string, created: boolean) {
   if (created) return null
-
-  if (!existsSync(filePath) && source === '') return null
   return createTransactionSourceHash(source)
 }
 
 // writeTrackedFile 함수는 transaction 저널이 보호하는 파일을 안전 경로 재검사 후 기록한다.
-function writeTrackedFile(filePath: string, content: string, safetyRoot: string) {
+function writeTrackedFile(
+  transaction: TransactionHandle,
+  filePath: string,
+  content: string,
+  safetyRoot: string,
+) {
   assertProjectPathSafe(safetyRoot, filePath, 'Init target path')
   mkdirSync(dirname(filePath), { recursive: true })
-  assertProjectPathSafe(safetyRoot, filePath, 'Init target path')
-  writeFileSync(filePath, content, 'utf8')
+  writeTransactionFile(transaction, filePath, content, safetyRoot)
 }
 
 // createInitTransactionTargets 함수는 init이 쓸 모든 파일과 각 파일의 안전 경계를 한곳에 모은다.
 function createInitTransactionTargets(
   projectRoot: string,
   packageJsonPath: string,
+  packageJsonExpectedHash: string,
   writableFiles: InitPlan['files'],
+  obsoleteFiles: InitPlan['obsoleteFiles'],
   tsconfigJsonPlan: TsconfigJsonPatchPlan | null,
   pnpmWorkspacePlan: PnpmWorkspaceYamlPatchPlan | null,
   pnpmWorkspaceSafetyRoot: string,
@@ -52,13 +53,21 @@ function createInitTransactionTargets(
   const targets: TransactionTarget[] = writableFiles.map((file) => ({
     path: file.path,
     safetyRoot: projectRoot,
-    expectedHash: file.action === 'create' ? null : createCurrentExpectedHash(file.path),
+    expectedHash: file.expectedHash,
   }))
+
+  for (const file of obsoleteFiles) {
+    targets.push({
+      path: file.path,
+      safetyRoot: projectRoot,
+      expectedHash: file.expectedHash,
+    })
+  }
 
   targets.push({
     path: packageJsonPath,
     safetyRoot: projectRoot,
-    expectedHash: createCurrentExpectedHash(packageJsonPath),
+    expectedHash: packageJsonExpectedHash,
   })
 
   if (
@@ -69,7 +78,7 @@ function createInitTransactionTargets(
     targets.push({
       path: tsconfigJsonPlan.path,
       safetyRoot: projectRoot,
-      expectedHash: createCurrentExpectedHash(tsconfigJsonPlan.path),
+      expectedHash: createTransactionSourceHash(tsconfigJsonPlan.source),
     })
   }
 
@@ -82,9 +91,8 @@ function createInitTransactionTargets(
       path: pnpmWorkspacePlan.path,
       safetyRoot: pnpmWorkspaceSafetyRoot,
       expectedHash: createPlannedSourceExpectedHash(
-        pnpmWorkspacePlan.path,
         pnpmWorkspacePlan.source,
-        !existsSync(pnpmWorkspacePlan.path),
+        pnpmWorkspacePlan.created,
       ),
     })
   }
@@ -93,11 +101,7 @@ function createInitTransactionTargets(
     targets.push({
       path: yarnRcPlan.path,
       safetyRoot: yarnRcSafetyRoot,
-      expectedHash: createPlannedSourceExpectedHash(
-        yarnRcPlan.path,
-        yarnRcPlan.source,
-        yarnRcPlan.created,
-      ),
+      expectedHash: createPlannedSourceExpectedHash(yarnRcPlan.source, yarnRcPlan.created),
     })
   }
 
@@ -113,6 +117,7 @@ export function applyInitChanges(packageJsonPath: string, plan: InitPlan) {
     yarnRcPlan = null,
   } = plan
   const writableFiles = plan.files.filter((file) => file.action !== 'blocked')
+  const obsoleteFiles = plan.obsoleteFiles ?? []
   const manifestPath = resolve(plan.config.cwd, MANIFEST_PATH)
   const generatedFiles = writableFiles.filter((file) => resolve(file.path) !== manifestPath)
   const manifestFiles = writableFiles.filter((file) => resolve(file.path) === manifestPath)
@@ -130,7 +135,9 @@ export function applyInitChanges(packageJsonPath: string, plan: InitPlan) {
   const transactionTargets = createInitTransactionTargets(
     projectRoot,
     packageJsonPath,
+    plan.packageJsonExpectedHash,
     writableFiles,
+    obsoleteFiles,
     tsconfigJsonPlan,
     pnpmWorkspacePlan,
     pnpmWorkspaceSafetyRoot,
@@ -143,10 +150,15 @@ export function applyInitChanges(packageJsonPath: string, plan: InitPlan) {
     transaction = beginTransaction(projectRoot, 'init', transactionTargets)
 
     for (const file of generatedFiles) {
-      writeTrackedFile(file.path, file.content, projectRoot)
+      writeTrackedFile(transaction, file.path, file.content, projectRoot)
     }
 
-    writeTrackedFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, projectRoot)
+    writeTrackedFile(
+      transaction,
+      packageJsonPath,
+      `${JSON.stringify(packageJson, null, 2)}\n`,
+      projectRoot,
+    )
 
     if (
       tsconfigJsonPlan &&
@@ -163,13 +175,12 @@ export function applyInitChanges(packageJsonPath: string, plan: InitPlan) {
         )
       }
 
-      const tsconfigSource = readFileSync(tsconfigJsonPlan.path, 'utf8')
       const nextTsconfigSource = addTsconfigExcludeValues(
-        tsconfigSource,
+        tsconfigJsonPlan.source,
         tsconfigJsonPlan.changes.map((change) => change.value),
       )
 
-      writeTrackedFile(tsconfigJsonPlan.path, nextTsconfigSource, projectRoot)
+      writeTrackedFile(transaction, tsconfigJsonPlan.path, nextTsconfigSource, projectRoot)
     }
 
     if (
@@ -178,6 +189,7 @@ export function applyInitChanges(packageJsonPath: string, plan: InitPlan) {
       pnpmWorkspacePlan.changes.length > 0
     ) {
       writeTrackedFile(
+        transaction,
         pnpmWorkspacePlan.path,
         pnpmWorkspacePlan.nextSource,
         pnpmWorkspaceSafetyRoot,
@@ -196,13 +208,17 @@ export function applyInitChanges(packageJsonPath: string, plan: InitPlan) {
         throw new Error(`${yarnRcPlan.path} changed after the init plan was created.`)
       }
 
-      writeTrackedFile(yarnRcPlan.path, yarnRcPlan.nextSource, yarnRcSafetyRoot)
+      writeTrackedFile(transaction, yarnRcPlan.path, yarnRcPlan.nextSource, yarnRcSafetyRoot)
     }
 
     // manifest는 "적용 완료 증명서"에 가깝다.
     // 중간 쓰기가 실패하면 rollback 후 manifest가 남지 않도록 마지막에만 기록한다.
+    for (const file of obsoleteFiles) {
+      removeTransactionFile(transaction, file.path, projectRoot)
+    }
+
     for (const file of manifestFiles) {
-      writeTrackedFile(file.path, file.content, projectRoot)
+      writeTrackedFile(transaction, file.path, file.content, projectRoot)
     }
 
     commitTransaction(transaction)
@@ -224,6 +240,7 @@ export function applyInitChanges(packageJsonPath: string, plan: InitPlan) {
 
     throw new Error(
       `Init failed while writing project changes: ${(error as Error).message}.${rollbackMessage}`,
+      { cause: error },
     )
   }
 }

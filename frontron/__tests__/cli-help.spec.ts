@@ -37,6 +37,7 @@ describe('frontron CLI help', () => {
     expect(initHelp).toContain('Usage: frontron init [options]')
     expect(initHelp).not.toContain('--force')
     expect(initHelp).not.toContain('--preset')
+    expect(initHelp).toContain('Source entry inside that runtime root')
     expect(doctorOutput.info.mock.calls.flat().join('\n')).toContain('Usage: frontron doctor')
     expect(cleanOutput.info.mock.calls.flat().join('\n')).toContain(
       'Usage: frontron clean [options]',

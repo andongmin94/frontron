@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url'
 import * as ts from 'typescript'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { renderMainSource, renderWindowSource } from '../src/init/runtime/renderers'
+import { renderCreateFrontronElectronFile } from '../src/init/runtime/create-frontron-template'
 
 type ProtocolHandler = (request: Request) => Promise<Response>
 type NavigationHandler = (details: {
@@ -198,7 +198,11 @@ export async function waitForUrlReady(url) { return url }
     'export function createTray() {}\nexport function destroyTray() {}\n',
     'utf8',
   )
-  writeFileSync(mainPath, transpileRuntimeSource(renderMainSource(), 'main.ts'), 'utf8')
+  writeFileSync(
+    mainPath,
+    transpileRuntimeSource(renderCreateFrontronElectronFile('main.ts'), 'main.ts'),
+    'utf8',
+  )
 
   return (await import(
     `${pathToFileURL(mainPath).href}?test=${Date.now()}-${Math.random()}`
@@ -220,7 +224,11 @@ export const isQuitting = false
     'utf8',
   )
   writeFileSync(join(electronDir, 'splash.js'), 'export function closeSplash() {}\n', 'utf8')
-  writeFileSync(windowPath, transpileRuntimeSource(renderWindowSource(), 'window.ts'), 'utf8')
+  writeFileSync(
+    windowPath,
+    transpileRuntimeSource(renderCreateFrontronElectronFile('window.ts'), 'window.ts'),
+    'utf8',
+  )
 
   return (await import(
     `${pathToFileURL(windowPath).href}?test=${Date.now()}-${Math.random()}`

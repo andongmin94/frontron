@@ -55,40 +55,45 @@ export function getScriptCommand(packageJson: PackageJson, scriptName: string) {
   return packageJson.scripts?.[scriptName] ?? null
 }
 
-// splitCommandArgs 함수는 package.json script를 간단한 인자 목록으로 나누어 따옴표로 감싼 옵션 값을 보존한다.
-function splitCommandArgs(command: string) {
-  const args: string[] = []
+// splitCommandSegments 함수는 따옴표와 Windows 역슬래시를 보존하며 shell 명령 구간을 나눈다.
+function splitCommandSegments(command: string) {
+  const segments: string[][] = []
+  let args: string[] = []
   let current = ''
   let quote: '"' | "'" | '`' | null = null
-  let escaped = false
 
-  // flush 함수는 현재까지 읽은 명령 인자를 결과 배열에 확정한다.
-  const flush = () => {
-    if (current) {
-      args.push(current)
-      current = ''
-    }
+  // flushArg 함수는 현재까지 읽은 명령 인자를 현재 구간에 확정한다.
+  const flushArg = () => {
+    if (!current) return
+    args.push(current)
+    current = ''
   }
 
-  for (const char of command) {
-    if (escaped) {
-      current += char
-      escaped = false
-      continue
-    }
+  // flushSegment 함수는 shell 연산자 앞까지의 인자를 독립된 명령으로 확정한다.
+  const flushSegment = () => {
+    flushArg()
+    if (args.length > 0) segments.push(args)
+    args = []
+  }
 
-    if (char === '\\' && quote !== "'") {
-      escaped = true
-      continue
-    }
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index]
 
     if (quote) {
       if (char === quote) {
         quote = null
+      } else if (char === '\\' && quote !== "'") {
+        const next = command[index + 1]
+
+        if (next === quote || next === '\\') {
+          current += next
+          index += 1
+        } else {
+          current += char
+        }
       } else {
         current += char
       }
-
       continue
     }
 
@@ -97,21 +102,55 @@ function splitCommandArgs(command: string) {
       continue
     }
 
-    if (/\s/.test(char) || char === '&') {
-      flush()
+    if (char === '\\') {
+      const next = command[index + 1]
+
+      if (next && (/\s/.test(next) || next === '"' || next === "'" || next === '`')) {
+        current += next
+        index += 1
+      } else {
+        current += char
+      }
+      continue
+    }
+
+    if (/\s/.test(char)) {
+      flushArg()
+      continue
+    }
+
+    if (char === ';' || char === '&' || char === '|') {
+      flushSegment()
+      if (command[index + 1] === char) index += 1
       continue
     }
 
     current += char
   }
 
-  flush()
-  return args
+  flushSegment()
+  return segments
 }
 
-// readCommandOption 함수는 script 인자에서 --flag value와 --flag=value 형태의 옵션 값을 찾는다.
-function readCommandOption(command: string, flags: string[]) {
-  const args = splitCommandArgs(command)
+// findCommandSegment 함수는 대상 도구가 있는 shell 구간만 골라 뒤 명령의 flag 혼입을 막는다.
+function findCommandSegment(command: string, commandPattern?: RegExp) {
+  const segments = splitCommandSegments(command)
+
+  if (!commandPattern) return segments[0] ?? []
+
+  return (
+    segments.find((segment) => {
+      commandPattern.lastIndex = 0
+      return commandPattern.test(segment.join(' '))
+    }) ??
+    segments[0] ??
+    []
+  )
+}
+
+// readCommandOption 함수는 선택한 명령 구간에서 --flag value와 --flag=value 값을 찾는다.
+function readCommandOption(command: string, flags: string[], commandPattern?: RegExp) {
+  const args = findCommandSegment(command, commandPattern)
 
   for (const [index, arg] of args.entries()) {
     for (const flag of flags) {
@@ -271,7 +310,7 @@ export function inferOutDirFromScript(packageJson: PackageJson, scriptName: stri
     return null
   }
 
-  const outDir = readCommandOption(command, ['--outDir', '--outdir', '-o'])
+  const outDir = readCommandOption(command, ['--outDir', '--outdir', '-o'], /\bvite\s+build\b/i)
   return outDir ? normalizePathValue(outDir, 'dist') : null
 }
 
@@ -283,7 +322,7 @@ export function inferViteConfigPathFromScript(packageJson: PackageJson, scriptNa
     return null
   }
 
-  const configPath = readCommandOption(command, ['--config', '-c'])
+  const configPath = readCommandOption(command, ['--config', '-c'], /\bvite\s+build\b/i)
   return configPath ? normalizePathValue(configPath, configPath) : null
 }
 
@@ -295,7 +334,10 @@ export function inferNextExportOutDirFromScript(packageJson: PackageJson, script
     return null
   }
 
-  return normalizePathValue(readCommandOption(command, ['--outdir', '-o']) ?? 'out', 'out')
+  return normalizePathValue(
+    readCommandOption(command, ['--outdir', '-o'], /\bnext\s+export\b/i) ?? 'out',
+    'out',
+  )
 }
 
 // inferViteServerConfig 함수는 Vite 설정 파일을 한 번 순회해 server host와 port를 추론한다.
@@ -366,7 +408,9 @@ export function inferPort(packageJson: PackageJson, scriptName: string) {
     return null
   }
 
-  const portOption = readCommandOption(command, ['--port', '-p'])
+  const commandPattern = /\b(?:vite|next|nuxt|remix|svelte-kit|astro)\b/i
+  const commandSegment = findCommandSegment(command, commandPattern).join(' ')
+  const portOption = readCommandOption(command, ['--port', '-p'], commandPattern)
   const optionValue = Number.parseInt(portOption ?? '', 10)
 
   if (Number.isInteger(optionValue) && optionValue > 0 && optionValue <= 65_535) {
@@ -378,7 +422,7 @@ export function inferPort(packageJson: PackageJson, scriptName: string) {
     /(?:^|[\s"'`])set\s+PORT=(\d{1,5})(?=$|[\s"'`&])/i,
     /(?:^|[\s"'`])-p(\d{1,5})(?=$|[\s"'`&])/i,
   ]) {
-    const value = Number.parseInt(command.match(pattern)?.[1] ?? '', 10)
+    const value = Number.parseInt(commandSegment.match(pattern)?.[1] ?? '', 10)
 
     if (Number.isInteger(value) && value > 0 && value <= 65_535) {
       return value
@@ -396,7 +440,9 @@ export function inferHost(packageJson: PackageJson, scriptName: string) {
     return null
   }
 
-  const hostOption = readCommandOption(command, ['--hostname', '--host'])
+  const commandPattern = /\b(?:vite|next|nuxt|remix|svelte-kit|astro)\b/i
+  const commandSegment = findCommandSegment(command, commandPattern).join(' ')
+  const hostOption = readCommandOption(command, ['--hostname', '--host'], commandPattern)
 
   if (hostOption) {
     return normalizeLoopbackHost(hostOption)
@@ -406,7 +452,7 @@ export function inferHost(packageJson: PackageJson, scriptName: string) {
     /(?:^|[\s"'`])HOST=([^\s"'`&]+)/i,
     /(?:^|[\s"'`])set\s+HOST=([^\s"'`&]+)/i,
   ]) {
-    const host = command.match(pattern)?.[1]
+    const host = commandSegment.match(pattern)?.[1]
 
     if (host) {
       return normalizeLoopbackHost(host)

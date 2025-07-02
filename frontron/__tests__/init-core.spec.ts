@@ -4,9 +4,37 @@ import * as ts from 'typescript'
 import { describe, expect, test } from 'vitest'
 
 import { runCli } from '../src/cli'
+import {
+  getInitTemplateInfo,
+  listCreateFrontronElectronFiles,
+  readCreateFrontronTemplateFile,
+  renderCreateFrontronElectronFile,
+} from '../src/init/runtime/create-frontron-template'
 import * as fixtures from './helpers/frontron-cli-fixtures'
 
 describe('frontron init core flow', () => {
+  test('template reader exposes the matching create-frontron Electron source contract', () => {
+    const info = getInitTemplateInfo()
+    const electronFiles = listCreateFrontronElectronFiles()
+    const rawMainSource = readCreateFrontronTemplateFile('src/electron/main.ts')
+
+    expect(info).toMatchObject({
+      source: 'create-frontron',
+      packageName: 'create-frontron',
+      packageVersion: expect.stringMatching(/^\d+\.\d+\.\d+/),
+    })
+    expect(['repo', 'dependency']).toContain(info.resolvedFrom)
+    expect(electronFiles).toEqual([...new Set(electronFiles)].sort())
+    expect(electronFiles).toEqual(
+      expect.arrayContaining(['dev.ts', 'ipc.ts', 'main.ts', 'preload.ts', 'window.ts']),
+    )
+    expect(electronFiles).not.toContain('serve.ts')
+    expect(rawMainSource).toContain('protocol.registerSchemesAsPrivileged')
+    expect(renderCreateFrontronElectronFile('main.ts')).toBe(
+      rawMainSource.split('../../public/').join('../public/'),
+    )
+  })
+
   test('init owns a missing app version and clean restores the missing state', async () => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)
@@ -116,6 +144,9 @@ describe('frontron init core flow', () => {
     )
     expect(readFileSync(join(projectRoot, 'tsconfig.electron.json'), 'utf8')).toContain(
       '"module": "NodeNext"',
+    )
+    expect(readFileSync(join(projectRoot, 'tsconfig.electron.json'), 'utf8')).toContain(
+      '"moduleDetection": "legacy"',
     )
     const manifest = JSON.parse(
       readFileSync(join(projectRoot, '.frontron', 'manifest.json'), 'utf8'),
@@ -880,5 +911,58 @@ allowBuilds:
     expect(packageJson.devDependencies?.['electron-builder']).toBeUndefined()
     expect(packageJson.devDependencies?.typescript).toBeUndefined()
     expect(packageJson.devDependencies?.['@types/node']).toBeUndefined()
+  })
+
+  test('init reads injected tool versions from the matching create-frontron template', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const templatePackageJson = JSON.parse(
+      readFileSync(new URL('../../create-frontron/template/package.json', import.meta.url), 'utf8'),
+    ) as { devDependencies: Record<string, string> }
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')) as {
+      devDependencies: Record<string, string>
+    }
+
+    for (const packageName of ['electron', 'electron-builder', 'typescript', '@types/node']) {
+      expect(packageJson.devDependencies[packageName]).toBe(
+        templatePackageJson.devDependencies[packageName],
+      )
+    }
+  })
+
+  test('init preserves package-manager protocol dependency declarations', async () => {
+    const projectRoot = fixtures.createTempProjectWithScripts(
+      { dev: 'vite', build: 'vite build' },
+      {
+        devDependencies: {
+          electron: 'catalog:electron',
+          'electron-builder': 'workspace:*',
+          typescript: 'catalog:',
+          '@types/node': 'workspace:^',
+        },
+      },
+    )
+    fixtures.tempDirs.push(projectRoot)
+    const output = fixtures.createOutput()
+
+    expect(await runCli(['init', '--yes', '--out-dir', 'dist'], output, { cwd: projectRoot })).toBe(
+      0,
+    )
+
+    const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')) as {
+      devDependencies: Record<string, string>
+    }
+    expect(packageJson.devDependencies.electron).toBe('catalog:electron')
+    expect(packageJson.devDependencies['electron-builder']).toBe('workspace:*')
+    expect(packageJson.devDependencies.typescript).toBe('catalog:')
+    expect(packageJson.devDependencies['@types/node']).toBe('workspace:^')
+    const report = output.info.mock.calls.flat().join('\n')
+    const electronWarning = 'Could not verify electron version compatibility'
+
+    expect(report).toContain(electronWarning)
+    expect(report.split(electronWarning)).toHaveLength(2)
   })
 })

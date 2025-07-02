@@ -85,6 +85,7 @@ export const remixNodeServerAdapter: InitAdapter = {
         inferScriptName(packageJson, 'build'),
       outDir: DEFAULT_REMIX_NODE_SERVER_OUT_DIR,
       nodeServerSourceRoot: 'build',
+      nodeServerSourceEntry: null,
       nodeServerEntry: 'server.cjs',
       nodeServerCopyTargets: [{ from: 'public', to: 'public' }],
     }

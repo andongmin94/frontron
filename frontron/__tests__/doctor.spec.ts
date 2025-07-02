@@ -1,4 +1,12 @@
-import { mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  linkSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
@@ -177,6 +185,35 @@ describe('frontron doctor', () => {
     expect(combined).not.toContain('pnpm-workspace.yaml is missing')
   })
 
+  test('doctor blocks an unsafe pnpm workspace instead of reporting missing fields', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      packageManager?: string
+    }
+    const workspacePath = join(projectRoot, 'pnpm-workspace.yaml')
+
+    packageJson.packageManager = 'pnpm@11.1.2'
+    writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
+    writeFileSync(workspacePath, 'packages:\n  - apps/*\n')
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const unsafeSource =
+      'packages: ["apps/*"]\nallowBuilds: { electron: true, electron-winstaller: true }\n'
+    writeFileSync(workspacePath, unsafeSource)
+    const output = fixtures.createOutput()
+    const doctorExitCode = await runCli(['doctor'], output, { cwd: projectRoot })
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expect(doctorExitCode).toBe(1)
+    expect(combined).toContain('Status: blocked')
+    expect(combined).toContain('Cannot safely edit pnpm-workspace.yaml')
+    expect(combined).not.toContain('Manifest-owned pnpm-workspace.yaml field is missing')
+    expect(readFileSync(workspacePath, 'utf8')).toBe(unsafeSource)
+  })
+
   test('doctor ignores legacy empty tsconfig ownership claims', async () => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)
@@ -305,6 +342,118 @@ describe('frontron doctor', () => {
     expect(combined).toContain(
       'Manifest-owned package.json field has local edits: devDependencies.electron',
     )
+  })
+
+  test('doctor reports legacy file and script metadata as unverifiable', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const manifestPath = join(projectRoot, '.frontron', 'manifest.json')
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      schemaVersion: number
+      fileHashes: Record<string, string>
+      scriptCommands: Record<string, string>
+    }
+    manifest.schemaVersion = 1
+    delete manifest.fileHashes['electron/main.ts']
+    delete manifest.scriptCommands['frontron:dev']
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+
+    const output = fixtures.createOutput()
+    const exitCode = await runCli(['doctor'], output, { cwd: projectRoot })
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expect(exitCode).toBe(0)
+    expect(combined).toContain('Status: warnings')
+    expect(combined).toContain('Manifest-owned file has no recorded hash: electron/main.ts')
+    expect(combined).toContain('Manifest-owned script has no recorded command: frontron:dev')
+  })
+
+  test('doctor blocks a hard-linked manifest-owned file as unsafe', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const mainPath = join(projectRoot, 'electron', 'main.ts')
+    const sharedPath = join(projectRoot, 'shared-main.ts')
+    writeFileSync(sharedPath, readFileSync(mainPath))
+    rmSync(mainPath)
+    linkSync(sharedPath, mainPath)
+
+    const output = fixtures.createOutput()
+    const exitCode = await runCli(['doctor'], output, { cwd: projectRoot })
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expect(exitCode).toBe(1)
+    expect(combined).toContain('Status: blocked')
+    expect(combined).toContain(
+      'Manifest file entry must have exactly one hard link: electron/main.ts',
+    )
+  })
+
+  test('doctor warns for a verifiable dependency major mismatch', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      devDependencies: Record<string, string>
+    }
+    packageJson.devDependencies.electron = '^999.0.0'
+    writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
+
+    const output = fixtures.createOutput()
+    const exitCode = await runCli(['doctor'], output, { cwd: projectRoot })
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expect(exitCode).toBe(0)
+    expect(combined).toContain('Status: warnings')
+    expect(combined).toContain(
+      'electron major 999 does not match create-frontron template baseline',
+    )
+  })
+
+  test('doctor treats protocol dependency declarations as present but unverifiable', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      devDependencies: Record<string, string>
+    }
+    packageJson.devDependencies.electron = 'workspace:*'
+    packageJson.devDependencies['electron-builder'] = 'catalog:'
+    packageJson.devDependencies.typescript = 'file:../typescript'
+    packageJson.devDependencies['@types/node'] = 'npm:@types/node@latest'
+    writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
+
+    const output = fixtures.createOutput()
+    const exitCode = await runCli(['doctor'], output, { cwd: projectRoot })
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expect(exitCode).toBe(0)
+    expect(combined).toContain('Status: warnings')
+    expect(combined).toContain('Could not verify electron version compatibility for "workspace:*"')
+    expect(combined).toContain(
+      'Could not verify electron-builder version compatibility for "catalog:"',
+    )
+    expect(combined).toContain(
+      'Could not verify typescript version compatibility for "file:../typescript"',
+    )
+    expect(combined).toContain(
+      'Could not verify @types/node version compatibility for "npm:@types/node@latest"',
+    )
+    expect(combined).toContain(
+      'The protocol declaration is present and is not treated as an error.',
+    )
+    expect(combined).not.toContain('Missing required dependency:')
   })
 
   test('doctor does not follow a manifest path through a symbolic link or junction', async () => {

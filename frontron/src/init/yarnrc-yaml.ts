@@ -2,17 +2,27 @@ import { createHash } from 'node:crypto'
 import { lstatSync, readFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
+import { isMap, isScalar, type Scalar } from 'yaml'
+
 import { formatProjectPathBlocker, inspectProjectPath, isInsideDirectory } from '../project-paths'
 import {
-  findInlineCommentStart,
+  applyYamlTextEdits,
   findPreferredEol,
-  formatLineReason,
-  getYamlLineText,
-  isYamlTrivia,
-  joinYamlLines,
-  type ParseResult,
-  splitYamlLines,
-  type YamlLine,
+  findYamlPairsByKey,
+  getYamlDocumentAppendOffset,
+  getYamlLineNumber,
+  getYamlLineRange,
+  getYamlNodeSource,
+  getYamlReferenceKind,
+  hasFinalEol,
+  isEmptyYamlPairValue,
+  parseSimpleYamlScalar,
+  parseYamlSource,
+  type ParsedYamlDocument,
+  type ParsedYamlMap,
+  type ParsedYamlPair,
+  removeFinalEol,
+  type YamlReferenceKind,
 } from './yaml-source'
 
 export const YARN_RC_YAML_PATH = '.yarnrc.yml'
@@ -76,35 +86,40 @@ export type YarnRcClaimPathResolution =
       blocker: string
     }
 
-type ParsedMappingLine = {
-  key: string
-  valueSource: string
-  valueStart: number
-  valueEnd: number
-}
-
-type NodeLinkerEntry = ParsedMappingLine & {
-  lineIndex: number
+type NodeLinkerEntry = {
+  pair: ParsedYamlPair
+  scalar: Scalar
   value: YarnNodeLinker
+  valueSource: string
 }
 
 type EditableYarnRcInspection = {
   safe: true
-  lines: YamlLine[]
+  document: ParsedYamlDocument
   eol: string
   nodeLinker: NodeLinkerEntry | null
 }
 
-type UnsafeYarnRcInspection = {
-  safe: false
-  blocker: string
-}
-
-type YarnRcInspection = EditableYarnRcInspection | UnsafeYarnRcInspection
+type YarnRcInspection =
+  | EditableYarnRcInspection
+  | {
+      safe: false
+      blocker: string
+    }
 
 // formatYarnRcBlocker 함수는 안전하게 편집할 수 없는 Yarn 설정 사유를 일관된 문장으로 만든다.
 function formatYarnRcBlocker(reason: string) {
   return `Cannot safely edit ${YARN_RC_YAML_PATH}: ${reason}. The file was left unchanged.`
+}
+
+// formatSourceReason 함수는 yaml range의 시작 위치를 사람이 찾기 쉬운 줄 번호로 표시한다.
+function formatSourceReason(source: string, offset: number, reason: string) {
+  return `${reason} (line ${getYamlLineNumber(source, offset)})`
+}
+
+// formatReferenceReason 함수는 대상 key/value의 참조 문법을 기존 blocker 용어로 바꾼다.
+function formatReferenceReason(reference: YamlReferenceKind) {
+  return `YAML ${reference === 'alias' ? 'aliases' : `${reference}s`} are not supported safely`
 }
 
 // createSourceHash 함수는 추가한 줄을 지울 때 원래 EOF 상태를 안전하게 식별할 해시를 만든다.
@@ -112,436 +127,225 @@ function createSourceHash(source: string) {
   return createHash('sha256').update(source).digest('hex')
 }
 
-// parseQuotedYamlString 함수는 한 줄에서 끝나는 단순 따옴표 문자열을 읽는다.
-function parseQuotedYamlString(source: string): ParseResult<string> {
-  if (source.startsWith("'")) {
-    let value = ''
-
-    for (let index = 1; index < source.length; index += 1) {
-      if (source[index] !== "'") {
-        value += source[index]
-        continue
-      }
-
-      if (source[index + 1] === "'") {
-        value += "'"
-        index += 1
-        continue
-      }
-
-      return index === source.length - 1
-        ? { ok: true, value }
-        : { ok: false, reason: 'quoted scalar has trailing YAML content' }
-    }
-
-    return { ok: false, reason: 'single-quoted scalar is not closed on the same line' }
-  }
-
-  if (source.startsWith('"')) {
-    try {
-      const value = JSON.parse(source) as unknown
-
-      return typeof value === 'string'
-        ? { ok: true, value }
-        : { ok: false, reason: 'double-quoted scalar is not a string' }
-    } catch {
-      return {
-        ok: false,
-        reason: 'double-quoted scalar is not closed or uses unsupported escaping',
-      }
-    }
-  }
-
-  return { ok: false, reason: 'scalar is not quoted' }
+// isImplicitEmptyDocument 함수는 CST value 토큰이 없는 빈 YAML 문서만 새 mapping 대상으로 허용한다.
+function isImplicitEmptyDocument(document: ParsedYamlDocument) {
+  const contents = document.contents
+  return (
+    contents === null ||
+    (isScalar(contents) && contents.value === null && typeof contents.srcToken === 'undefined')
+  )
 }
 
-// findYamlReferenceToken 함수는 따옴표 밖의 anchor, alias, tag 토큰을 찾는다.
-function findYamlReferenceToken(source: string) {
-  let quote: 'single' | 'double' | null = null
-
-  for (let index = 0; index < source.length; index += 1) {
-    const character = source[index]
-
-    if (quote === 'single') {
-      if (character === "'" && source[index + 1] === "'") {
-        index += 1
-      } else if (character === "'") {
-        quote = null
-      }
-      continue
-    }
-
-    if (quote === 'double') {
-      if (character === '\\') {
-        index += 1
-      } else if (character === '"') {
-        quote = null
-      }
-      continue
-    }
-
-    if (character === "'") {
-      quote = 'single'
-      continue
-    }
-
-    if (character === '"') {
-      quote = 'double'
-      continue
-    }
-
-    if (!['&', '*', '!'].includes(character)) {
-      continue
-    }
-
-    const previous = index === 0 ? '' : source[index - 1]
-
-    if (index === 0 || /\s/.test(previous)) {
-      return character === '&' ? 'anchor' : character === '*' ? 'alias' : 'tag'
-    }
-  }
-
-  return null
-}
-
-// parseMappingKey 함수는 지원하는 plain 또는 quoted top-level key를 읽는다.
-function parseMappingKey(source: string): ParseResult<string> {
-  if (source.startsWith("'") || source.startsWith('"')) {
-    return parseQuotedYamlString(source)
-  }
-
-  return /^[A-Za-z_][A-Za-z0-9_.+/@*-]*$/.test(source)
-    ? { ok: true, value: source }
-    : { ok: false, reason: 'top-level mapping key uses unsupported YAML syntax' }
-}
-
-// parseTopLevelMappingLine 함수는 top-level block mapping 한 줄의 key와 값 토큰 위치를 읽는다.
-function parseTopLevelMappingLine(text: string): ParseResult<ParsedMappingLine> {
-  let quote: 'single' | 'double' | null = null
-  let colonIndex = -1
-
-  for (let index = 0; index < text.length; index += 1) {
-    const character = text[index]
-
-    if (quote === 'single') {
-      if (character === "'" && text[index + 1] === "'") {
-        index += 1
-      } else if (character === "'") {
-        quote = null
-      }
-      continue
-    }
-
-    if (quote === 'double') {
-      if (character === '\\') {
-        index += 1
-      } else if (character === '"') {
-        quote = null
-      }
-      continue
-    }
-
-    if (character === "'") {
-      quote = 'single'
-    } else if (character === '"') {
-      quote = 'double'
-    } else if (character === ':' && (index === text.length - 1 || /\s/.test(text[index + 1]))) {
-      colonIndex = index
-      break
-    }
-  }
-
-  if (colonIndex === -1 || quote) {
-    return { ok: false, reason: 'document root is not a supported block mapping' }
-  }
-
-  const keySource = text.slice(0, colonIndex).trimEnd()
-  const parsedKey = parseMappingKey(keySource)
-
-  if (!parsedKey.ok) {
-    return parsedKey
-  }
-
-  const commentStart = findInlineCommentStart(text, colonIndex + 1)
-  const valueBoundary = commentStart === -1 ? text.length : commentStart
-  let valueStart = colonIndex + 1
-  let valueEnd = valueBoundary
-
-  while (valueStart < valueBoundary && text[valueStart] === ' ') {
-    valueStart += 1
-  }
-
-  while (valueEnd > valueStart && text[valueEnd - 1] === ' ') {
-    valueEnd -= 1
-  }
-
-  if (text.slice(colonIndex + 1, valueStart).includes('\t')) {
-    return { ok: false, reason: 'tab separation is not supported' }
-  }
-
-  return {
-    ok: true,
-    value: {
-      key: parsedKey.value,
-      valueSource: text.slice(valueStart, valueEnd),
-      valueStart,
-      valueEnd,
-    },
-  }
-}
-
-// validateTopLevelValue 함수는 문서 경계를 흐리는 top-level flow와 참조 문법을 차단한다.
-function validateTopLevelValue(source: string) {
-  if (!source) {
-    return null
-  }
-
-  const referenceToken = findYamlReferenceToken(source)
-
-  if (referenceToken) {
-    const referenceLabel = referenceToken === 'alias' ? 'aliases' : `${referenceToken}s`
-    return `YAML ${referenceLabel} are not supported safely`
-  }
-
-  if (/^[\[{]/.test(source)) {
-    return 'flow collections are not supported safely'
-  }
-
-  if (/^[|>]/.test(source)) {
-    return 'block scalar values are not supported safely'
-  }
-
-  return null
-}
-
-// parseNodeLinkerScalar 함수는 자동 편집 가능한 pnp 또는 node-modules scalar만 허용한다.
-function parseNodeLinkerScalar(source: string): ParseResult<YarnNodeLinker> {
-  if (!source) {
-    return { ok: false, reason: 'nodeLinker must be a simple pnp or node-modules scalar' }
-  }
-
-  const parsed =
-    source.startsWith("'") || source.startsWith('"')
-      ? parseQuotedYamlString(source)
-      : { ok: true as const, value: source }
+// parseNodeLinkerScalar 함수는 yaml이 읽은 단일 scalar가 지원하는 두 값 중 하나인지 검증한다.
+function parseNodeLinkerScalar(source: string) {
+  const parsed = parseSimpleYamlScalar(source)
 
   if (!parsed.ok) {
-    return parsed
+    return {
+      ok: false as const,
+      reason: 'nodeLinker must be a simple pnp or node-modules scalar',
+    }
   }
 
-  return parsed.value === 'pnp' || parsed.value === 'node-modules'
-    ? { ok: true, value: parsed.value }
+  return parsed.value.value === 'pnp' || parsed.value.value === 'node-modules'
+    ? { ok: true as const, value: parsed.value.value as YarnNodeLinker }
     : {
-        ok: false,
+        ok: false as const,
         reason:
           'nodeLinker uses an unsupported complex value; only pnp or node-modules scalars are editable',
       }
 }
 
-// inspectYarnRcYaml 함수는 원문 보존 편집이 가능한 top-level nodeLinker 구조인지 검사한다.
+// inspectYarnRcYaml 함수는 문서 전체를 재작성하지 않고 nodeLinker의 CST와 scalar range만 수집한다.
 function inspectYarnRcYaml(source: string): YarnRcInspection {
-  const lines = splitYamlLines(source)
-  const topLevelKeys = new Map<string, number>()
-  let nodeLinker: NodeLinkerEntry | null = null
-  let sawTopLevelEntry = false
-  let topLevelAllowsChildren = false
+  const parsed = parseYamlSource(source)
 
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-    const text = getYamlLineText(lines[lineIndex], lineIndex)
+  if (!parsed.ok) {
+    return { safe: false, blocker: formatYarnRcBlocker(parsed.reason) }
+  }
 
-    if (isYamlTrivia(text)) {
-      continue
+  const document = parsed.value
+
+  if (isImplicitEmptyDocument(document)) {
+    return {
+      safe: true,
+      document,
+      eol: findPreferredEol(source),
+      nodeLinker: null,
     }
+  }
 
-    const indent = text.match(/^[ \t]*/)?.[0] ?? ''
+  if (!isMap(document.contents) || document.contents.srcToken?.type !== 'block-map') {
+    return {
+      safe: false,
+      blocker: formatYarnRcBlocker('document root is not a top-level block mapping'),
+    }
+  }
 
-    if (indent.includes('\t')) {
-      return {
-        safe: false,
-        blocker: formatYarnRcBlocker(
-          formatLineReason(lineIndex, 'tab indentation is not supported'),
+  const root = document.contents as ParsedYamlMap
+  const matches = findYamlPairsByKey(document, root, 'nodeLinker')
+
+  if (matches.length > 1) {
+    const offset = matches[1].pair.key.range?.[0] ?? 0
+    return {
+      safe: false,
+      blocker: formatYarnRcBlocker(
+        formatSourceReason(source, offset, 'duplicate top-level key "nodeLinker"'),
+      ),
+    }
+  }
+
+  const match = matches[0]
+
+  if (!match) {
+    return {
+      safe: true,
+      document,
+      eol: findPreferredEol(source),
+      nodeLinker: null,
+    }
+  }
+
+  const keyOffset = match.pair.key.range?.[0] ?? 0
+
+  if (match.keyReference) {
+    return {
+      safe: false,
+      blocker: formatYarnRcBlocker(
+        formatSourceReason(source, keyOffset, formatReferenceReason(match.keyReference)),
+      ),
+    }
+  }
+
+  if (isEmptyYamlPairValue(match.pair)) {
+    return {
+      safe: false,
+      blocker: formatYarnRcBlocker(
+        formatSourceReason(
+          source,
+          keyOffset,
+          'nodeLinker must be a simple pnp or node-modules scalar',
         ),
-      }
+      ),
     }
+  }
 
-    if (indent.length > 0) {
-      if (!sawTopLevelEntry) {
-        return {
-          safe: false,
-          blocker: formatYarnRcBlocker(
-            formatLineReason(lineIndex, 'document root is not a top-level block mapping'),
-          ),
-        }
-      }
+  const value = match.pair.value
+  const valueOffset = value?.range?.[0] ?? keyOffset
+  const reference = getYamlReferenceKind(value)
 
-      if (!topLevelAllowsChildren) {
-        return {
-          safe: false,
-          blocker: formatYarnRcBlocker(
-            formatLineReason(lineIndex, 'nested content follows a top-level scalar'),
-          ),
-        }
-      }
-
-      continue
+  if (reference) {
+    return {
+      safe: false,
+      blocker: formatYarnRcBlocker(
+        formatSourceReason(source, valueOffset, formatReferenceReason(reference)),
+      ),
     }
+  }
 
-    if (text === '---' || text === '...' || text.startsWith('%')) {
-      return {
-        safe: false,
-        blocker: formatYarnRcBlocker(
-          formatLineReason(lineIndex, 'directives and multi-document markers are not supported'),
+  if (value?.srcToken?.type === 'flow-collection') {
+    return {
+      safe: false,
+      blocker: formatYarnRcBlocker(
+        formatSourceReason(source, valueOffset, 'flow collections are not supported safely'),
+      ),
+    }
+  }
+
+  const valueSource = value ? getYamlNodeSource(source, value) : null
+  const scalar = valueSource === null ? null : parseNodeLinkerScalar(valueSource)
+
+  if (!isScalar(value) || !scalar?.ok || !value.range) {
+    return {
+      safe: false,
+      blocker: formatYarnRcBlocker(
+        formatSourceReason(
+          source,
+          valueOffset,
+          scalar?.reason ?? 'nodeLinker must be a simple pnp or node-modules scalar',
         ),
-      }
-    }
-
-    const parsedMapping = parseTopLevelMappingLine(text)
-
-    if (!parsedMapping.ok) {
-      return {
-        safe: false,
-        blocker: formatYarnRcBlocker(formatLineReason(lineIndex, parsedMapping.reason)),
-      }
-    }
-
-    const previousLine = topLevelKeys.get(parsedMapping.value.key)
-
-    if (typeof previousLine === 'number') {
-      return {
-        safe: false,
-        blocker: formatYarnRcBlocker(
-          formatLineReason(
-            lineIndex,
-            `duplicate top-level key "${parsedMapping.value.key}" also appears on line ${previousLine + 1}`,
-          ),
-        ),
-      }
-    }
-
-    const valueReason = validateTopLevelValue(parsedMapping.value.valueSource)
-
-    if (valueReason) {
-      return {
-        safe: false,
-        blocker: formatYarnRcBlocker(formatLineReason(lineIndex, valueReason)),
-      }
-    }
-
-    topLevelKeys.set(parsedMapping.value.key, lineIndex)
-    sawTopLevelEntry = true
-    topLevelAllowsChildren = parsedMapping.value.valueSource === ''
-
-    if (parsedMapping.value.key !== 'nodeLinker') {
-      continue
-    }
-
-    const parsedValue = parseNodeLinkerScalar(parsedMapping.value.valueSource)
-
-    if (!parsedValue.ok) {
-      return {
-        safe: false,
-        blocker: formatYarnRcBlocker(formatLineReason(lineIndex, parsedValue.reason)),
-      }
-    }
-
-    const bomOffset = lineIndex === 0 && lines[lineIndex].text.startsWith('\uFEFF') ? 1 : 0
-    nodeLinker = {
-      ...parsedMapping.value,
-      valueStart: parsedMapping.value.valueStart + bomOffset,
-      valueEnd: parsedMapping.value.valueEnd + bomOffset,
-      lineIndex,
-      value: parsedValue.value,
+      ),
     }
   }
 
   return {
     safe: true,
-    lines,
-    eol: findPreferredEol(lines),
-    nodeLinker,
+    document,
+    eol: findPreferredEol(source),
+    nodeLinker: {
+      pair: match.pair,
+      scalar: value,
+      value: scalar.value,
+      valueSource: valueSource!,
+    },
   }
 }
 
-// renderNodeLinkerScalar 함수는 기존 plain 또는 quote 스타일을 유지해 nodeLinker 값을 만든다.
-function renderNodeLinkerScalar(value: YarnNodeLinker, preferredSource?: string) {
-  if (preferredSource?.startsWith("'")) {
-    return `'${value}'`
-  }
-
-  if (preferredSource?.startsWith('"')) {
-    return JSON.stringify(value)
-  }
-
+// renderNodeLinkerScalar 함수는 현재 scalar의 CST quote style만 재사용해 새 토큰을 만든다.
+function renderNodeLinkerScalar(value: YarnNodeLinker, scalar: Scalar) {
+  if (scalar.srcToken?.type === 'single-quoted-scalar') return `'${value}'`
+  if (scalar.srcToken?.type === 'double-quoted-scalar') return JSON.stringify(value)
   return value
 }
 
-// replaceNodeLinkerScalar 함수는 검사된 nodeLinker 줄에서 값 토큰만 교체한다.
+// replaceNodeLinkerScalar 함수는 scalar range 하나만 치환해 주석, 공백, 줄바꿈을 건드리지 않는다.
 function replaceNodeLinkerScalar(
-  inspection: EditableYarnRcInspection,
+  source: string,
+  entry: NodeLinkerEntry,
   value: YarnNodeLinker,
   preferredSource?: string,
 ) {
-  const entry = inspection.nodeLinker
+  const range = entry.scalar.range
 
-  if (!entry) {
-    return null
-  }
+  if (!range) return null
 
-  const lines = inspection.lines.map((line) => ({ ...line }))
-  const line = lines[entry.lineIndex]
-  const scalarSource = renderNodeLinkerScalar(value, preferredSource ?? entry.valueSource)
-  line.text = `${line.text.slice(0, entry.valueStart)}${scalarSource}${line.text.slice(entry.valueEnd)}`
-  return joinYamlLines(lines)
+  return applyYamlTextEdits(source, [
+    {
+      start: range[0],
+      end: range[1],
+      text: preferredSource ?? renderNodeLinkerScalar(value, entry.scalar),
+    },
+  ])
 }
 
-// appendNodeLinkerScalar 함수는 기존 EOF 줄바꿈 유무를 유지하며 nodeLinker 줄을 추가한다.
+// appendNodeLinkerScalar 함수는 명시적 문서 끝 앞에 한 줄만 넣고 기존 EOF 상태를 유지한다.
 function appendNodeLinkerScalar(source: string, inspection: EditableYarnRcInspection) {
-  if (inspection.lines.length === 0) {
-    return `nodeLinker: ${REQUIRED_YARN_NODE_LINKER}${inspection.eol}`
-  }
+  const line = `nodeLinker: ${REQUIRED_YARN_NODE_LINKER}`
 
-  const lines = inspection.lines.map((line) => ({ ...line }))
-  const previousHadFinalEol = /(?:\r\n|\n|\r)$/.test(source)
+  if (!source) return `${line}${inspection.eol}`
 
-  if (lines.at(-1)?.ending === '') {
-    lines[lines.length - 1].ending = inspection.eol
-  }
+  const offset = getYamlDocumentAppendOffset(inspection.document, source)
+  const prefix = source.slice(0, offset)
+  const suffix = source.slice(offset)
+  const leading = prefix && !hasFinalEol(prefix) ? inspection.eol : ''
+  const trailing = suffix || hasFinalEol(source) ? inspection.eol : ''
 
-  lines.push({
-    text: `nodeLinker: ${REQUIRED_YARN_NODE_LINKER}`,
-    ending: previousHadFinalEol ? inspection.eol : '',
-  })
-
-  return joinYamlLines(lines)
+  return `${prefix}${leading}${line}${trailing}${suffix}`
 }
 
-// removeNodeLinkerScalar 함수는 init이 추가한 nodeLinker 줄과 필요했던 EOF 줄바꿈만 되돌린다.
+// removeNodeLinkerScalar 함수는 추가했던 top-level 한 줄만 지우고 해시가 맞을 때 연결 EOL도 복원한다.
 function removeNodeLinkerScalar(
+  source: string,
   inspection: EditableYarnRcInspection,
   previousHadFinalEol: boolean,
   previousSourceHash: string,
 ) {
   const entry = inspection.nodeLinker
+  const keyOffset = entry?.pair.key.range?.[0]
 
-  if (!entry) {
-    return null
+  if (!entry || typeof keyOffset !== 'number') return null
+
+  const line = getYamlLineRange(source, keyOffset)
+  const nextSource = applyYamlTextEdits(source, [{ start: line.start, end: line.end, text: '' }])
+
+  if (createSourceHash(nextSource) === previousSourceHash) return nextSource
+
+  if (!previousHadFinalEol) {
+    const withoutFinalEol = removeFinalEol(nextSource)
+    if (createSourceHash(withoutFinalEol) === previousSourceHash) return withoutFinalEol
   }
 
-  const lines = inspection.lines.map((line) => ({ ...line }))
-  const wasLastLine = entry.lineIndex === lines.length - 1
-  lines.splice(entry.lineIndex, 1)
-
-  if (wasLastLine && !previousHadFinalEol && lines.length > 0) {
-    const restoredEolLines = lines.map((line) => ({ ...line }))
-    restoredEolLines[restoredEolLines.length - 1].ending = ''
-    const restoredEolSource = joinYamlLines(restoredEolLines)
-
-    if (createSourceHash(restoredEolSource) === previousSourceHash) {
-      return restoredEolSource
-    }
-  }
-
-  return joinYamlLines(lines)
+  return nextSource
 }
 
 // toPortableClaimFile 함수는 Yarn 설정 경로를 manifest용 슬래시 상대 경로로 바꾼다.
@@ -556,10 +360,7 @@ function pathEntryExists(filePath: string) {
     lstatSync(filePath)
     return true
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return false
-    }
-
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
     throw error
   }
 }
@@ -571,16 +372,10 @@ export function findYarnRcYamlPath(cwd: string) {
   while (true) {
     const candidate = join(currentDir, YARN_RC_YAML_PATH)
 
-    if (pathEntryExists(candidate)) {
-      return candidate
-    }
+    if (pathEntryExists(candidate)) return candidate
 
     const parentDir = dirname(currentDir)
-
-    if (parentDir === currentDir) {
-      break
-    }
-
+    if (parentDir === currentDir) break
     currentDir = parentDir
   }
 
@@ -643,19 +438,15 @@ function createBlockedPatchPlan(path: string, source: string, created: boolean, 
   } satisfies YarnRcYamlPatchPlan
 }
 
-// previewYarnRcYamlPatch 함수는 Yarn 프로젝트의 nodeLinker 변경을 원문 쓰기 전에 계산한다.
+// previewYarnRcYamlPatch 함수는 경로 안전성과 nodeLinker 국소 변경을 실제 쓰기 전에 계산한다.
 export function previewYarnRcYamlPatch(cwd: string, packageManager: string) {
-  if (packageManager !== 'yarn') {
-    return null
-  }
+  if (packageManager !== 'yarn') return null
 
   const path = findYarnRcYamlPath(cwd)
   const created = !pathEntryExists(path)
   const resolution = resolveYarnRcClaimPath(cwd, toPortableClaimFile(cwd, path))
 
-  if (!resolution.safe) {
-    return createBlockedPatchPlan(path, '', created, resolution.blocker)
-  }
+  if (!resolution.safe) return createBlockedPatchPlan(path, '', created, resolution.blocker)
 
   if (!created) {
     const stats = lstatSync(path)
@@ -682,9 +473,7 @@ export function previewYarnRcYamlPatch(cwd: string, packageManager: string) {
   const source = created ? '' : readFileSync(path, 'utf8')
   const inspection = inspectYarnRcYaml(source)
 
-  if (!inspection.safe) {
-    return createBlockedPatchPlan(path, source, created, inspection.blocker)
-  }
+  if (!inspection.safe) return createBlockedPatchPlan(path, source, created, inspection.blocker)
 
   const previous = inspection.nodeLinker
     ? {
@@ -694,7 +483,7 @@ export function previewYarnRcYamlPatch(cwd: string, packageManager: string) {
       }
     : {
         state: 'missing' as const,
-        previousHadFinalEol: /(?:\r\n|\n|\r)$/.test(source),
+        previousHadFinalEol: hasFinalEol(source),
         previousSourceHash: createSourceHash(source),
       }
   const changes: YarnRcYamlPatchChange[] = []
@@ -715,7 +504,8 @@ export function previewYarnRcYamlPatch(cwd: string, packageManager: string) {
       value: REQUIRED_YARN_NODE_LINKER,
       previous: inspection.nodeLinker.value,
     })
-    nextSource = replaceNodeLinkerScalar(inspection, REQUIRED_YARN_NODE_LINKER) ?? source
+    nextSource =
+      replaceNodeLinkerScalar(source, inspection.nodeLinker, REQUIRED_YARN_NODE_LINKER) ?? source
   }
 
   const ownershipClaim: YarnRcOwnershipClaim = {
@@ -739,7 +529,7 @@ export function previewYarnRcYamlPatch(cwd: string, packageManager: string) {
   } satisfies YarnRcYamlPatchPlan
 }
 
-// readYarnRcYamlClaimValue 함수는 doctor와 clean이 현재 nodeLinker claim 값을 안전하게 읽게 한다.
+// readYarnRcYamlClaimValue 함수는 doctor와 clean에 현재 nodeLinker와 국소 편집 가능 여부를 제공한다.
 export function readYarnRcYamlClaimValue(source: string): YarnRcYamlClaimReadResult {
   const inspection = inspectYarnRcYaml(source)
 
@@ -753,25 +543,15 @@ export function readYarnRcYamlClaimValue(source: string): YarnRcYamlClaimReadRes
   }
 
   return inspection.nodeLinker
-    ? {
-        exists: true,
-        value: inspection.nodeLinker.value,
-        safeToEdit: true,
-      }
-    : {
-        exists: false,
-        value: undefined,
-        safeToEdit: true,
-      }
+    ? { exists: true, value: inspection.nodeLinker.value, safeToEdit: true }
+    : { exists: false, value: undefined, safeToEdit: true }
 }
 
-// restoreYarnRcYamlClaim 함수는 manifest에 기록한 이전 nodeLinker 상태를 원문 보존 방식으로 복구한다.
+// restoreYarnRcYamlClaim 함수는 저장된 scalar 토큰 또는 missing 상태만 국소적으로 복원한다.
 export function restoreYarnRcYamlClaim(source: string, claim: YarnRcOwnershipClaim) {
   const inspection = inspectYarnRcYaml(source)
 
-  if (!inspection.safe) {
-    return { source, blocker: inspection.blocker }
-  }
+  if (!inspection.safe) return { source, blocker: inspection.blocker }
 
   if (!inspection.nodeLinker) {
     return {
@@ -784,6 +564,7 @@ export function restoreYarnRcYamlClaim(source: string, claim: YarnRcOwnershipCla
     return {
       source:
         removeNodeLinkerScalar(
+          source,
           inspection,
           claim.previous.previousHadFinalEol,
           claim.previous.previousSourceHash,
@@ -802,7 +583,12 @@ export function restoreYarnRcYamlClaim(source: string, claim: YarnRcOwnershipCla
 
   return {
     source:
-      replaceNodeLinkerScalar(inspection, claim.previous.value, claim.previous.source) ?? source,
+      replaceNodeLinkerScalar(
+        source,
+        inspection.nodeLinker,
+        claim.previous.value,
+        claim.previous.source,
+      ) ?? source,
   }
 }
 
@@ -821,9 +607,7 @@ export function mergeYarnRcClaims(
     const key = `${claim.file}:${claim.path}`
     const existing = claims.get(key)
 
-    if (!existing || (!existing.changed && claim.changed)) {
-      claims.set(key, claim)
-    }
+    if (!existing || (!existing.changed && claim.changed)) claims.set(key, claim)
   }
 
   return [...claims.values()]

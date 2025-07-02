@@ -1,20 +1,14 @@
-import {
-  existsSync,
-  lstatSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  rmdirSync,
-  writeFileSync,
-} from 'node:fs'
+import { existsSync, lstatSync, readFileSync, readdirSync, rmdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
 import { assertProjectPathSafe, isInsideDirectory } from '../project-paths'
 import {
+  assertTransactionTargetUnchanged,
   beginTransaction,
   commitTransaction,
-  createTransactionSourceHash,
+  removeTransactionFile,
   rollbackTransaction,
+  writeTransactionFile,
   type TransactionHandle,
   type TransactionTarget,
 } from '../transaction-journal'
@@ -30,11 +24,6 @@ import type { PackageJson } from '../init/shared'
 import { restoreYarnRcYamlClaim, YARN_RC_YAML_PATH } from '../init/yarnrc-yaml'
 import { restoreTsconfigJsonClaims } from './tsconfig-source'
 import type { CleanPlan } from './types'
-
-// createCurrentExpectedHash 함수는 clean이 lock을 기다리는 동안 원문이 바뀌는지 확인할 해시를 만든다.
-function createCurrentExpectedHash(filePath: string) {
-  return existsSync(filePath) ? createTransactionSourceHash(readFileSync(filePath)) : null
-}
 
 // uniqueStrings 함수는 문자열 배열에서 중복 값을 제거한다.
 function uniqueStrings(values: string[]) {
@@ -110,9 +99,14 @@ function groupClaimsByPath<TClaim>(changes: Array<{ path: string; claim: TClaim 
 }
 
 // writeSafeFile 함수는 실제 쓰기 직전에 링크 부모가 생기지 않았는지 다시 검사한다.
-function writeSafeFile(filePath: string, content: string | Buffer, safetyRoot: string) {
+function writeSafeFile(
+  transaction: TransactionHandle,
+  filePath: string,
+  content: string | Buffer,
+  safetyRoot: string,
+) {
   assertProjectPathSafe(safetyRoot, filePath, 'Clean target path')
-  writeFileSync(filePath, content)
+  writeTransactionFile(transaction, filePath, content, safetyRoot)
 }
 
 // createCleanTransactionTargets 함수는 clean이 수정·삭제할 파일과 지울 수 있는 빈 디렉터리를 모은다.
@@ -123,15 +117,23 @@ function createCleanTransactionTargets(
   tsconfigPaths: Iterable<string>,
   pnpmWorkspacePaths: Iterable<string>,
   yarnRcPaths: Iterable<string>,
-  filesToDelete: CleanPlan['files'],
+  managedFiles: CleanPlan['files'],
+  sourceHashes: CleanPlan['sourceHashes'],
+  missingSourceGuards: CleanPlan['missingSourceGuards'],
 ) {
   const targets: TransactionTarget[] = []
+  // getPlannedHash 함수는 clean 계획에 고정된 원본 해시만 transaction target에 전달한다.
+  const getPlannedHash = (filePath: string) => {
+    const hash = sourceHashes[resolve(filePath)]
+    if (!hash) throw new Error(`Clean plan is missing the source hash for: ${filePath}`)
+    return hash
+  }
 
   if (packageJsonChanged) {
     targets.push({
       path: packageJsonPath,
       safetyRoot: projectRoot,
-      expectedHash: createCurrentExpectedHash(packageJsonPath),
+      expectedHash: getPlannedHash(packageJsonPath),
     })
   }
 
@@ -139,7 +141,7 @@ function createCleanTransactionTargets(
     targets.push({
       path: tsconfigPath,
       safetyRoot: projectRoot,
-      expectedHash: createCurrentExpectedHash(tsconfigPath),
+      expectedHash: getPlannedHash(tsconfigPath),
     })
   }
 
@@ -147,7 +149,7 @@ function createCleanTransactionTargets(
     targets.push({
       path: pnpmWorkspacePath,
       safetyRoot: dirname(resolve(pnpmWorkspacePath)),
-      expectedHash: createCurrentExpectedHash(pnpmWorkspacePath),
+      expectedHash: getPlannedHash(pnpmWorkspacePath),
     })
   }
 
@@ -157,20 +159,44 @@ function createCleanTransactionTargets(
       safetyRoot: isInsideDirectory(projectRoot, resolve(yarnRcPath))
         ? projectRoot
         : dirname(resolve(yarnRcPath)),
-      expectedHash: createCurrentExpectedHash(yarnRcPath),
+      expectedHash: getPlannedHash(yarnRcPath),
     })
   }
 
-  for (const file of filesToDelete) {
+  for (const file of managedFiles) {
+    if (file.action === 'delete') {
+      const expectedHash = file.expectedHash
+
+      if (!expectedHash) {
+        throw new Error(`Clean plan is missing the file hash for: ${file.manifestPath}`)
+      }
+
+      targets.push({
+        path: file.absolutePath,
+        safetyRoot: projectRoot,
+        expectedHash,
+      })
+    } else if (file.action === 'missing') {
+      targets.push({
+        path: file.absolutePath,
+        safetyRoot: projectRoot,
+        expectedHash: null,
+      })
+    }
+  }
+
+  for (const guard of missingSourceGuards) {
     targets.push({
-      path: file.absolutePath,
-      safetyRoot: projectRoot,
-      expectedHash: file.expectedHash ?? createCurrentExpectedHash(file.absolutePath),
+      path: guard.path,
+      safetyRoot: guard.safetyRoot,
+      expectedHash: null,
     })
   }
 
   const removableDirectories = uniqueStrings(
-    filesToDelete.map((file) => resolve(dirname(file.absolutePath))),
+    managedFiles
+      .filter((file) => file.action === 'delete')
+      .map((file) => resolve(dirname(file.absolutePath))),
   ).filter((directory) => directory !== projectRoot)
 
   for (const directory of removableDirectories) {
@@ -216,6 +242,8 @@ export function applyCleanPlan(
   const pnpmClaimsByPath = groupClaimsByPath(plan.pnpmWorkspaceChanges)
   const yarnRcClaimsByPath = groupClaimsByPath(plan.yarnRcChanges)
   const filesToDelete = plan.files.filter((file) => file.action === 'delete')
+  const missingFiles = plan.files.filter((file) => file.action === 'missing')
+  const missingSourceGuards = plan.missingSourceGuards ?? []
   const transactionTargets = createCleanTransactionTargets(
     projectRoot,
     packageJsonPath,
@@ -223,7 +251,9 @@ export function applyCleanPlan(
     tsconfigClaimsByPath.keys(),
     pnpmClaimsByPath.keys(),
     yarnRcClaimsByPath.keys(),
-    filesToDelete,
+    plan.files,
+    plan.sourceHashes,
+    missingSourceGuards,
   )
   let transaction: TransactionHandle | null = null
 
@@ -231,14 +261,19 @@ export function applyCleanPlan(
     transaction = beginTransaction(projectRoot, 'clean', transactionTargets)
 
     if (packageJsonChanged) {
-      writeSafeFile(packageJsonPath, `${JSON.stringify(nextPackageJson, null, 2)}\n`, projectRoot)
+      writeSafeFile(
+        transaction,
+        packageJsonPath,
+        `${JSON.stringify(nextPackageJson, null, 2)}\n`,
+        projectRoot,
+      )
     }
 
     for (const [tsconfigPath, claims] of tsconfigClaimsByPath) {
       assertProjectPathSafe(projectRoot, tsconfigPath, 'tsconfig.json')
       const source = readFileSync(tsconfigPath, 'utf8')
       const nextSource = restoreTsconfigJsonClaims(source, claims)
-      writeSafeFile(tsconfigPath, nextSource, projectRoot)
+      writeSafeFile(transaction, tsconfigPath, nextSource, projectRoot)
     }
 
     for (const [pnpmWorkspacePath, claims] of pnpmClaimsByPath) {
@@ -253,9 +288,9 @@ export function applyCleanPlan(
       assertProjectPathSafe(safetyRoot, pnpmWorkspacePath, 'pnpm-workspace.yaml')
 
       if (source.trim()) {
-        writeSafeFile(pnpmWorkspacePath, source, safetyRoot)
+        writeSafeFile(transaction, pnpmWorkspacePath, source, safetyRoot)
       } else {
-        rmSync(pnpmWorkspacePath, { force: true })
+        removeTransactionFile(transaction, pnpmWorkspacePath, safetyRoot)
       }
     }
 
@@ -279,9 +314,9 @@ export function applyCleanPlan(
       assertProjectPathSafe(safetyRoot, yarnRcPath, YARN_RC_YAML_PATH)
 
       if (source === '' && claims.some((claim) => claim.created)) {
-        rmSync(yarnRcPath, { force: true })
+        removeTransactionFile(transaction, yarnRcPath, safetyRoot)
       } else {
-        writeSafeFile(yarnRcPath, source, safetyRoot)
+        writeSafeFile(transaction, yarnRcPath, source, safetyRoot)
       }
     }
 
@@ -306,8 +341,16 @@ export function applyCleanPlan(
       }
 
       assertProjectPathSafe(projectRoot, file.absolutePath, 'Manifest file entry')
-      rmSync(file.absolutePath, { force: true })
+      removeTransactionFile(transaction, file.absolutePath, projectRoot)
       deletedFiles.push(file.absolutePath)
+    }
+
+    for (const file of missingFiles) {
+      assertTransactionTargetUnchanged(transaction, file.absolutePath, projectRoot)
+    }
+
+    for (const guard of missingSourceGuards) {
+      assertTransactionTargetUnchanged(transaction, guard.path, guard.safetyRoot)
     }
 
     removeEmptyParents(cwd, deletedFiles)
@@ -330,6 +373,7 @@ export function applyCleanPlan(
 
     throw new Error(
       `Clean failed while applying project changes: ${(error as Error).message}.${rollbackMessage}`,
+      { cause: error },
     )
   }
 }

@@ -1,9 +1,45 @@
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
 import { runCli } from '../src/cli'
+import { createFileHash } from '../src/init/manifest'
 import * as fixtures from './helpers/frontron-cli-fixtures'
+
+// configurePnpmOwnershipProject 함수는 update의 tsconfig와 pnpm 소유권 검사용 fixture를 준비한다.
+function configurePnpmOwnershipProject(projectRoot: string) {
+  const packageJsonPath = join(projectRoot, 'package.json')
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+    packageManager?: string
+  }
+
+  packageJson.packageManager = 'pnpm@11.1.2'
+  writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
+  writeFileSync(
+    join(projectRoot, 'tsconfig.json'),
+    `${JSON.stringify({ compilerOptions: { target: 'ES2022' } }, null, 2)}\n`,
+  )
+  writeFileSync(
+    join(projectRoot, 'pnpm-workspace.yaml'),
+    `packages:
+  - apps/*
+
+allowBuilds:
+  esbuild: false
+`,
+  )
+}
+
+// setYarnPackageManager 함수는 update의 Yarn 소유권 검사용 package manager를 지정한다.
+function setYarnPackageManager(projectRoot: string) {
+  const packageJsonPath = join(projectRoot, 'package.json')
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+    packageManager?: string
+  }
+
+  packageJson.packageManager = 'yarn@4.9.2'
+  writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
+}
 
 describe('frontron update', () => {
   test.each([
@@ -110,6 +146,159 @@ describe('frontron update', () => {
     expect(readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')).toContain('createWindow')
   })
 
+  test('update protects manifest-owned package fields from implicit overwrite', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      build: { extraMetadata: { main: string } }
+    }
+    packageJson.build.extraMetadata.main = 'custom/main.cjs'
+    writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
+
+    const output = fixtures.createOutput()
+    const exitCode = await runCli(['update', '--yes'], output, { cwd: projectRoot })
+
+    expect(exitCode).toBe(1)
+    expect(output.error.mock.calls.flat().join('\n')).toContain(
+      'Manifest-owned package.json field has local edits: build.extraMetadata.main',
+    )
+    expect(JSON.parse(readFileSync(packageJsonPath, 'utf8')).build.extraMetadata.main).toBe(
+      'custom/main.cjs',
+    )
+  })
+
+  test('update reports local edits to manifest-owned tsconfig and pnpm workspace values', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    configurePnpmOwnershipProject(projectRoot)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    writeFileSync(
+      join(projectRoot, 'tsconfig.json'),
+      `${JSON.stringify({ compilerOptions: { target: 'ES2022' }, exclude: [] }, null, 2)}\n`,
+    )
+    writeFileSync(
+      join(projectRoot, 'pnpm-workspace.yaml'),
+      `packages:
+  - apps/*
+
+allowBuilds:
+  esbuild: false
+  electron: false
+  electron-winstaller: false
+`,
+    )
+    const output = fixtures.createOutput()
+
+    expect(await runCli(['update', '--yes'], output, { cwd: projectRoot })).toBe(1)
+    const errors = output.error.mock.calls.flat().join('\n')
+    expect(errors).toContain('Manifest-owned tsconfig.json field has local edits: exclude')
+    expect(errors).toContain(
+      'Manifest-owned pnpm-workspace.yaml field has local edits: allowBuilds.electron',
+    )
+    expect(errors).toContain(
+      'Manifest-owned pnpm-workspace.yaml field has local edits: allowBuilds.electron-winstaller',
+    )
+  })
+
+  test('update --force still blocks pnpm workspace YAML that cannot be edited safely', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    configurePnpmOwnershipProject(projectRoot)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+    writeFileSync(join(projectRoot, 'pnpm-workspace.yaml'), 'allowBuilds: *sharedBuilds\n')
+    const output = fixtures.createOutput()
+
+    expect(await runCli(['update', '--yes', '--force'], output, { cwd: projectRoot })).toBe(1)
+    const errors = output.error.mock.calls.flat().join('\n')
+    expect(errors).toContain('Update aborted because managed paths are unsafe')
+    expect(errors).toContain('aliases are not supported safely')
+  })
+
+  test('update reports invalid manifest-owned tsconfig JSON without overwriting it', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    configurePnpmOwnershipProject(projectRoot)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+    const invalidTsconfig = '{ "exclude": [\n'
+    writeFileSync(join(projectRoot, 'tsconfig.json'), invalidTsconfig)
+    const output = fixtures.createOutput()
+
+    expect(await runCli(['update', '--yes'], output, { cwd: projectRoot })).toBe(1)
+    expect(output.error.mock.calls.flat().join('\n')).toContain(
+      'Manifest-owned tsconfig.json cannot be verified because it is invalid',
+    )
+    expect(readFileSync(join(projectRoot, 'tsconfig.json'), 'utf8')).toBe(invalidTsconfig)
+  })
+
+  test('update --force still blocks Yarn config syntax that cannot be edited safely', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    setYarnPackageManager(projectRoot)
+    writeFileSync(join(projectRoot, '.yarnrc.yml'), 'nodeLinker: pnp\n')
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+    writeFileSync(join(projectRoot, '.yarnrc.yml'), 'nodeLinker: *workspaceLinker\n')
+    const output = fixtures.createOutput()
+
+    expect(await runCli(['update', '--yes', '--force'], output, { cwd: projectRoot })).toBe(1)
+    const errors = output.error.mock.calls.flat().join('\n')
+    expect(errors).toContain('Update aborted because managed paths are unsafe')
+    expect(errors).toContain('aliases are not supported safely')
+  })
+
+  test('update --force rejects a manifest-owned Yarn config that became a directory', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    setYarnPackageManager(projectRoot)
+    const yarnRcPath = join(projectRoot, '.yarnrc.yml')
+    writeFileSync(yarnRcPath, 'nodeLinker: pnp\n')
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+    rmSync(yarnRcPath)
+    mkdirSync(yarnRcPath)
+    const output = fixtures.createOutput()
+
+    expect(await runCli(['update', '--yes', '--force'], output, { cwd: projectRoot })).toBe(1)
+    const errors = output.error.mock.calls.flat().join('\n')
+    expect(errors).toContain('Update aborted because managed paths are unsafe')
+    expect(errors).toContain('.yarnrc.yml must be a regular file with one hard link')
+  })
+
+  test('update explains unverifiable ownership in legacy manifests', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const manifestPath = join(projectRoot, '.frontron', 'manifest.json')
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      schemaVersion: number
+      fileHashes?: Record<string, string>
+      scriptCommands?: Record<string, string>
+      packageJsonClaims?: unknown[]
+    }
+    manifest.schemaVersion = 1
+    delete manifest.fileHashes
+    delete manifest.scriptCommands
+    delete manifest.packageJsonClaims
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+    const output = fixtures.createOutput()
+
+    expect(await runCli(['update', '--yes'], output, { cwd: projectRoot })).toBe(1)
+    const errors = output.error.mock.calls.flat().join('\n')
+    expect(errors).toContain('Legacy manifest has no package.json ownership metadata')
+    expect(errors).toContain('Manifest-owned file has no recorded hash: electron/main.ts')
+    expect(errors).toContain('Manifest-owned script has no recorded command: frontron:dev')
+  })
+
   test('update migrates a legacy minimal manifest to the exact-version template flow', async () => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)
@@ -126,6 +315,7 @@ describe('frontron update', () => {
       'src/types/electron.d.ts',
     ]
     const legacyManifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      schemaVersion: number
       preset?: string
       templateSource?: string
       templatePackage?: string
@@ -135,6 +325,7 @@ describe('frontron update', () => {
       fileHashes?: Record<string, string>
     }
 
+    legacyManifest.schemaVersion = 1
     legacyManifest.preset = 'minimal'
     legacyManifest.templateSource = 'frontron:minimal'
     delete legacyManifest.templatePackage
@@ -151,7 +342,9 @@ describe('frontron update', () => {
 
     writeFileSync(manifestPath, `${JSON.stringify(legacyManifest, null, 2)}\n`)
 
-    expect(await runCli(['update', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+    expect(
+      await runCli(['update', '--yes', '--force'], fixtures.createOutput(), { cwd: projectRoot }),
+    ).toBe(0)
 
     const migratedManifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
       preset?: string
@@ -196,6 +389,73 @@ describe('frontron update', () => {
     expect(exitCode).toBe(0)
     expect(readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')).toContain('createWindow')
     expect(refreshedPackageJson.scripts['frontron:dev']).toContain('--dev-app')
+  })
+
+  test('update --yes --force replaces locally edited manifest-owned package fields', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const original = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      build: { appId: string }
+      devDependencies: { electron: string }
+    }
+    const edited = structuredClone(original)
+    edited.build.appId = 'com.example.local-edit'
+    edited.devDependencies.electron = '1.0.0'
+    writeFileSync(packageJsonPath, `${JSON.stringify(edited, null, 2)}\n`)
+
+    expect(
+      await runCli(['update', '--yes', '--force'], fixtures.createOutput(), { cwd: projectRoot }),
+    ).toBe(0)
+
+    const refreshed = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as typeof original
+    const refreshedManifest = JSON.parse(
+      readFileSync(join(projectRoot, '.frontron', 'manifest.json'), 'utf8'),
+    ) as {
+      packageJsonClaims: Array<{ path: string; value: unknown }>
+    }
+    expect(refreshed.build.appId).toBe(original.build.appId)
+    expect(refreshed.devDependencies.electron).toBe(original.devDependencies.electron)
+    expect(refreshedManifest.packageJsonClaims).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: 'build.appId', value: original.build.appId }),
+        expect.objectContaining({
+          path: 'devDependencies.electron',
+          value: original.devDependencies.electron,
+        }),
+      ]),
+    )
+  })
+
+  test('update removes unchanged files that disappeared from the template', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const obsoleteManifestPath = 'electron/obsolete.ts'
+    const obsoletePath = join(projectRoot, obsoleteManifestPath)
+    const obsoleteSource = 'export const obsolete = true\n'
+    const manifestPath = join(projectRoot, '.frontron', 'manifest.json')
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      createdFiles: string[]
+      fileHashes: Record<string, string>
+    }
+    writeFileSync(obsoletePath, obsoleteSource)
+    manifest.createdFiles.push(obsoleteManifestPath)
+    manifest.fileHashes[obsoleteManifestPath] = createFileHash(obsoleteSource)
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+
+    expect(await runCli(['update', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const refreshedManifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      createdFiles: string[]
+    }
+    expect(existsSync(obsoletePath)).toBe(false)
+    expect(refreshedManifest.createdFiles).not.toContain(obsoleteManifestPath)
   })
 
   test('update --dry-run --force previews overwrites without writing', async () => {
@@ -350,11 +610,17 @@ describe('frontron update', () => {
     const manifestPath = join(projectRoot, '.frontron', 'manifest.json')
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
       createdFiles: string[]
+      fileHashes: Record<string, string>
     }
+    const originalServeFile = manifest.createdFiles.find((filePath) =>
+      filePath.endsWith('/serve.ts'),
+    )
     manifest.createdFiles = [
       '../outside/serve.ts',
       ...manifest.createdFiles.filter((filePath) => !filePath.endsWith('/serve.ts')),
     ]
+    if (originalServeFile) delete manifest.fileHashes[originalServeFile]
+    manifest.fileHashes['../outside/serve.ts'] = '0'.repeat(64)
     writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
 
     const output = fixtures.createOutput()
@@ -364,6 +630,7 @@ describe('frontron update', () => {
     const combined = output.error.mock.calls.flat().join('\n')
 
     expect(exitCode).toBe(1)
-    expect(combined).toContain('Manifest serve entry points outside the project')
+    expect(combined).toContain('.frontron/manifest.json is invalid.')
+    expect(existsSync(join(projectRoot, 'electron', 'main.ts'))).toBe(true)
   })
 })

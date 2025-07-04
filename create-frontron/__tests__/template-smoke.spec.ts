@@ -110,6 +110,7 @@ test('starter template restores the template-owned electron structure', () => {
   expect(tsconfigApp).toContain('src/types/**/*.d.ts')
   expect(tsconfigApp).not.toContain('.frontron/types')
   expect(tsconfigElectron).toContain('src/electron/**/*.ts')
+  expect(tsconfigElectron).toContain('"moduleDetection": "legacy"')
   expect(viteConfig).not.toContain('}),,')
   expect(electronMain).toContain('createWindow')
   expect(electronMain).toContain('rendererUrl = await waitForUrlReady(rendererUrl)')

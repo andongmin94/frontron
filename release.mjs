@@ -1,7 +1,7 @@
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 
@@ -32,6 +32,7 @@ const latestTag = 'latest'
 const publishGuardTokenEnvironment = 'FRONTRON_RELEASE_PUBLISH_TOKEN'
 const publishGuardFileEnvironment = 'FRONTRON_RELEASE_PUBLISH_TOKEN_FILE'
 
+// getNpmInvocation 함수는 운영체제에 맞는 npm 실행 명령과 인자를 만든다.
 function getNpmInvocation(args) {
   if (process.platform === 'win32') {
     return {
@@ -46,24 +47,29 @@ function getNpmInvocation(args) {
   }
 }
 
+// readJson 함수는 UTF-8 JSON 파일을 객체로 읽는다.
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'))
 }
 
+// writeJson 함수는 객체를 저장소 표준 개행을 포함한 JSON으로 기록한다.
 function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`)
 }
 
+// writeFormattedPackageJson 함수는 package.json을 기록하고 저장소 형식으로 정렬한다.
 function writeFormattedPackageJson(packageRoot, packagePath, value) {
   writeJson(packagePath, value)
   runNode([join(packageRoot, 'scripts', 'tasks.mjs'), 'format-package-json'], packageRoot)
 }
 
+// createScratchDir 함수는 저장소의 무시된 임시 루트 아래에 고유 디렉터리를 만든다.
 function createScratchDir(prefix) {
   mkdirSync(tempRoot, { recursive: true })
   return mkdtempSync(join(tempRoot, prefix))
 }
 
+// parseVersion 함수는 단순한 x.y.z 버전을 숫자 배열로 해석한다.
 function parseVersion(version) {
   const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version)
 
@@ -74,6 +80,7 @@ function parseVersion(version) {
   return match.slice(1).map((part) => Number.parseInt(part, 10))
 }
 
+// compareVersions 함수는 두 x.y.z 버전의 우선순위를 비교한다.
 function compareVersions(left, right) {
   const leftParts = parseVersion(left)
   const rightParts = parseVersion(right)
@@ -90,12 +97,14 @@ function compareVersions(left, right) {
   return 0
 }
 
+// getHighestVersion 함수는 패키지 버전 목록에서 가장 높은 값을 고른다.
 function getHighestVersion(versions) {
   return versions.reduce((highest, version) =>
     compareVersions(version, highest) > 0 ? version : highest,
   )
 }
 
+// writePackageVersion 함수는 패키지와 lockfile의 루트 버전을 함께 맞춘다.
 function writePackageVersion(spec, version) {
   const packageJson = readJson(spec.packagePath)
 
@@ -122,6 +131,7 @@ function writePackageVersion(spec, version) {
   writeJson(spec.lockPath, lockJson)
 }
 
+// syncFrontronCreateDependency 함수는 frontron이 같은 create-frontron 후보를 참조하게 맞춘다.
 function syncFrontronCreateDependency(version) {
   const dependencyVersion = version
   const lockPath = join(frontronPackageRoot, 'package-lock.json')
@@ -174,6 +184,7 @@ function syncFrontronCreateDependency(version) {
   }
 }
 
+// assertFrontronCreateDependencySynced 함수는 manifest와 lockfile의 로컬 후보 연결을 검증한다.
 function assertFrontronCreateDependencySynced() {
   const packageJson = readJson(frontronPackagePath)
   const expectedVersion = packageJson.version
@@ -238,10 +249,12 @@ function assertReleaseWorktreeClean(phase) {
   }
 }
 
+// logStep 함수는 릴리스 단계 로그에 공통 접두사를 붙인다.
 function logStep(message) {
   console.log(`[release] ${message}`)
 }
 
+// run 함수는 외부 명령 출력을 전달하고 실패 상태를 예외로 바꾼다.
 function run(command, args, cwd, env) {
   const result = spawnSync(command, args, {
     cwd,
@@ -263,6 +276,7 @@ function run(command, args, cwd, env) {
   }
 }
 
+// runQuiet 함수는 외부 명령 결과를 출력하지 않고 호출자에게 반환한다.
 function runQuiet(command, args, cwd) {
   return spawnSync(command, args, {
     cwd,
@@ -273,20 +287,24 @@ function runQuiet(command, args, cwd) {
   })
 }
 
+// runNpm 함수는 운영체제별 npm 명령을 일반 실행 경로로 호출한다.
 function runNpm(args, cwd, env) {
   const invocation = getNpmInvocation(args)
   run(invocation.command, invocation.args, cwd, env)
 }
 
+// runNpmQuiet 함수는 npm 결과를 출력하지 않고 검사할 수 있게 반환한다.
 function runNpmQuiet(args, cwd) {
   const invocation = getNpmInvocation(args)
   return runQuiet(invocation.command, invocation.args, cwd)
 }
 
+// runNode 함수는 현재 Node.js 실행 파일로 저장소 스크립트를 호출한다.
 function runNode(args, cwd) {
   run(process.execPath, args, cwd)
 }
 
+// runGuardedNpmPublish 함수는 일회용 파일 토큰으로 직접 npm publish 가드를 통과시킨다.
 function runGuardedNpmPublish(args, cwd) {
   const guardRoot = mkdtempSync(join(tmpdir(), 'frontron-publish-guard-'))
   const tokenPath = join(guardRoot, 'token')
@@ -304,6 +322,7 @@ function runGuardedNpmPublish(args, cwd) {
   }
 }
 
+// readTrackedDiff 함수는 지정한 추적 경로의 바이너리 포함 diff를 읽는다.
 function readTrackedDiff(paths) {
   const result = runQuiet('git', ['diff', '--no-ext-diff', '--binary', '--', ...paths], repoRoot)
 
@@ -314,6 +333,7 @@ function readTrackedDiff(paths) {
   return result.stdout
 }
 
+// runLintGate 함수는 검사와 자동 수정이 추적 파일을 바꾸지 않는지 검증한다.
 function runLintGate(spec) {
   logStep(`checking ${spec.name} lint and formatting`)
   runNpm(['run', 'check'], spec.root)
@@ -341,6 +361,7 @@ function runLintGate(spec) {
   }
 }
 
+// getPackageVersions 함수는 두 npm 패키지의 현재 버전과 최고 버전을 읽는다.
 function getPackageVersions() {
   const packageVersions = packageSpecs.map((spec) => readJson(spec.packagePath).version)
   const nextVersion = getHighestVersion(packageVersions)
@@ -348,6 +369,7 @@ function getPackageVersions() {
   return { packageVersions, nextVersion }
 }
 
+// assertNpmPublishAccess 함수는 OIDC 조건 또는 로컬 npm 소유자 권한을 검증한다.
 function assertNpmPublishAccess() {
   if (isTrustedPublishing()) {
     if (
@@ -421,6 +443,7 @@ function assertOfficialPublishingMode() {
   )
 }
 
+// versionExistsOnRegistry 함수는 특정 패키지 버전의 npm registry 존재 여부를 확인한다.
 function versionExistsOnRegistry(spec, version) {
   const result = runNpmQuiet(['view', `${spec.name}@${version}`, 'version'], repoRoot)
 
@@ -437,6 +460,7 @@ function versionExistsOnRegistry(spec, version) {
   throw new Error(`Unable to check npm registry version for "${spec.name}@${version}".`)
 }
 
+// assertVersionsNotPublished 함수는 dry-run 대상 버전이 아직 게시되지 않았는지 확인한다.
 function assertVersionsNotPublished(version) {
   logStep(`checking npm registry for unpublished version ${version}`)
 
@@ -451,48 +475,133 @@ function assertVersionsNotPublished(version) {
   }
 }
 
-// readLocalPackageIntegrity 함수는 검증을 마친 로컬 tarball의 Subresource Integrity 값을 읽는다.
-function readLocalPackageIntegrity(spec) {
-  const result = runNpmQuiet(['pack', '--json', '--dry-run', '--ignore-scripts'], spec.root)
+// calculateTarballIntegrity 함수는 보관된 tarball 바이트의 SHA-512 SRI를 직접 계산한다.
+function calculateTarballIntegrity(tarballPath) {
+  return `sha512-${createHash('sha512').update(readFileSync(tarballPath)).digest('base64')}`
+}
+
+// createPublishCandidate 함수는 실제 npm pack 파일과 npm 메타데이터가 같은 후보인지 검증한다.
+function createPublishCandidate(spec, version, candidateRoot) {
+  const result = runNpmQuiet(
+    ['pack', '--json', '--ignore-scripts', '--pack-destination', candidateRoot],
+    spec.root,
+  )
 
   if (result.status !== 0) {
-    throw new Error(`Unable to calculate the local package integrity for ${spec.name}.`)
+    throw new Error(`Unable to create the publish tarball for ${spec.name}.`)
   }
 
-  let packResult
+  let packResults
 
   try {
-    packResult = JSON.parse(result.stdout)
+    packResults = JSON.parse(result.stdout)
   } catch {
     throw new Error(`npm pack returned invalid JSON for ${spec.name}.`)
   }
 
-  const integrity = packResult[0]?.integrity
-
-  if (typeof integrity !== 'string' || !integrity) {
-    throw new Error(`npm pack did not report an integrity value for ${spec.name}.`)
+  if (!Array.isArray(packResults) || packResults.length !== 1) {
+    throw new Error(`npm pack did not return exactly one tarball for ${spec.name}.`)
   }
 
-  return integrity
+  const packResult = packResults[0]
+  const filename = packResult?.filename
+
+  if (packResult?.name !== spec.name || packResult?.version !== version) {
+    throw new Error(`npm pack returned unexpected package metadata for ${spec.name}@${version}.`)
+  }
+
+  if (typeof filename !== 'string' || !filename || basename(filename) !== filename) {
+    throw new Error(`npm pack returned an invalid tarball filename for ${spec.name}.`)
+  }
+
+  const tarballPath = join(candidateRoot, filename)
+
+  if (!existsSync(tarballPath)) {
+    throw new Error(`npm pack did not create the reported tarball for ${spec.name}.`)
+  }
+
+  const integrity = calculateTarballIntegrity(tarballPath)
+
+  if (packResult.integrity !== integrity) {
+    throw new Error(`npm pack reported an integrity mismatch for ${spec.name}.`)
+  }
+
+  return {
+    name: spec.name,
+    version,
+    tarballPath,
+    integrity,
+  }
 }
 
-// assertPublishedPackageMatchesLocal 함수는 부분 게시 재개 시 이미 올라간 tarball이 현재 후보와 같은지 확인한다.
-function assertPublishedPackageMatchesLocal(spec, version) {
-  const localIntegrity = readLocalPackageIntegrity(spec)
+// createPublishCandidates 함수는 검증 뒤 게시할 두 실제 tarball을 하나의 임시 후보 세트로 보관한다.
+function createPublishCandidates(version) {
+  const root = createScratchDir('publish-candidates-')
+
+  try {
+    const packages = packageSpecs.map((spec) => createPublishCandidate(spec, version, root))
+    return { root, packages }
+  } catch (error) {
+    rmSync(root, { recursive: true, force: true })
+    throw error
+  }
+}
+
+// withPublishCandidates 함수는 성공과 실패 모두에서 임시 tarball 후보를 반드시 정리한다.
+function withPublishCandidates(version, operation) {
+  const candidates = createPublishCandidates(version)
+
+  try {
+    return operation(candidates)
+  } finally {
+    rmSync(candidates.root, { recursive: true, force: true })
+  }
+}
+
+// getPublishCandidate 함수는 패키지와 버전에 정확히 대응하는 보관 후보 하나를 찾는다.
+function getPublishCandidate(candidates, spec, version) {
+  const candidate = candidates.packages.find((entry) => entry.name === spec.name)
+
+  if (!candidate || candidate.version !== version) {
+    throw new Error(`Missing retained publish candidate for ${spec.name}@${version}.`)
+  }
+
+  return candidate
+}
+
+// assertPublishCandidateUnchanged 함수는 dry-run 또는 게시 직전까지 후보 바이트가 그대로인지 확인한다.
+function assertPublishCandidateUnchanged(candidate) {
+  let currentIntegrity
+
+  try {
+    currentIntegrity = calculateTarballIntegrity(candidate.tarballPath)
+  } catch {
+    throw new Error(
+      `Retained publish tarball is unavailable for ${candidate.name}@${candidate.version}.`,
+    )
+  }
+
+  if (currentIntegrity !== candidate.integrity) {
+    throw new Error(`Retained publish tarball changed for ${candidate.name}@${candidate.version}.`)
+  }
+}
+
+// assertPublishedPackageMatchesCandidate 함수는 신규 게시와 부분 재개 모두 registry tarball을 후보와 비교한다.
+function assertPublishedPackageMatchesCandidate(spec, version, candidate) {
+  assertPublishCandidateUnchanged(candidate)
   const registryIntegrity = readRegistryValue(
     [`${spec.name}@${version}`, 'dist.integrity'],
     `${spec.name}@${version} integrity`,
   )
 
-  if (registryIntegrity !== localIntegrity) {
+  if (registryIntegrity !== candidate.integrity) {
     throw new Error(
-      `${spec.name}@${version} already exists but its registry integrity does not match the local release candidate. Bump the version instead of overwriting an immutable npm release.`,
+      `${spec.name}@${version} registry integrity does not match the retained local release candidate tarball. Bump the version instead of overwriting an immutable npm release.`,
     )
   }
-
-  logStep(`${spec.name}@${version} matches the local tarball; resuming the partial release`)
 }
 
+// readRegistryValue 함수는 npm registry 값을 읽고 조회 실패에 설명을 덧붙인다.
 function readRegistryValue(args, description) {
   const result = runNpmQuiet(['view', ...args], repoRoot)
 
@@ -503,6 +612,7 @@ function readRegistryValue(args, description) {
   return result.stdout.trim()
 }
 
+// verifyPublishedPackages 함수는 게시 버전과 요구한 dist-tag가 모두 일치하는지 확인한다.
 function verifyPublishedPackages(version, tag = latestTag) {
   logStep(`verifying published npm packages at ${version} with dist-tag "${tag}"`)
 
@@ -576,10 +686,12 @@ function verifyPublishedProvenance(version) {
   }
 }
 
+// installNpm 함수는 registry smoke에 공통 npm install 옵션을 적용한다.
 function installNpm(args, cwd) {
   runNpm(['install', '--fund=false', '--audit=false', '--loglevel=error', ...args], cwd)
 }
 
+// verifyRegistryInstall 함수는 게시 패키지로 생성과 기존 프로젝트 적용을 실제 검증한다.
 function verifyRegistryInstall(version) {
   logStep(`running registry install smoke for ${version}`)
 
@@ -648,6 +760,7 @@ writeFileSync('dist/index.html', '<!doctype html><title>registry retrofit</title
   }
 }
 
+// describeRegistryVersionState 함수는 부분 게시 오류에 넣을 현재 registry 상태를 설명한다.
 function describeRegistryVersionState(spec, version) {
   try {
     return `${spec.name}@${version}: ${versionExistsOnRegistry(spec, version) ? 'published' : 'not published'}`
@@ -656,6 +769,7 @@ function describeRegistryVersionState(spec, version) {
   }
 }
 
+// syncVersions 함수는 두 패키지를 현재 최고 버전으로 맞춘다.
 function syncVersions() {
   const { packageVersions, nextVersion } = getPackageVersions()
   const alreadyAligned = packageVersions.every((version) => version === nextVersion)
@@ -672,6 +786,7 @@ function syncVersions() {
   return nextVersion
 }
 
+// verifyRelease 함수는 설치부터 빌드와 패키지 smoke까지 소스 릴리스 검증을 수행한다.
 function verifyRelease() {
   assertVersionsAligned()
   assertFrontronCreateDependencySynced()
@@ -707,6 +822,7 @@ function verifyRelease() {
   runNpm(['run', 'test:release-smoke'], createPackageRoot)
 }
 
+// runMatrixSmoke 함수는 지원 프레임워크 조합의 릴리스 smoke를 실행한다.
 function runMatrixSmoke(args = []) {
   logStep('running release matrix smoke')
   runNode([join(createPackageRoot, 'scripts', 'release-matrix-smoke.mjs'), ...args], repoRoot)
@@ -721,7 +837,8 @@ function runPackageManagerSmoke(args = []) {
   )
 }
 
-function publishPackages(version, tag = publishStagingTag) {
+// publishPackages 함수는 보관된 동일 tarball을 순서대로 게시하고 각 registry integrity를 즉시 검증한다.
+function publishPackages(version, candidates, tag = publishStagingTag) {
   const publishOrder = [
     packageSpecs.find((spec) => spec.name === 'create-frontron'),
     packageSpecs.find((spec) => spec.name === 'frontron'),
@@ -731,15 +848,21 @@ function publishPackages(version, tag = publishStagingTag) {
 
   try {
     for (const spec of publishOrder) {
+      const candidate = getPublishCandidate(candidates, spec, version)
+      assertPublishCandidateUnchanged(candidate)
+
       if (versionExistsOnRegistry(spec, version)) {
-        assertPublishedPackageMatchesLocal(spec, version)
+        assertPublishedPackageMatchesCandidate(spec, version, candidate)
+        logStep(
+          `${spec.name}@${version} matches the retained tarball; resuming the partial release`,
+        )
         logStep(`${spec.name}@${version} is already published; skipping package publish`)
         skipped.push(spec.name)
         continue
       }
 
       logStep(`publishing ${spec.name} with dist-tag "${tag}"`)
-      const publishArgs = ['publish', '--tag', tag]
+      const publishArgs = ['publish', candidate.tarballPath, '--tag', tag]
 
       if (isTrustedPublishing()) {
         publishArgs.push('--provenance', '--access', 'public')
@@ -747,6 +870,8 @@ function publishPackages(version, tag = publishStagingTag) {
 
       runGuardedNpmPublish(publishArgs, spec.root)
       published.push(spec.name)
+      assertPublishedPackageMatchesCandidate(spec, version, candidate)
+      logStep(`verified registry integrity for ${spec.name}@${version}`)
     }
   } catch (error) {
     const registryState = packageSpecs.map((spec) => describeRegistryVersionState(spec, version))
@@ -761,6 +886,7 @@ function publishPackages(version, tag = publishStagingTag) {
   }
 }
 
+// setDistTagForPackages 함수는 지정한 패키지 버전에 같은 npm dist-tag를 설정한다.
 function setDistTagForPackages(version, tag, specs = packageSpecs) {
   for (const spec of specs) {
     logStep(`setting ${spec.name}@${version} dist-tag "${tag}"`)
@@ -768,6 +894,7 @@ function setDistTagForPackages(version, tag, specs = packageSpecs) {
   }
 }
 
+// promotePackagesToLatest 함수는 의존 순서대로 두 패키지를 latest에 승격한다.
 function promotePackagesToLatest(version) {
   const promoteOrder = [
     packageSpecs.find((spec) => spec.name === 'create-frontron'),
@@ -786,17 +913,17 @@ const productionPublishOperations = {
   verifyRegistryInstall,
 }
 
-// runPublishOrchestration 함수는 검증을 마친 릴리스의 trusted 또는 staging 게시 순서를 실행한다.
-function runPublishOrchestration(version, operations = productionPublishOperations) {
+// runPublishOrchestration 함수는 같은 후보를 유지한 채 trusted 또는 staging 게시 순서를 실행한다.
+function runPublishOrchestration(version, candidates, operations = productionPublishOperations) {
   if (isTrustedPublishing()) {
-    operations.publishPackages(version, latestTag)
+    operations.publishPackages(version, candidates, latestTag)
     operations.verifyPublishedPackages(version)
     operations.verifyPublishedProvenance(version)
     operations.verifyRegistryInstall(version)
     return
   }
 
-  operations.publishPackages(version, publishStagingTag)
+  operations.publishPackages(version, candidates, publishStagingTag)
   operations.setDistTagForPackages(version, publishStagingTag)
   operations.verifyPublishedPackages(version, publishStagingTag)
   operations.verifyRegistryInstall(version)
@@ -805,22 +932,28 @@ function runPublishOrchestration(version, operations = productionPublishOperatio
   operations.verifyRegistryInstall(version)
 }
 
-function dryRunPublishPackages() {
-  logStep('dry-running create-frontron publish')
-  runGuardedNpmPublish(['publish', '--dry-run', '--tag', publishStagingTag], createPackageRoot)
-
-  logStep('dry-running frontron publish')
-  runGuardedNpmPublish(['publish', '--dry-run', '--tag', publishStagingTag], frontronPackageRoot)
+// dryRunPublishPackages 함수는 실제 게시에 쓸 보관 tarball 자체를 재패킹 없이 점검한다.
+function dryRunPublishPackages(version, candidates) {
+  for (const spec of packageSpecs) {
+    const candidate = getPublishCandidate(candidates, spec, version)
+    assertPublishCandidateUnchanged(candidate)
+    logStep(`dry-running ${spec.name} publish`)
+    runGuardedNpmPublish(
+      ['publish', candidate.tarballPath, '--dry-run', '--tag', publishStagingTag],
+      spec.root,
+    )
+  }
 }
 
+// verifyPublishReadiness 함수는 tarball을 만들기 전에 소스 기반 릴리스 검증을 모두 마친다.
 function verifyPublishReadiness() {
   verifyRelease()
   runMatrixSmoke()
   runPackageManagerSmoke(['all', '--package'])
-  dryRunPublishPackages()
   assertReleaseWorktreeClean('after release verification')
 }
 
+// main 함수는 명시된 릴리스 명령의 가드와 실행 순서를 조율한다.
 function main() {
   const command = process.argv[2]
   const args = process.argv.slice(3)
@@ -868,6 +1001,10 @@ function main() {
       assertFrontronCreateDependencySynced()
       assertVersionsNotPublished(version)
       verifyPublishReadiness()
+      withPublishCandidates(version, (candidates) => {
+        dryRunPublishPackages(version, candidates)
+      })
+      assertReleaseWorktreeClean('after retained tarball publish dry-run')
       return
     }
     case 'publish': {
@@ -877,7 +1014,11 @@ function main() {
       const version = assertVersionsAligned()
       assertFrontronCreateDependencySynced()
       verifyPublishReadiness()
-      runPublishOrchestration(version)
+      withPublishCandidates(version, (candidates) => {
+        dryRunPublishPackages(version, candidates)
+        assertReleaseWorktreeClean('after retained tarball publish dry-run')
+        runPublishOrchestration(version, candidates)
+      })
       return
     }
     default:

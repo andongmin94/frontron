@@ -47,7 +47,7 @@ function createTemplateFixture() {
     )}\n`,
   )
 
-  return { packageRoot, templateDir }
+  return { packageRoot, projectRoot, templateDir }
 }
 
 // withTemplateFixture 함수는 환경 변수 템플릿을 한 검사 동안만 활성화하고 원래 값을 복원한다.
@@ -138,9 +138,14 @@ describe('frontron init guardrails', () => {
   test.skipIf(process.platform === 'win32')(
     'create-frontron rejects an unexpected socket in the Electron template tree',
     async () => {
-      const { templateDir } = createTemplateFixture()
-      const socketPath = join(templateDir, 'src', 'electron', 'unexpected.sock')
+      const { projectRoot, templateDir } = createTemplateFixture()
+      const electronDir = join(templateDir, 'src', 'electron')
+      const shortElectronDir = join(projectRoot, 'e')
+      const socketPath = join(shortElectronDir, 's')
       const server = createServer()
+
+      // macOS의 Unix socket 주소 길이 제한을 피하면서 실제 템플릿 디렉터리에 socket을 만든다.
+      symlinkSync(electronDir, shortElectronDir, 'dir')
 
       await new Promise<void>((resolve, reject) => {
         server.once('error', reject)

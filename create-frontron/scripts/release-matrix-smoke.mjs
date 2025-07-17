@@ -1131,7 +1131,7 @@ function runStarterCase(createTarball) {
   runNpm(['init', '-y'], root)
   installNpm(['--ignore-scripts', createTarball], root)
 
-  runNpm(['exec', '--', 'create-frontron', appName, '--overwrite', 'yes'], root)
+  runNpm(['exec', '--', 'create-frontron', appName], root)
   addHtmlBodyMarker(join(appRoot, 'index.html'), marker)
   instrumentRendererProbe(appRoot)
   installNpm([], appRoot)

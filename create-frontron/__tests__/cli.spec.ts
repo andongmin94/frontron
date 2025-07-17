@@ -1,158 +1,145 @@
-import { rmSync } from 'node:fs'
-import { join } from 'node:path'
-import type { SyncOptions } from 'execa'
-import { execaCommandSync } from 'execa'
-import fs from 'fs-extra'
-import { afterEach, beforeAll, expect, test } from 'vitest'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, parse } from 'node:path'
 
-const CLI_PATH = join(__dirname, '..')
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
-const projectName = 'test-app'
-const genPath = join(__dirname, projectName)
-const nestedRoot = join(__dirname, 'nested-fixture')
+import { runCreateFrontron } from '../src/index'
 
-const run = (args: string[], options: SyncOptions = {}): ReturnType<typeof execaCommandSync> => {
-  return execaCommandSync(`node ${CLI_PATH} ${args.join(' ')}`, options)
+const initialCwd = process.cwd()
+const initialUserAgent = process.env.npm_config_user_agent
+const tempDirs: string[] = []
+
+function createWorkspace(label: string) {
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), `create-frontron-${label}-`)))
+  tempDirs.push(root)
+  return root
 }
 
-// Helper to create a non-empty directory
-const createNonEmptyDir = () => {
-  // Create the temporary directory
-  fs.mkdirpSync(genPath)
-
-  // Create a package.json file
-  const pkgJson = join(genPath, 'package.json')
-  fs.writeFileSync(pkgJson, '{ "foo": "bar" }')
-}
-
-// React starter template
-const reactTemplateFiles = fs
-  .readdirSync(join(CLI_PATH, 'template'))
-  .filter(
-    (filePath: string) =>
-      !['dist', 'node_modules', 'output', '.git', '.npmignore'].includes(filePath),
-  )
-  // _gitignore is renamed to .gitignore
-  .map((filePath: string) => (filePath === '_gitignore' ? '.gitignore' : filePath))
-  .sort()
-
-function removeGeneratedProject() {
-  for (const targetPath of [genPath, nestedRoot]) {
-    rmSync(targetPath, {
-      recursive: true,
-      force: true,
-      maxRetries: 10,
-      retryDelay: 100,
-    })
-  }
-}
-
-beforeAll(removeGeneratedProject)
-afterEach(removeGeneratedProject)
-
-test('prompts for the project name if none supplied', () => {
-  const { stdout } = run([])
-  expect(stdout).toContain('Project name:')
+beforeEach(() => {
+  vi.spyOn(console, 'log').mockImplementation(() => undefined)
 })
 
-test('prints help without prompting', () => {
-  const { stdout } = run(['--help'])
+afterEach(() => {
+  process.chdir(initialCwd)
 
-  expect(stdout).toContain('Usage: create-frontron [project-name] [options]')
-  expect(stdout).toContain('--overwrite <yes|no>')
-  expect(stdout).toContain('Defaults to "desktop-app"')
-  expect(stdout).not.toContain('Project name:')
-})
+  if (initialUserAgent === undefined) delete process.env.npm_config_user_agent
+  else process.env.npm_config_user_agent = initialUserAgent
 
-test('asks to overwrite non-empty target directory', () => {
-  createNonEmptyDir()
-  const { stdout } = run([projectName], { cwd: __dirname })
-  expect(stdout).toContain(`Target directory "${projectName}" is not empty.`)
-})
+  vi.restoreAllMocks()
 
-test('asks to overwrite non-empty current directory', () => {
-  createNonEmptyDir()
-  const { stdout } = run(['.'], { cwd: genPath })
-  expect(stdout).toContain(`Current directory is not empty.`)
-})
-
-test('successfully scaffolds a project based on the default react starter template', () => {
-  const { stdout } = run([projectName], { cwd: __dirname })
-  const generatedFiles = fs.readdirSync(genPath).sort()
-
-  // Assertions
-  expect(stdout).toContain(`Scaffolding project in ${genPath}`)
-  expect(reactTemplateFiles).toEqual(generatedFiles)
-})
-
-test('rejects the removed template option', () => {
-  expect.assertions(4)
-
-  for (const args of [
-    [projectName, '--template', 'react'],
-    [projectName, '-t', 'react'],
-  ]) {
-    try {
-      run(args, { cwd: __dirname })
-    } catch (error: any) {
-      expect(error.exitCode).toBe(1)
-      expect(error.stderr).toContain('Template selection has been removed.')
-    }
+  for (const tempDir of tempDirs.splice(0)) {
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   }
 })
 
-test('rejects the removed ignore overwrite mode', () => {
-  createNonEmptyDir()
-  expect(() => run(['.', '--overwrite', 'ignore'], { cwd: genPath })).toThrow(
-    '--overwrite must be either "yes" or "no".',
-  )
+test('creates desktop-app when no project name is supplied', async () => {
+  const workspace = createWorkspace('default-target')
+  process.chdir(workspace)
+
+  await runCreateFrontron([])
+
+  expect(existsSync(join(workspace, 'desktop-app', 'package.json'))).toBe(true)
+  expect(existsSync(join(workspace, 'desktop-app', 'src', 'electron', 'main.ts'))).toBe(true)
 })
 
-test('rejects an invalid command line override for --overwrite', () => {
-  expect(() => run([projectName, '--overwrite', 'typo'], { cwd: __dirname })).toThrow(
-    '--overwrite must be either "yes" or "no".',
+test('prints help without creating a project', async () => {
+  const workspace = createWorkspace('help')
+  process.chdir(workspace)
+
+  await runCreateFrontron(['--help'])
+
+  expect(console.log).toHaveBeenCalledWith(
+    expect.stringContaining('Usage: create-frontron [project-name]'),
   )
+  expect(existsSync(join(workspace, 'desktop-app'))).toBe(false)
 })
 
-test('rejects unknown options and extra positional arguments', () => {
-  expect(() => run([projectName, '--unknown'], { cwd: __dirname })).toThrow(
-    'Unknown option: --unknown',
+test('uses the final directory name for project metadata', async () => {
+  const workspace = createWorkspace('nested')
+  process.chdir(workspace)
+
+  await runCreateFrontron(['products/My Desktop App'])
+
+  const projectRoot = join(workspace, 'products', 'My Desktop App')
+  const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')) as {
+    name: string
+    productName: string
+    build: { appId: string; productName: string }
+  }
+
+  expect(packageJson.name).toBe('my-desktop-app')
+  expect(packageJson.productName).toBe('My Desktop App')
+  expect(packageJson.build.productName).toBe('My Desktop App')
+  expect(packageJson.build.appId).toBe('com.example.my-desktop-app')
+})
+
+test('rejects every existing target without changing it', async () => {
+  const workspace = createWorkspace('existing-target')
+  const target = join(workspace, 'existing-app')
+  mkdirSync(target)
+  writeFileSync(join(target, 'keep.txt'), 'user data\n')
+  process.chdir(workspace)
+
+  await expect(runCreateFrontron(['existing-app'])).rejects.toThrow('Target path already exists')
+
+  expect(readFileSync(join(target, 'keep.txt'), 'utf8')).toBe('user data\n')
+  expect(existsSync(join(target, 'package.json'))).toBe(false)
+})
+
+test('rejects the current directory even when it is otherwise empty', async () => {
+  const workspace = createWorkspace('current-directory')
+  process.chdir(workspace)
+
+  await expect(runCreateFrontron(['.'])).rejects.toThrow('Target path already exists')
+  expect(existsSync(join(workspace, 'package.json'))).toBe(false)
+})
+
+test('rejects removed options, unknown options, and extra arguments', async () => {
+  const workspace = createWorkspace('arguments')
+  process.chdir(workspace)
+
+  await expect(runCreateFrontron(['app', '--overwrite', 'yes'])).rejects.toThrow(
+    '--overwrite option was removed',
   )
-  expect(() => run([projectName, 'extra'], { cwd: __dirname })).toThrow(
+  await expect(runCreateFrontron(['app', '--template', 'react'])).rejects.toThrow(
+    'Template selection has been removed',
+  )
+  await expect(runCreateFrontron(['app', '--unknown'])).rejects.toThrow('Unknown option: --unknown')
+  await expect(runCreateFrontron(['app', 'extra'])).rejects.toThrow(
     'Unexpected positional argument: "extra"',
   )
 })
 
-test('uses the final directory name for nested project metadata', () => {
-  const nestedProjectPath = join(nestedRoot, 'nested-app')
+test('rejects filesystem roots and symlinked ancestors', async () => {
+  const workspace = createWorkspace('path-guards')
+  const externalRoot = join(workspace, 'external')
+  const linkedRoot = join(workspace, 'linked')
+  mkdirSync(externalRoot)
+  symlinkSync(externalRoot, linkedRoot, process.platform === 'win32' ? 'junction' : 'dir')
+  process.chdir(workspace)
 
-  run(['nested-fixture/nested-app'], { cwd: __dirname })
-
-  const packageJson = fs.readJsonSync(join(nestedProjectPath, 'package.json'))
-  expect(packageJson.name).toBe('nested-app')
-  expect(packageJson.productName).toBe('nested-app')
-  expect(packageJson.build.productName).toBe('nested-app')
+  await expect(runCreateFrontron([parse(workspace).root])).rejects.toThrow('filesystem root')
+  await expect(runCreateFrontron(['linked/app'])).rejects.toThrow('symbolic link')
+  expect(existsSync(join(externalRoot, 'app'))).toBe(false)
 })
 
-test('scaffolds into a .git-only directory without requiring overwrite', () => {
-  fs.mkdirpSync(join(genPath, '.git'))
-  fs.writeFileSync(join(genPath, '.git', 'HEAD'), 'ref: refs/heads/main\n')
+test('prints package-manager-specific next steps', async () => {
+  const workspace = createWorkspace('package-manager')
+  process.chdir(workspace)
+  process.env.npm_config_user_agent = 'yarn/4.9.2 npm/? node/v24.0.0 win32 x64'
 
-  run(['.'], { cwd: genPath })
+  await runCreateFrontron(['app'])
 
-  expect(fs.readFileSync(join(genPath, '.git', 'HEAD'), 'utf8')).toContain('refs/heads/main')
-  expect(fs.existsSync(join(genPath, 'package.json'))).toBe(true)
-})
-
-test('replace overwrite preserves .git and removes previous project files', () => {
-  createNonEmptyDir()
-  fs.mkdirpSync(join(genPath, '.git'))
-  fs.writeFileSync(join(genPath, '.git', 'HEAD'), 'ref: refs/heads/main\n')
-  fs.writeFileSync(join(genPath, 'old.txt'), 'remove me\n')
-
-  run(['.', '--overwrite', 'yes'], { cwd: genPath })
-
-  expect(fs.existsSync(join(genPath, 'old.txt'))).toBe(false)
-  expect(fs.readFileSync(join(genPath, '.git', 'HEAD'), 'utf8')).toContain('refs/heads/main')
-  expect(fs.existsSync(join(genPath, 'src', 'electron', 'main.ts'))).toBe(true)
+  expect(console.log).toHaveBeenCalledWith('  yarn')
+  expect(console.log).toHaveBeenCalledWith('  yarn app')
 })

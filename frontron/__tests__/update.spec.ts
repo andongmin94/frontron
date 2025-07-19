@@ -147,8 +147,6 @@ describe('frontron update', () => {
       'desktop:dev',
       '--build-script',
       'desktop:build',
-      '--package-script',
-      'desktop:package',
       '--product-name',
       'Recorded Product',
       '--app-id',

@@ -8,16 +8,12 @@
 
 # Frontron
 
-Electron tooling for two paths: a starter generator for new apps and an init-focused retrofit CLI for existing web frontend projects.
+Electron tooling for two paths:
 
-## Packages
+- `create-frontron` creates a new Electron + React + Vite app in a new directory.
+- `frontron` adds an app-owned Electron layer to an existing compatible web frontend.
 
-- `create-frontron`: the primary starter generator for new Electron desktop apps.
-- `frontron`: the init-focused retrofit CLI for compatible existing web frontend projects.
-
-## Quick Start
-
-Start a new project with:
+## Start a new app
 
 ```bash
 npm create frontron@latest my-app
@@ -26,73 +22,71 @@ npm install
 npm run app
 ```
 
-For pnpm, yarn, or bun, use the equivalent `create`, install, and run commands; `create-frontron` prints package-manager-specific next steps.
+Use `npm run build` to create the packaged desktop app.
 
-For starter apps, build the packaged desktop app with:
-
-```bash
-npm run build
-```
-
-Retrofit an existing compatible web project with:
+## Retrofit an existing frontend
 
 ```bash
 npm install -D frontron
+npx frontron init --dry-run
 npx frontron init
-# or: npm exec -- frontron init
 npm install
 npm run frontron:dev
 ```
 
-For pnpm, yarn, or bun retrofits, use the equivalent add/install/run commands. After `frontron init`, the CLI prints next steps for the package manager detected from the project lockfile.
+Use `npm run frontron:build` to build the frontend and create the packaged desktop app. There is no separate package script.
 
-`frontron init` is the active retrofit flow today. It reads the Electron files from the exact same version of `create-frontron`, then adds them as an app-owned Electron layer without replacing the existing frontend structure.
-Use `npm run frontron:package` when you are ready to create a packaged desktop build from a retrofit project.
-After init, `npx frontron doctor` checks the generated Electron layer and reports missing files, scripts, and packaging metadata. Before init, it reports the project as not initialized instead of listing generated Electron files as missing.
-Use `npx frontron clean --dry-run` to preview removal of manifest-owned files, scripts, dependencies, and Electron build metadata; generated file hashes and ownership records guard local edits by default.
-Use `npx frontron update --dry-run` to preview a manifest-owned refresh before applying it.
+The retrofit CLI detects Vite-style static apps, Next.js export and standalone builds, Nuxt, Remix, SvelteKit static and node builds, and explicit custom Node servers. It records every generated file and package change in `.frontron/manifest.json`, which powers guarded `doctor`, `update`, and `clean` commands.
 
-## Product Shape
+Generated Electron windows use native operating-system title bars. The sandboxed `window.electron` bridge provides a small set of native capabilities: app information, text-file open/save dialogs, clipboard text, and notifications.
 
-- `create-frontron` generates a template-owned Electron + React + Vite starter.
-- The generated starter keeps its Electron files under `src/electron/` and exposes a preload bridge on `window.electron`.
-- `frontron init` retrofits compatible existing web frontend projects from the exact-version `create-frontron` template while preserving existing web scripts by default.
-- The current `frontron` CLI surface is intentionally narrow: `init`, `doctor`, `clean`, and `update` are supported commands.
+## Monorepos
+
+Run Frontron from a workspace root when it contains exactly one compatible frontend package. Select a package explicitly when the workspace contains more than one:
+
+```bash
+npx frontron init --project apps/web
+```
+
+The root `package.json` can make that selection permanent:
+
+```json
+{
+  "frontron": {
+    "project": "apps/web"
+  }
+}
+```
 
 ## Requirements
 
 - Node.js `22.15+`
 
-## Repo Layout
+## Repository layout
 
 ```text
 frontron/
-  create-frontron/             # starter generator and template
-  frontron/                    # init-focused retrofit CLI for existing web projects
-  release.mjs                  # shared release tooling for both packages
+  create-frontron/             # starter generator and canonical Electron template
+  frontron/                    # retrofit CLI for existing web projects
+  release.mjs                  # shared release tooling
 ```
 
 ## Release
 
-Run shared release tasks from the repo root:
+Run shared release tasks from the repository root:
 
 ```bash
 node release.mjs sync-version
 node release.mjs verify
 node release.mjs matrix-smoke
 node release.mjs publish-dry-run
-node release.mjs check-auth
-node release.mjs registry-smoke 0.13.3
 node release.mjs publish
 ```
-
-`publish-dry-run` also checks that the current version is not already on npm. `registry-smoke` verifies the public npm install path for a specific version. `publish` checks npm owner authentication before the long verification suite, refuses to publish an existing version, runs the dry-run gates, publishes both packages, verifies the published version plus the `latest` dist-tag on npm, and then runs the registry install smoke.
 
 ## Docs
 
 - Docs site: [andongmin.com/frontron/](https://andongmin.com/frontron/)
 - Guide: [andongmin.com/frontron/guide/](https://andongmin.com/frontron/guide/)
-- The docs project now lives outside this repository.
 - Issues: [github.com/andongmin94/frontron/issues](https://github.com/andongmin94/frontron/issues)
 
 ## License

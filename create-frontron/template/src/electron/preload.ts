@@ -1,27 +1,22 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { contextBridge, ipcRenderer } = require("electron")
 
-// Keep these strings in sync with ipc.ts. The preload script is intentionally
-// tiny: it exposes only the window controls the renderer needs.
-const hideWindowChannel = "window:hide"
-const minimizeWindowChannel = "window:minimize"
-const toggleMaximizeWindowChannel = "window:toggle-maximize"
-const getWindowStateChannel = "window:get-state"
-const maximizedChangedChannel = "window:maximized-changed"
-const quitAppChannel = "app:quit"
+const getAppInfoChannel = "app:get-info"
+const openTextFileChannel = "file:open-text"
+const saveTextFileChannel = "file:save-text"
+const readClipboardTextChannel = "clipboard:read-text"
+const writeClipboardTextChannel = "clipboard:write-text"
+const showNotificationChannel = "notification:show"
 
 contextBridge.exposeInMainWorld("electron", {
-  hideWindow: () => ipcRenderer.send(hideWindowChannel),
-  minimizeWindow: () => ipcRenderer.send(minimizeWindowChannel),
-  toggleMaximizeWindow: () => ipcRenderer.send(toggleMaximizeWindowChannel),
-  quitApp: () => ipcRenderer.send(quitAppChannel),
-  getWindowState: () => ipcRenderer.invoke(getWindowStateChannel),
-  onWindowMaximizedChanged: (listener: (isMaximized: boolean) => void) => {
-    const wrapped = (_event: unknown, value: unknown) => {
-      listener(Boolean(value))
-    }
-
-    ipcRenderer.on(maximizedChangedChannel, wrapped)
-    return () => ipcRenderer.removeListener(maximizedChangedChannel, wrapped)
-  },
+  getAppInfo: () => ipcRenderer.invoke(getAppInfoChannel),
+  openTextFile: (options?: unknown) =>
+    ipcRenderer.invoke(openTextFileChannel, options),
+  saveTextFile: (options: unknown) =>
+    ipcRenderer.invoke(saveTextFileChannel, options),
+  readClipboardText: () => ipcRenderer.invoke(readClipboardTextChannel),
+  writeClipboardText: (text: string) =>
+    ipcRenderer.invoke(writeClipboardTextChannel, text),
+  showNotification: (options: unknown) =>
+    ipcRenderer.invoke(showNotificationChannel, options),
 })

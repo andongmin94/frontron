@@ -13,16 +13,14 @@ import { normalizePathValue, VALID_ADAPTERS } from './shared'
 import type { YarnRcOwnershipClaim } from './yarnrc-yaml'
 
 export const MANIFEST_PATH = '.frontron/manifest.json'
-export const CURRENT_MANIFEST_SCHEMA_VERSION = 2
+export const CURRENT_MANIFEST_SCHEMA_VERSION = 3
 
 export type PackageJsonOwnershipClaim = {
   path: string
   action?: 'set' | 'array-value'
   value: unknown
   previous:
-    | {
-        state: 'missing'
-      }
+    | { state: 'missing' }
     | {
         state: 'value'
         value: unknown
@@ -38,7 +36,6 @@ export type FrontronManifest = {
   desktopDir: string
   appScript: string
   buildScript: string
-  packageScript: string
   webDevScript: string
   webBuildScript: string
   outDir: string
@@ -137,7 +134,6 @@ function isNormalizedManifestRelativePath(value: unknown): value is string {
 function isAllowedCreatedFilePath(filePath: string, desktopDir: string) {
   if (!isNormalizedManifestRelativePath(filePath)) return false
   if (FIXED_CREATED_FILE_PATH_ALLOWLIST.has(filePath)) return true
-
   return filePath.startsWith(`${desktopDir}/`)
 }
 
@@ -244,7 +240,6 @@ function isManifest(value: Record<string, unknown>): value is FrontronManifest {
     'desktopDir',
     'appScript',
     'buildScript',
-    'packageScript',
     'webDevScript',
     'webBuildScript',
     'outDir',
@@ -328,7 +323,6 @@ export function createManifest(
     desktopDir: config.desktopDir,
     appScript: config.appScript,
     buildScript: config.buildScript,
-    packageScript: config.packageScript,
     webDevScript: config.webDevScript,
     webBuildScript: config.webBuildScript,
     outDir: config.outDir,
@@ -345,7 +339,7 @@ export function createManifest(
       normalizeManifestPath(config.cwd, filePath),
     ),
     fileHashes,
-    scripts: [config.appScript, config.buildScript, config.packageScript],
+    scripts: [config.appScript, config.buildScript],
     scriptCommands,
     packageJsonClaims,
     tsconfigJsonClaims,
@@ -361,7 +355,6 @@ export function renderManifestSource(manifest: FrontronManifest) {
 export function readManifest(cwd: string) {
   const manifestPath = join(cwd, MANIFEST_PATH)
   if (!existsSync(manifestPath)) return null
-
   return parseManifest(JSON.parse(readFileSync(manifestPath, 'utf8')))
 }
 

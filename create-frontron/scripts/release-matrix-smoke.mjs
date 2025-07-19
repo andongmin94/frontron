@@ -1002,7 +1002,7 @@ async function runRetrofitLifecycle({
     )
   }
 
-  runNpm(['run', 'frontron:package', '--', '--dir'], appRoot)
+  runNpm(['run', 'frontron:build', '--', '--dir'], appRoot)
   assertFileExists(join(appRoot, 'release'), 'Electron package directory')
 
   if (nodeRuntimeProbe) {

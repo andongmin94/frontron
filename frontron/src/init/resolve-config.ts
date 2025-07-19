@@ -37,7 +37,6 @@ type WebScriptSelection = {
 type DesktopScriptSelection = {
   appScript: string
   buildScript: string
-  packageScript: string
   warnings: string[]
 }
 
@@ -57,12 +56,10 @@ export type ResolveInitConfigInput = ConfigResolutionContext & {
   template: CreateFrontronTemplateSnapshot
 }
 
-// 알 수 없는 JSON 값을 설정 객체로 읽고, 객체가 아니면 안전한 기본값을 사용한다.
 function readObjectOrFallback<T extends object>(value: unknown, fallback: T) {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as T) : fallback
 }
 
-// 개발·빌드 스크립트를 질문 또는 어댑터 기본값에서 정하고 실제 존재 여부를 확인한다.
 async function resolveWebScripts(
   context: ConfigResolutionContext,
   adapter: InitAdapter,
@@ -104,7 +101,6 @@ async function resolveWebScripts(
   }
 }
 
-// Electron 소스 디렉터리를 프로젝트 내부의 정규화된 상대 경로로 결정한다.
 async function resolveDesktopDirectory(context: ConfigResolutionContext) {
   const defaultValue = context.options.desktopDir ?? 'electron'
 
@@ -121,7 +117,6 @@ async function resolveDesktopDirectory(context: ConfigResolutionContext) {
   )
 }
 
-// 세 Electron 명령의 이름을 순서대로 정하고 서로 겹치지 않게 예약한다.
 async function resolveDesktopScripts(
   context: ConfigResolutionContext,
 ): Promise<DesktopScriptSelection> {
@@ -142,39 +137,24 @@ async function resolveDesktopScripts(
     context.prompter,
     context.promptEnabled,
     context.packageJson,
-    'Desktop build script name',
+    'Desktop build and package script name',
     context.options.buildScript ?? 'frontron:build',
     takenNames,
     'frontron:build:electron',
     Boolean(context.options.buildScript),
     context.allowedExistingScriptNames,
   )
-  takenNames.add(buildScript)
-  const packageScript = await chooseDesktopScriptName(
-    context.prompter,
-    context.promptEnabled,
-    context.packageJson,
-    'Desktop package script name',
-    context.options.packageScript ?? 'frontron:package',
-    takenNames,
-    'frontron:package:electron',
-    Boolean(context.options.packageScript),
-    context.allowedExistingScriptNames,
-  )
 
   return {
     appScript,
     buildScript,
-    packageScript,
     warnings: createScriptFallbackWarnings(context.packageJson, context.options, {
       appScript,
       buildScript,
-      packageScript,
     }),
   }
 }
 
-// 명시 옵션, 어댑터 기본값, 빌드 명령, 프레임워크 추론 순으로 출력 디렉터리를 정한다.
 async function resolveFrontendOutDir(
   context: ConfigResolutionContext,
   defaults: AdapterDefaults,
@@ -207,7 +187,6 @@ async function resolveFrontendOutDir(
   )
 }
 
-// 자동 실행에서는 Node 서버의 원본 루트와 entry를 추론하지 못하면 즉시 중단한다.
 function assertNodeServerDefaults(
   context: ConfigResolutionContext,
   selection: InitAdapterSelection,
@@ -229,7 +208,6 @@ function assertNodeServerDefaults(
   }
 }
 
-// Remix는 고정 staging entry를 쓰고, 다른 Node 서버는 사용자에게 entry를 물을 수 있다.
 async function resolveNodeServerEntry(
   context: ConfigResolutionContext,
   selection: InitAdapterSelection,
@@ -253,7 +231,6 @@ async function resolveNodeServerEntry(
   )
 }
 
-// 빌드 출력과 서버 원본이 서로 포함되면 런타임 복사 중 원본이 지워질 수 있어 차단한다.
 function assertRuntimePathsDoNotOverlap(cwd: string, outDir: string, sourceRoot: string) {
   const absoluteOutDir = resolve(cwd, outDir)
   const absoluteSourceRoot = resolve(cwd, sourceRoot)
@@ -268,7 +245,6 @@ function assertRuntimePathsDoNotOverlap(cwd: string, outDir: string, sourceRoot:
   }
 }
 
-// Node 서버 어댑터에만 서버 원본 루트와 staging entry를 해석한다.
 async function resolveNodeServerPaths(
   context: ConfigResolutionContext,
   selection: InitAdapterSelection,
@@ -316,7 +292,6 @@ async function resolveNodeServerPaths(
   return { nodeServerSourceRoot, nodeServerSourceEntry, nodeServerEntry }
 }
 
-// 패키지 이름을 바탕으로 표시 이름과 appId를 정하고 사용자 입력을 정규화한다.
 async function resolveProductIdentity(context: ConfigResolutionContext) {
   const packageName = context.packageJson.name ?? 'desktop-app'
   const defaultProductName = context.options.productName ?? titleCase(packageName)
@@ -333,7 +308,6 @@ async function resolveProductIdentity(context: ConfigResolutionContext) {
   return { productName, appId }
 }
 
-// 기존 electron-builder main 값을 보존할 수 있는지 판단하고 계획 차단 사유를 만든다.
 function inspectPackageMetadata(packageJson: PackageJson, force: boolean) {
   const existingBuild = readObjectOrFallback<NonNullable<PackageJson['build']>>(
     packageJson.build,
@@ -361,7 +335,6 @@ function inspectPackageMetadata(packageJson: PackageJson, force: boolean) {
   return { allowExtraMetadataMainOverride, blockers }
 }
 
-// 입력·어댑터·질문 결과를 렌더러와 패치기가 사용할 단일 InitConfig로 묶는다.
 export async function resolveInitConfig(
   input: ResolveInitConfigInput,
 ): Promise<ResolvedInitConfig> {
@@ -388,7 +361,6 @@ export async function resolveInitConfig(
       desktopDir,
       appScript: desktopScripts.appScript,
       buildScript: desktopScripts.buildScript,
-      packageScript: desktopScripts.packageScript,
       webDevScript: webScripts.webDevScript,
       webBuildScript: webScripts.webBuildScript,
       webBuildCommand: webScripts.webBuildCommand,

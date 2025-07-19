@@ -180,11 +180,10 @@ describe('frontron init core flow', () => {
     )
     expect(packageJson.scripts['frontron:build']).toContain('vite build')
     expect(packageJson.scripts['frontron:build']).toContain('--prepare-build')
-    expect(packageJson.scripts['frontron:build']).not.toContain('electron-builder')
-    expect(packageJson.scripts['frontron:package']).toContain('vite build')
-    expect(packageJson.scripts['frontron:package']).toContain('electron-builder')
-    expect(packageJson.scripts['frontron:package']).not.toContain('./node_modules/electron-builder')
-    expect(packageJson.scripts['frontron:package']).toContain('--publish never')
+    expect(packageJson.scripts['frontron:build']).toContain('electron-builder')
+    expect(packageJson.scripts['frontron:build']).not.toContain('./node_modules/electron-builder')
+    expect(packageJson.scripts['frontron:build']).toContain('--publish never')
+    expect(packageJson.scripts).not.toHaveProperty('frontron:package')
     expect(packageJson.build.appId).toBe('com.local.sample-web-app')
     expect(packageJson.build.productName).toBe('Sample Web App')
     expect(packageJson.build.files).toContain('dist-web{,/**/*}')
@@ -201,9 +200,8 @@ describe('frontron init core flow', () => {
     expect(combined).toContain('1. Run "npm install" to install the new desktop dependencies.')
     expect(combined).toContain('2. Run "npm run frontron:dev" to start the desktop app.')
     expect(combined).toContain('   The dev runner waits for http://localhost:5180.')
-    expect(combined).toContain('3. Run "npm run frontron:build" to prepare the desktop build.')
     expect(combined).toContain(
-      '4. Run "npm run frontron:package" to create a packaged build when you are ready to distribute.',
+      '3. Run "npm run frontron:build" to build and package the desktop app.',
     )
     expect(manifest.adapter).toBe('generic-static')
     expect(manifest.adapterConfidence).toBe('high')
@@ -223,10 +221,10 @@ describe('frontron init core flow', () => {
     expect(manifest.createdFiles).toContain('.frontron/manifest.json')
     expect(manifest.fileHashes['electron/main.ts']).toMatch(/^[a-f0-9]{64}$/)
     expect(manifest.fileHashes['.frontron/manifest.json']).toBeUndefined()
-    expect(manifest.scripts).toEqual(['frontron:dev', 'frontron:build', 'frontron:package'])
+    expect(manifest.scripts).toEqual(['frontron:dev', 'frontron:build'])
     expect(manifest.scriptCommands['frontron:dev']).toBe(packageJson.scripts['frontron:dev'])
     expect(manifest.scriptCommands['frontron:build']).toContain('--prepare-build')
-    expect(manifest.scriptCommands['frontron:package']).toContain('electron-builder')
+    expect(manifest.scriptCommands['frontron:build']).toContain('electron-builder')
     expect(manifest.packageJsonClaims).toContainEqual(
       expect.objectContaining({
         path: 'devDependencies.electron',
@@ -451,7 +449,6 @@ allowBuilds:
     expect(combined).toContain('Files to create:')
     expect(combined).toContain('+ scripts.frontron:dev')
     expect(combined).toContain('+ scripts.frontron:build')
-    expect(combined).toContain('+ scripts.frontron:package')
     expect(combined).toContain('No changes were written because --dry-run was used.')
   })
 
@@ -491,7 +488,6 @@ allowBuilds:
         '--out-dir=dist-web',
         '--app-script=desktop:dev',
         '--build-script=desktop:build',
-        '--package-script=desktop:package',
         '--product-name=Sample Desktop',
         '--app-id=com.example.sample-desktop',
       ],
@@ -530,7 +526,6 @@ allowBuilds:
         'apps/electron',
         'desktop',
         'desktop:build',
-        'desktop:package',
         'dist-web',
         'Sample Desktop',
         'com.example.sample',
@@ -556,8 +551,8 @@ allowBuilds:
       'node --no-deprecation dist-electron/serve.js --dev-app',
     )
     expect(packageJson.scripts['desktop:build']).toContain('vite build')
-    expect(packageJson.scripts['desktop:build']).not.toContain('electron-builder')
-    expect(packageJson.scripts['desktop:package']).toContain('electron-builder')
+    expect(packageJson.scripts['desktop:build']).toContain('electron-builder')
+    expect(packageJson.scripts).not.toHaveProperty('desktop:package')
     expect(packageJson.build.appId).toBe('com.example.sample')
     expect(packageJson.build.productName).toBe('Sample Desktop')
   })
@@ -620,7 +615,7 @@ allowBuilds:
       'contextBridge.exposeInMainWorld("electron"',
     )
     expect(readFileSync(join(projectRoot, 'electron', 'ipc.ts'), 'utf8')).toContain(
-      'const quitAppChannel = "app:quit"',
+      'const openTextFileChannel = "file:open-text"',
     )
     expect(readFileSync(join(projectRoot, 'electron', 'dev.ts'), 'utf8')).toContain('setupDevMenu')
     expect(readFileSync(join(projectRoot, 'electron', 'splash.ts'), 'utf8')).toContain(
@@ -791,8 +786,6 @@ allowBuilds:
       'desktop:app',
       'frontron:build',
       'desktop:build',
-      'frontron:package',
-      'desktop:package',
       'dist',
       'Sample Web App',
       'com.local.sample-web-app',
@@ -815,8 +808,8 @@ allowBuilds:
       'node --no-deprecation dist-electron/serve.js --dev-app',
     )
     expect(packageJson.scripts['desktop:build']).toContain('--prepare-build')
-    expect(packageJson.scripts['desktop:build']).not.toContain('electron-builder')
-    expect(packageJson.scripts['desktop:package']).toContain('electron-builder')
+    expect(packageJson.scripts['desktop:build']).toContain('electron-builder')
+    expect(packageJson.scripts).not.toHaveProperty('desktop:package')
   })
 
   test('init --yes falls back instead of overwriting default frontron scripts', async () => {
@@ -845,7 +838,7 @@ allowBuilds:
     expect(packageJson.scripts['frontron:package']).toBe('existing-package')
     expect(packageJson.scripts['frontron:dev:electron']).toContain('--dev-app')
     expect(packageJson.scripts['frontron:build:electron']).toContain('--prepare-build')
-    expect(packageJson.scripts['frontron:package:electron']).toContain('electron-builder')
+    expect(packageJson.scripts['frontron:build:electron']).toContain('electron-builder')
     const combined = output.info.mock.calls.flat().join('\n')
 
     expect(combined).toContain(
@@ -853,10 +846,7 @@ allowBuilds:
     )
     expect(combined).toContain('2. Run "npm run frontron:dev:electron" to start the desktop app.')
     expect(combined).toContain(
-      '3. Run "npm run frontron:build:electron" to prepare the desktop build.',
-    )
-    expect(combined).toContain(
-      '4. Run "npm run frontron:package:electron" to create a packaged build when you are ready to distribute.',
+      '3. Run "npm run frontron:build:electron" to build and package the desktop app.',
     )
   })
 

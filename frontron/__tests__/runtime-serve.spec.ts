@@ -24,7 +24,6 @@ type RuntimeResponse = {
 const tempDirs: string[] = []
 const stopRuntimeCallbacks: Array<() => Promise<void>> = []
 
-// createStaticConfig 함수는 테스트용 static-export 생성 설정을 만든다.
 function createStaticConfig(cwd: string): InitConfig {
   return {
     cwd,
@@ -37,7 +36,6 @@ function createStaticConfig(cwd: string): InitConfig {
     desktopDir: 'electron',
     appScript: 'frontron:dev',
     buildScript: 'frontron:build',
-    packageScript: 'frontron:package',
     webDevScript: 'dev',
     webBuildScript: 'build',
     webBuildCommand: 'npm run build',
@@ -57,7 +55,6 @@ function createStaticConfig(cwd: string): InitConfig {
   }
 }
 
-// createNodeConfig 함수는 일반 Node 또는 Remix 런타임 생성 설정을 만든다.
 function createNodeConfig(
   cwd: string,
   adapter: 'generic-node-server' | 'remix-node-server' = 'generic-node-server',
@@ -77,7 +74,6 @@ function createNodeConfig(
   }
 }
 
-// expectSourceToTranspile 함수는 생성된 TypeScript에 문법 진단이 없는지 확인한다.
 function expectSourceToTranspile(source: string) {
   const result = ts.transpileModule(source, {
     compilerOptions: {
@@ -95,7 +91,6 @@ function expectSourceToTranspile(source: string) {
   ).toEqual([])
 }
 
-// createStaticRuntime 함수는 생성된 serve.ts를 컴파일해 실제 HTTP 런타임을 준비한다.
 async function createStaticRuntime() {
   const projectRoot = mkdtempSync(join(tmpdir(), 'frontron-runtime-'))
   const distElectronDir = join(projectRoot, 'dist-electron')
@@ -135,7 +130,6 @@ async function createStaticRuntime() {
   return { projectRoot, distWebDir, rendererUrl }
 }
 
-// requestRuntime 함수는 URL 정규화를 거치지 않은 경로로 생성 서버에 요청한다.
 function requestRuntime(
   rendererUrl: string,
   path: string,

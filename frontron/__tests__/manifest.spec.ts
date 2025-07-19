@@ -28,7 +28,7 @@ describe('frontron manifest', () => {
 
     const manifest = readGeneratedManifest(projectRoot)
 
-    expect(manifest.schemaVersion).toBe(2)
+    expect(manifest.schemaVersion).toBe(3)
     expect(manifest.createdFiles).toContain('.frontron/manifest.json')
     expect(manifest.fileHashes['electron/main.ts']).toMatch(/^[a-f0-9]{64}$/)
     expect(manifest.fileHashes['.frontron/manifest.json']).toBeUndefined()

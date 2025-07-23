@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -41,7 +41,7 @@ test('starter template exposes the supported Electron and React contract', async
   const electronPreload = readFileSync(join(projectRoot, 'src/electron/preload.ts'), 'utf8')
   const electronIpc = readFileSync(join(projectRoot, 'src/electron/ipc.ts'), 'utf8')
   const rendererMain = readFileSync(join(projectRoot, 'src/main.tsx'), 'utf8')
-  const uiEntries = readdirSync(join(projectRoot, 'src/components/ui')).sort()
+  const rendererApp = readFileSync(join(projectRoot, 'src/App.tsx'), 'utf8')
 
   expect(packageJson.private).toBe(true)
   expect(packageJson.scripts).toMatchObject({
@@ -51,10 +51,14 @@ test('starter template exposes the supported Electron and React contract', async
     lint: 'node scripts/tasks.mjs lint',
     typecheck: 'node scripts/tasks.mjs typecheck',
   })
-  expect(packageJson.dependencies).not.toHaveProperty('electron')
-  expect(packageJson.dependencies).not.toHaveProperty('frontron')
+  expect(packageJson.dependencies).toEqual({
+    react: '^19.2.4',
+    'react-dom': '^19.2.4',
+  })
   expect(packageJson.devDependencies).toHaveProperty('electron')
   expect(packageJson.devDependencies).toHaveProperty('electron-builder')
+  expect(packageJson.devDependencies).not.toHaveProperty('tailwindcss')
+  expect(packageJson.devDependencies).not.toHaveProperty('@tailwindcss/vite')
   expect(packageJson.main).toBe('dist/electron/main.js')
   expect(packageJson.build.productName).toBe(projectName)
   expect(packageJson.build.appId).toBe(`com.example.${projectName}`)
@@ -80,11 +84,14 @@ test('starter template exposes the supported Electron and React contract', async
   expect(electronIpc).toContain('dialog.showSaveDialog')
   expect(electronIpc).toContain('clipboard.writeText')
   expect(electronIpc).toContain('Notification.isSupported')
-  expect(rendererMain).not.toContain('TitleBar')
-  expect(uiEntries).toEqual(['button.tsx', 'dialog.tsx'])
+  expect(rendererMain).not.toContain('ThemeProvider')
+  expect(rendererApp).toContain('window.electron')
 
-  expect(existsSync(join(projectRoot, 'src/components/TitleBar.tsx'))).toBe(false)
-  expect(existsSync(join(projectRoot, 'src/lib/desktop-settings.ts'))).toBe(false)
+  expect(existsSync(join(projectRoot, 'src/components'))).toBe(false)
+  expect(existsSync(join(projectRoot, 'src/assets'))).toBe(false)
+  expect(existsSync(join(projectRoot, 'src/lib'))).toBe(false)
+  expect(existsSync(join(projectRoot, 'components.json'))).toBe(false)
+  expect(existsSync(join(projectRoot, 'public/vite.svg'))).toBe(false)
   expect(existsSync(join(projectRoot, 'src/types/electron.d.ts'))).toBe(true)
   expect(existsSync(join(projectRoot, 'tsconfig.electron.json'))).toBe(true)
   expect(existsSync(join(projectRoot, 'scripts/tasks.mjs'))).toBe(true)

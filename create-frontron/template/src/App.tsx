@@ -1,148 +1,93 @@
 import { useEffect, useState } from "react"
 
-import reactLogo from "./assets/react.svg"
-import viteLogo from "/vite.svg"
-
-import DesktopSettingsDialog from "@/components/desktop/SettingsDialog"
-import { Button } from "@/components/ui/button"
-import { getDesktopBridgeRuntime } from "@/lib/utils"
-
 export function App() {
-  const [count, setCount] = useState(0)
-  const [hasDesktopBridge, setHasDesktopBridge] = useState(false)
-  const [desktopStatus, setDesktopStatus] = useState(
-    "Checking desktop bridge..."
+  const bridge = window.electron
+  const [status, setStatus] = useState(
+    bridge
+      ? "Connecting to the Electron main process..."
+      : "Browser preview. Run `npm run app` to launch Electron."
   )
 
   useEffect(() => {
+    if (!bridge) return
+
     let cancelled = false
 
-    async function loadDesktopStatus() {
-      const desktopBridge = getDesktopBridgeRuntime()
-
-      if (!desktopBridge) {
+    void bridge
+      .getAppInfo()
+      .then((info) => {
         if (!cancelled) {
-          setDesktopStatus(
-            "Web preview mode. Run `npm run app` to start Electron."
-          )
+          setStatus(`${info.name} ${info.version} · ${info.platform}/${info.arch}`)
         }
-        return
-      }
-
-      try {
-        const info = await desktopBridge.getAppInfo()
-
-        if (!cancelled) {
-          setHasDesktopBridge(true)
-          setDesktopStatus(
-            `${info.name} ${info.version} · ${info.platform}/${info.arch}`
-          )
-        }
-      } catch (error) {
+      })
+      .catch((error: unknown) => {
         if (!cancelled) {
           const message = error instanceof Error ? error.message : String(error)
-          setDesktopStatus(`Electron bridge error: ${message}`)
+          setStatus(`Electron bridge error: ${message}`)
         }
-      }
-    }
-
-    void loadDesktopStatus()
+      })
 
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [bridge])
 
   async function openTextFile() {
-    const file = await getDesktopBridgeRuntime()?.openTextFile({
-      title: "Open a text file",
-    })
+    const file = await bridge?.openTextFile({ title: "Open a text file" })
 
     if (file) {
-      setDesktopStatus(
-        `Opened ${file.name} (${file.content.length.toLocaleString()} characters)`
-      )
+      setStatus(`Opened ${file.name} · ${file.content.length.toLocaleString()} characters`)
     }
   }
 
   async function saveTextFile() {
-    const result = await getDesktopBridgeRuntime()?.saveTextFile({
+    const result = await bridge?.saveTextFile({
       title: "Save a text file",
       defaultPath: "frontron-note.txt",
-      content: `Frontron native bridge ready.\nCount: ${count}\n`,
+      content: "Frontron desktop app ready.\n",
     })
 
     if (result) {
-      setDesktopStatus(`Saved ${result.path}`)
+      setStatus(`Saved ${result.path}`)
     }
   }
 
-  async function copyStatus() {
-    const bridge = getDesktopBridgeRuntime()
-    if (!bridge) return
-
-    await bridge.writeClipboardText(desktopStatus)
-    setDesktopStatus("Desktop status copied to the clipboard.")
-  }
-
   async function showNotification() {
-    const shown = await getDesktopBridgeRuntime()?.showNotification({
+    const shown = await bridge?.showNotification({
       title: "Frontron",
-      body: "The native notification bridge is ready.",
+      body: "The native bridge is ready.",
     })
 
-    setDesktopStatus(
-      shown
-        ? "Native notification sent."
-        : "Native notifications are not supported on this system."
-    )
+    setStatus(shown ? "Notification sent." : "Notifications are unavailable.")
   }
 
   return (
-    <>
-      <div className="flex min-h-dvh flex-col items-center justify-center gap-6 overflow-hidden px-6 py-10 text-center">
-        <div className="flex items-center gap-6">
-          <img src={viteLogo} className="size-18" alt="Vite logo" />
-          <img src={reactLogo} className="size-18" alt="React logo" />
-        </div>
-        <div className="space-y-2">
-          <h1 className="text-3xl font-semibold">Electron template ready</h1>
-          <p className="text-sm text-muted-foreground">
-            Edit <code>src/App.tsx</code> and <code>src/electron/ipc.ts</code>{" "}
-            to start building your app.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center justify-center gap-3">
-          <Button type="button" onClick={() => setCount((value) => value + 1)}>
-            Count is {count}
-          </Button>
-          <Button type="button" disabled={!hasDesktopBridge} onClick={openTextFile}>
-            Open text file
-          </Button>
-          <Button type="button" disabled={!hasDesktopBridge} onClick={saveTextFile}>
-            Save text file
-          </Button>
-          <Button type="button" disabled={!hasDesktopBridge} onClick={copyStatus}>
-            Copy status
-          </Button>
-          <Button type="button" disabled={!hasDesktopBridge} onClick={showNotification}>
-            Notify
-          </Button>
-        </div>
-        <div className="max-w-xl rounded-lg border border-border/70 bg-card p-4 text-sm text-card-foreground shadow-sm">
-          <div className="font-medium">Desktop status</div>
-          <p className="mt-2 break-words text-muted-foreground">
-            {desktopStatus}
-          </p>
-        </div>
-        <div className="font-mono text-xs text-muted-foreground">
-          Use <code>npm run dev</code> for web preview and{" "}
-          <code>npm run app</code> for Electron mode.
-        </div>
-      </div>
+    <main className="app-shell">
+      <section className="app-card">
+        <p className="eyebrow">Electron + React + Vite</p>
+        <h1>Desktop app ready</h1>
+        <p className="intro">
+          Edit <code>src/App.tsx</code> for the interface and{" "}
+          <code>src/electron/ipc.ts</code> for native features.
+        </p>
 
-      <DesktopSettingsDialog />
-    </>
+        <div className="actions" aria-label="Native bridge examples">
+          <button type="button" disabled={!bridge} onClick={openTextFile}>
+            Open text file
+          </button>
+          <button type="button" disabled={!bridge} onClick={saveTextFile}>
+            Save text file
+          </button>
+          <button type="button" disabled={!bridge} onClick={showNotification}>
+            Notify
+          </button>
+        </div>
+
+        <p className="status" aria-live="polite">
+          {status}
+        </p>
+      </section>
+    </main>
   )
 }
 

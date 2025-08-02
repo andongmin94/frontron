@@ -39,7 +39,7 @@ jobs:
             frontron/package-lock.json
             create-frontron/package-lock.json
 
-      - name: Validate both packages
+      - name: Format and validate both packages
         shell: bash
         run: |
           set +e
@@ -49,6 +49,7 @@ jobs:
             (
               cd create-frontron &&
               npm ci --fund=false --audit=false &&
+              npm run lint &&
               npm run check &&
               npm run typecheck &&
               npm test &&
@@ -58,6 +59,7 @@ jobs:
             (
               cd frontron &&
               npm ci --fund=false --audit=false &&
+              npm run lint &&
               npm run check &&
               npm run typecheck &&
               npm test &&
@@ -86,8 +88,14 @@ jobs:
 
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -- .github/temporary-main-validation-result.json
-          git commit -m "chore: record temporary main validation" || true
+          git add -- \
+            .github/temporary-main-validation-result.json \
+            frontron/__tests__/pnpm-workspace-yaml.spec.ts \
+            frontron/__tests__/yarnrc-yaml.spec.ts \
+            frontron/src/init/pnpm-workspace-yaml.ts \
+            frontron/src/init/yarnrc-yaml.ts \
+            frontron/src/transaction-journal.ts
+          git commit -m "chore: apply validation formatting" || true
           git push origin HEAD:main
 
           exit 0

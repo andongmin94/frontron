@@ -12,16 +12,15 @@ let mainWindow: BrowserWindow | null;
 export function createWindow(port: number, isDev: boolean, __dirname: string, closeSplash: () => void) {
   mainWindow = new BrowserWindow({
     show: false,
-    width: 1600,
-    height: 900,
+    width: 800,
+    height: 600,
     frame: false,
     resizable: isDev,
     icon: path.join(__dirname, '../../public/icon.png'),
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-      webSecurity: false,
-      // preload: path.join(__dirname, 'preload.js'), // preload 사용 시 주석 해제
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'), // preload 사용 시 주석 해제
     },
   });
 

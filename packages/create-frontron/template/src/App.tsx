@@ -6,7 +6,7 @@ import viteLogo from "/vite.svg";
 
 import "./App.css";
 
-function App({ ipcRenderer }: any) {
+function App() {
   const [count, setCount] = useState(0);
   const [nodeInfo, setNodeInfo] = useState("테스트 중...");
 
@@ -16,9 +16,11 @@ function App({ ipcRenderer }: any) {
       // process 객체는 Node.js API의 일부입니다
       const nodeVersion = process?.versions?.node;
       const platform = process?.platform;
-      
-      setNodeInfo(`Node.js ${nodeVersion}가 사용 가능합니다! (플랫폼: ${platform})`);
-    } catch (error : any) {
+
+      setNodeInfo(
+        `Node.js ${nodeVersion}가 사용 가능합니다! (플랫폼: ${platform})`,
+      );
+    } catch (error: any) {
       setNodeInfo(`Node.js API를 사용할 수 없습니다: ${error.message}`);
     }
   }, []);

@@ -1,29 +1,39 @@
-import { ipcMain } from 'electron';
+import { ipcMain } from "electron";
+import { getMainWindow } from "./window.js";
 
-/**
- * 개발 환경용 메뉴 설정
- * @param {Function} getMainWindow - 메인 윈도우 객체를 반환하는 함수
- */
-interface MainWindowGetter {
-  (): Electron.BrowserWindow | null; // 메인 윈도우 객체를 반환하는 함수
-}
-export function setupIpcHandlers(getMainWindow: MainWindowGetter) {
-  ipcMain.on('hidden', () => {
-    getMainWindow()?.hide();
+export function setupIpcHandlers() {
+  const mainWindow = getMainWindow();
+
+  if (!mainWindow) return;
+
+  // 창 상태 변화 이벤트 → 렌더러에 전달
+  const sendMaxState = () =>
+    mainWindow.webContents.send("window-maximized-changed", mainWindow.isMaximized());
+
+  mainWindow.on("maximize", sendMaxState);
+  mainWindow.on("unmaximize", sendMaxState);
+
+  ipcMain.on("hidden", () => {
+    mainWindow.hide();
   });
 
-  ipcMain.on('minimize', () => {
-    getMainWindow()?.minimize();
+  ipcMain.on("minimize", () => {
+    mainWindow.minimize();
   });
 
-  ipcMain.on('maximize', () => {
-    const mw = getMainWindow();
-    if (mw && mw.isMinimized()) {
-      mw.restore();
+  // 토글 방식으로 변경
+  ipcMain.on("toggle-maximize", () => {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
     } else {
-      mw?.maximize();
+      mainWindow.maximize();
     }
+    sendMaxState();
   });
 
-  // 여기에 다른 IPC 핸들러 추가 가능
+  // (선택) 렌더러가 초기 상태 요청할 수 있게
+  ipcMain.handle("get-window-state", () => ({
+    isMaximized: mainWindow.isMaximized(),
+    isMinimized: mainWindow.isMinimized(),
+  }));
 }

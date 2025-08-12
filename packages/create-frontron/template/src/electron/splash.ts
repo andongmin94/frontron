@@ -1,15 +1,15 @@
-import { BrowserWindow } from 'electron';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-// ESM에서 __dirname 사용하기 위한 설정
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import path from "path";
+import { fileURLToPath } from "url";
+import { BrowserWindow } from "electron";
 
 // 폰트 파일 경로 설정 (public/fonts/PretendardVariable.woff2 라고 가정)
-const fontPath = path.join(__dirname, '../../public/fonts/PretendardVariable.woff2');
+const fontPath = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../public/fonts/PretendardVariable.woff2",
+);
+
 // 경로 구분자를 웹 표준인 '/'로 변경하고 file:// 프로토콜 추가
-const fontSrcUrl = `file://${fontPath.replace(/\\/g, '/')}`;
+const fontSrcUrl = `file://${fontPath.replace(/\\/g, "/")}`;
 
 let splashWindow: BrowserWindow | null;
 export function createSplash() {
@@ -93,13 +93,15 @@ export function createSplash() {
     </html>
 `;
 
-    // data URI로 HTML 로드
-    splashWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+  // data URI로 HTML 로드
+  splashWindow.loadURL(
+    `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`,
+  );
 
-    // 창이 닫힐 때 참조 제거
-    splashWindow.on('closed', () => {
-        splashWindow = null;
-    });
+  // 창이 닫힐 때 참조 제거
+  splashWindow.on("closed", () => {
+    splashWindow = null;
+  });
 
   return splashWindow;
 }

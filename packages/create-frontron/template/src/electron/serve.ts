@@ -48,12 +48,6 @@ function getPortFromViteConfig(configPath: string) {
   }
 }
 
-/**
- * 개발 또는 프로덕션 환경에 맞는 포트를 결정합니다.
- * @param {boolean} isDev - 개발 모드 여부
- * @param {string} __dirname - 현재 디렉토리 경로
- * @returns {Promise<number|null>} 사용할 포트 번호 또는 실패 시 null
- */
 export async function determinePort() {
   if (!isDev) {
     // --- 프로덕션 로직 (변경 없음) ---

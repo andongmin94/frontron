@@ -1,0 +1,67 @@
+name: temporary-lock-cleanup-comment
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.event.comment.body == '/cleanup-legacy-locks'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: main
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: |
+            frontron/package-lock.json
+            create-frontron/package-lock.json
+
+      - name: Apply cleanup
+        run: python .github/temporary-remove-legacy-locks.py
+
+      - name: Validate repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          node release.mjs check-metadata
+          for package in create-frontron frontron; do
+            cd "$package"
+            npm ci --fund=false --audit=false
+            npm run lint
+            npm run check
+            npm run typecheck
+            npm test
+            npm run build
+            npm run test:package-smoke
+            cd ..
+          done
+
+      - name: Commit validated cleanup
+        shell: bash
+        run: |
+          VALIDATED_SHA="$(git rev-parse HEAD)" node <<'NODE'
+          const fs = require('node:fs')
+          fs.writeFileSync(
+            '.github/temporary-lock-cleanup-result.json',
+            `${JSON.stringify({ status: 0, validatedBaseSha: process.env.VALIDATED_SHA, completedAt: new Date().toISOString() }, null, 2)}\n`,
+          )
+          NODE
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -- \
+            .github/temporary-lock-cleanup-result.json \
+            frontron/src/transaction-journal.ts \
+            frontron/src/doctor.ts \
+            frontron/__tests__/doctor.spec.ts
+          git commit -m "refactor: remove obsolete transaction lock paths"
+          git push origin HEAD:main

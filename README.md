@@ -8,63 +8,68 @@
 
 # Frontron <a href="https://npmjs.com/package/create-frontron"><img src="https://img.shields.io/npm/v/frontron" alt="npm package"></a>
 
-> Simplified Desktop App Building with Electron
+> Electron 기반 데스크톱 앱 개발을 더 단순하고 빠르게
 
-Frontron is a powerful GUI library that streamlines the process of building desktop applications using Electron. It provides a suite of tools and features designed to make development faster and easier.
+Frontron은 Electron 위에서 React / Next.js 환경을 빠르게 셋업하고, Tailwind + Shadcn UI + 다수의 공통 컴포넌트/유틸을 포함한 개발 경험을 제공하는 템플릿 & CLI 도구입니다.
 
-- 💡 Supporting React and Next.js
-- ⚡️ Using popular CSS frameworks like Tailwind and Shadcn
-- 📦 Many common components
+- 💡 React / Next.js 템플릿 지원
+- ⚡️ Tailwind CSS + Shadcn UI 스타일 구성
+- 📦 자주 쓰는 Radix 기반 UI 컴포넌트 다수 포함
+- 🪟 커스텀 프레임(TitleBar), Splash, Tray, IPC 패턴
+- 🔄 HMR (Vite) + Typescript + ES Module 환경
+- 🧪 구조적 코드 분리 (electron / renderer)
 
-## Starting Project with template
+## 핵심 기능 개요
 
-Usage
-Here's a simple example to get you started with Frontron:
+| 영역 | 내용 |
+| ---- | ---- |
+| CLI (`create-frontron`) | 다양한 템플릿(react, ts, swc, next) 스캐폴딩 |
+| Electron Main | 단일 인스턴스 보장, Splash → 메인 윈도우 지연 생성, Tray, IPC 이벤트 핸들링 |
+| Preload | `contextIsolation` 하에서 안전한 bridge 제공 (`electron.send/on/get`) |
+| UI | Radix + Shadcn 패턴 컴포넌트 세트, Tailwind 4.x, utility helpers |
+| Build | Vite (프론트), `tsc` (main/preload), electron-builder (배포) |
+| 품질 | ESLint + Prettier + Import Sort + TypeScript strict 구성 |
 
-### 1. Create a new Frontron project
-You can create a new Frontron project using create-frontron. This tool allows you to scaffold a new project with various templates.
+## 디렉터리 구조 (요약)
 
-Compatibility Note:
-Frontron requires Node.js version 20+. However, some templates require a higher Node.js version to work, please upgrade if your package manager warns about it.
-
-With NPM:
-```bash
-$ npm create frontron@latest
+```
+packages/
+	create-frontron/          # CLI & 템플릿 소스
+		src/                    # CLI 로직
+		template/               # 실제 생성되는 앱 템플릿
+			src/
+				electron/           # main, preload, tray, splash, ipc, window
+				components/         # UI 컴포넌트(Shadcn 변형 + Radix)
+				hooks/, lib/        # 공용 훅/유틸
+	frontron/                 # (추후 확장 가능) 런타임/공유 패키지 placeholder
+docs/                       # 문서 사이트 (Vite 기반)
 ```
 
-With Yarn:
+## Node / 런타임 요구사항
+
+- 최소 Node.js 20+ (CLI와 일부 템플릿은 18도 동작 가능하나 20 이상 권장)
+- pnpm / npm / yarn / bun 모두 지원
+
+## 시작하기 (CLI 사용)
+
+NPM:
 ```bash
-$ yarn create frontron
+npm create frontron@latest
+```
+Yarn:
+```bash
+yarn create frontron
+```
+PNPM:
+```bash
+pnpm create frontron
+```
+Bun:
+```bash
+bun create frontron
 ```
 
-With PNPM:
-```bash
-$ pnpm create frontron
-```
-
-With Bun:
-```bash
-$ bun create frontron
-```
-Then follow the prompts!
-
-You can also directly specify the project name and the template you want to use via additional command line options. For example, to scaffold a frontron project with React templates, run:
-
-```bash
-# npm 20+, extra double-dash is needed:
-npm create frontron@latest my-react-app -- --template react
-
-# yarn
-yarn create frontron my-react-app --template react
-
-# pnpm
-pnpm create frontron my-react-app --template react
-
-# Bun
-bun create frontron my-react-app --template react
-```
-
-Currently Supported Template Presets
+프롬프트에서 프로젝트명과 템플릿을 선택하면 구조가 생성됩니다. 현재 지원 템플릿:
 
 - `react`
 - `react-ts`
@@ -73,30 +78,106 @@ Currently Supported Template Presets
 - `next`
 - `next-ts`
 
-You can use . for the project name to scaffold in the current directory.
+현재 디렉터리에 생성하려면 프로젝트명을 `.` 으로 지정할 수 있습니다.
 
-### 2. Start the development server
+### 템플릿 직접 지정 (비대화식)
+```bash
+npm create frontron@latest my-app -- --template react
+yarn create frontron my-app --template react
+pnpm create frontron my-app --template react
+bun create frontron my-app --template react
+```
 
+## 개발 흐름
+
+템플릿 생성 후:
 ```bash
 npm run app
 ```
-This command will start the development server with hot module replacement, making it easy to see your changes in real-time.
+동시에 Vite 개발 서버 + Electron 메인 프로세스(dev) 실행(HMR 반영). 
 
-### 3. Build your application for production
-
+프로덕션 빌드:
 ```bash
 npm run build
 ```
+순서: `vite build` → `tsc -p tsconfig.electron.json` → `electron-builder` 로 패키징.
 
-This command will bundle your application using Rollup and produce optimized static assets for production.
+### Electron 구조 요약
 
-Documentation
-For more detailed information, please refer to the official Frontron documentation.
+- `main.ts`: 단일 인스턴스 잠금, Splash 생성 → 지연(2s) 후 포트 탐색(`determinePort`) → BrowserWindow 생성, Tray/IPC 초기화.
+- `window.ts`: 프레임 없는(`frame: false`) 메인 창, macOS 숨김 처리, Windows 우클릭 차단 로직.
+- `preload.ts`: renderer에 `electron` 네임스페이스 노출 (`send`, `on`, `get`, `removeListener`).
+- `ipc.ts`: 창 상태(maximize/unmaximize) 이벤트 브로드캐스트, 최소화/토글 maximize 등 핸들러.
+- `splash.ts`: 초기 로딩 화면 표시 후 main 윈도우 로드 완료 시 닫기.
+- `tray.ts`: 시스템 트레이 아이콘/메뉴 관리.
 
-Contributing
-We welcome contributions to Frontron! If you have any ideas, suggestions, or issues, please feel free to open an issue or a pull request on GitHub.
+### IPC 패턴
 
-License
-Frontron is licensed under the MIT License. See the LICENSE file for more details.
+렌더러 → 메인:
+```ts
+window.electron.send('toggle-maximize')
+```
+메인 → 렌더러 (예: 창 상태 브로드캐스트):
+```ts
+webContents.send('window-maximized-changed', isMaximized)
+```
+렌더러 초기 상태 요청:
+```ts
+const state = await window.electron.get('get-window-state') // handle 사용 예시
+```
 
-With Frontron, building desktop applications with Electron has never been easier. Get started today and simplify your development workflow!
+## 포함된 UI & 스타일
+
+- Tailwind CSS 4.x + Autoprefixer
+- Shadcn 스타일 패턴 기반 Radix 컴포넌트 래핑 (Accordion, Dialog, Menu, Tabs, Tooltip 등)
+- 유틸: `class-variance-authority`, `clsx`, `tailwind-merge`
+
+## 추가 스택
+
+- Routing (React Router DOM) - React 템플릿
+- Form: `react-hook-form` + `zod` (검증)
+- Chart: `recharts`
+- Carousel: `embla-carousel-react`
+- Notification: `sonner`
+
+## 스크립트 (템플릿)
+
+| 스크립트 | 설명 |
+| -------- | ---- |
+| dev | Vite 개발 서버 (렌더러) |
+| app | 렌더러(dev)+Electron 동시 실행 |
+| build | 프론트 빌드 + Electron 타입컴파일 + 패키징 |
+| lint | ESLint + Prettier 실행 |
+
+## 배포 (electron-builder)
+
+`build` 스크립트 실행 시 `dist_app/` 에 플랫폼 별 산출물 생성. 현재 설정:
+- Windows: portable
+- macOS: dir (샘플 설정, 필요 시 dmg/zip 추가 가능)
+
+구성 커스터마이징은 템플릿 `package.json` 의 `build` 필드를 수정하세요.
+
+## 로드맵 (예상)
+
+- [ ] 다중 창 템플릿 옵션
+- [ ] Auto Update (electron-updater) 통합
+- [ ] Next.js 템플릿 electron SSR 최적화
+- [ ] 테스트(Playwright / Vitest) 기본 골격 제공
+- [ ] 다국어(i18n) 예제
+
+## 기여하기
+
+이슈나 PR 환영합니다. 버그/제안 라벨을 활용해 주세요.
+
+기여 절차 요약:
+1. Fork & 브랜치 생성 (`feat/`, `fix/` prefix)
+2. 변경 및 테스트
+3. 커밋 컨벤션(간단 명령형) 권장
+4. PR 열고 설명 추가 / 스크린샷 첨부
+
+## 라이선스
+
+MIT License. 자세한 내용은 `LICENSE.md` 참고.
+
+---
+Frontron으로 Electron 데스크톱 앱 개발을 더 빠르고 단순하게 시작해 보세요.

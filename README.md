@@ -178,6 +178,3 @@ const state = await window.electron.get('get-window-state') // handle 사용 예
 ## 라이선스
 
 MIT License. 자세한 내용은 `LICENSE.md` 참고.
-
----
-Frontron으로 Electron 데스크톱 앱 개발을 더 빠르고 단순하게 시작해 보세요.

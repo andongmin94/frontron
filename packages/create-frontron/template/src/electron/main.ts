@@ -7,7 +7,7 @@ import { setupIpcHandlers } from "./ipc.js";
 import { determinePort } from "./serve.js";
 import { closeSplash, createSplash } from "./splash.js";
 import { createTray, destroyTray } from "./tray.js";
-import { createWindow, getMainWindow } from "./window.js";
+import { createWindow, mainWindow } from "./window.js";
 
 // --- 기본 설정 ---
 export const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -24,7 +24,6 @@ if (!app.requestSingleInstanceLock()) {
       commandLine,
       workingDirectory,
     });
-    const mainWindow = getMainWindow();
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
@@ -85,7 +84,6 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on("activate", () => {
     // macOS: Dock 아이콘 클릭 시 창이 없으면 새로 생성
-    const mainWindow = getMainWindow();
     if (mainWindow === null) {
       // PORT가 유효하다는 보장이 필요함. initializeApp 재실행 또는 상태 관리 필요.
       // 여기서는 간단히 initializeApp을 다시 호출하는 대신,

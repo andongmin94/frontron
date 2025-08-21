@@ -1,9 +1,8 @@
 import { Menu } from "electron";
 
-import { getMainWindow } from "./window.js";
+import { mainWindow } from "./window.js";
 
 export function setupDevMenu() {
-  const mainWindow = getMainWindow();
   const menu = Menu.buildFromTemplate([
     {
       label: "Developer",

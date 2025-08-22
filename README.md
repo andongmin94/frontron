@@ -12,7 +12,7 @@
 
 Frontron은 Electron 위에서 React / Next.js 환경을 빠르게 셋업하고, Tailwind + Shadcn UI + 다수의 공통 컴포넌트/유틸을 포함한 개발 경험을 제공하는 템플릿 & CLI 도구입니다.
 
-- 💡 React / Next.js 템플릿 지원
+- 💡 React 템플릿 지원
 - ⚡️ Tailwind CSS + Shadcn UI 스타일 구성
 - 📦 자주 쓰는 Radix 기반 UI 컴포넌트 다수 포함
 - 🪟 커스텀 프레임(TitleBar), Splash, Tray, IPC 패턴
@@ -138,7 +138,6 @@ const state = await window.electron.get('get-window-state') // handle 사용 예
 - Form: `react-hook-form` + `zod` (검증)
 - Chart: `recharts`
 - Carousel: `embla-carousel-react`
-- Notification: `sonner`
 
 ## 스크립트 (템플릿)
 

@@ -1,111 +1,154 @@
-# Configuring Frontron for React
+# Frontron 설정 가이드 (Configuration)
 
-If you want to use Frontron in your current project, you can use npm install.
+이 문서는 기존 프로젝트에 Frontron 구조를 수동 적용하거나, 생성된 템플릿을 커스터마이징할 때 필요한 핵심 설정을 정리합니다. 일반적으로는 `npm create frontron@latest` 로 스캐폴딩하는 것이 가장 빠릅니다.
 
-```bash
-npm create frontron
+## 1. 필수 package.json 필드
 
-npx create-frontron
-```
-
-However, The `install` command needs some configuration in your package and directory.
-
-The `install` command will prompt you to set some fields in your config.
-There are a few rules to follow for the purposes of this tutorial:
-
-* `entry point` should be `main.cjs`.
-* `author` and `description` can be any value, but are necessary for app packaging(`description` is optional but recommended).
-
-Your `package.json` file should look something like this:
-
-```json
-"name": "my-frontron-app",
-"version": "0.0.1",
-"main": "src/electron/main.cjs",
-"author": "your developer name",
-```
-
-> Note: If you're encountering any issues with installing frontron, please
-> Report to frontron issues.
-
-Finally, you need to be able to execute your Frontron app. In the `scripts`
-field of your `package.json` config, add a `app` command like so:
-
-```json
-"scripts": {
-    "app": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .\""
+```jsonc
+{
+  "name": "my-frontron-app",
+  "version": "0.0.1",
+  "description": "나의 데스크톱 애플리케이션",
+  "author": "Your Name",
+  "main": "dist/electron/main.js", // 빌드 후 진입점
+  "type": "module"
 }
 ```
 
-If your local development server is running on a different port, use port 3000.
+템플릿은 TypeScript 컴파일 결과(`dist/electron/main.js`)를 메인 엔트리로 사용합니다. 개발 단계에서는 `src/electron/main.ts` 가 실제 소스입니다.
 
-This adjustment ensures that wait-on correctly waits for your development server to be ready before starting the Frontron application.
+## 2. 디렉터리 구조 권장
 
-This `app` command will let you open your app in development mode.
+```
+src/
+  electron/
+    main.ts
+    preload.ts
+    ipc.ts
+    window.ts
+    tray.ts
+    splash.ts
+  components/
+  hooks/
+  lib/
+public/
+  icon.png
+```
+
+## 3. 스크립트 구성
+
+```jsonc
+"scripts": {
+  "dev": "vite",
+  "app": "concurrently \"npm run dev\" \"tsc -p tsconfig.electron.json && cross-env NODE_ENV=development electron .\"",
+  "build": "vite build && tsc -p tsconfig.electron.json && electron-builder",
+  "lint": "eslint . && npx prettier --write ."
+}
+```
+
+포트가 동적으로 결정되는 구조(`determinePort`)를 사용한다면 wait-on 이 필수적이지 않아 제거되었습니다. 고정 포트를 사용하려면 `app` 스크립트를 다음처럼 조정할 수 있습니다:
+
+```jsonc
+"app": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .\""
+```
+
+## 4. TypeScript 설정 개요
+
+- `tsconfig.json`: 기본 공통 옵션
+- `tsconfig.app.json`: 렌더러(React/Next) 전용 설정
+- `tsconfig.electron.json`: `src/electron` 컴파일 (module=ESNext, outDir=dist/electron)
+
+Electron main/preload 코드는 Node/Electron API 사용 → `types: ["node", "electron"]` 추가 고려.
+
+## 5. electron-builder 설정 예시
+
+템플릿 기본값 (축약):
+```jsonc
+"build": {
+  "appId": "Frontron",
+  "productName": "Frontron",
+  "artifactName": "${productName}.${ext}",
+  "icon": "public/icon.png",
+  "compression": "store",
+  "mac": { "target": ["dir"] },
+  "win": { "target": ["portable"] },
+  "nsis": { "oneClick": true, "uninstallDisplayName": "Frontron" },
+  "files": ["node_modules/**/*", "public/**/*", "dist/**/*"],
+  "directories": { "output": "dist_app" }
+}
+```
+
+커스터마이징 팁:
+
+| 요구사항 | 수정 포인트 |
+| -------- | ----------- |
+| 설치형(Windows) | `win.target` 에 `nsis` 추가, `oneClick:false` 설정 |
+| macOS dmg | `mac.target` 배열에 `dmg` 추가 |
+| 파일 용량 축소 | `files` 배열에서 불필요 디렉터리 제외 |
+| 채널 분리 | `publish` 필드 및 auto update 설정(추후 로드맵) |
+
+## 6. 개발 실행
 
 ```bash
 npm run app
 ```
 
-> Note: This script tells Electron to run on your project's root folder. At this stage,
-> your app will immediately throw an error telling you that it cannot find an app to run.
+문제 발생 시 체크리스트:
+1. dev 서버 포트: 콘솔 로그로 실제 포트 확인 후 `createWindow(port)` 주소 일치 여부 확인
+2. Preload 빌드 실패: `tsc -p tsconfig.electron.json` 직접 실행하여 에러 파악
+3. 아이콘 미반영: `dist_app` 삭제 후 재빌드
 
-## Package and distribute your application
+## 7. 환경 변수
 
-The fastest way to distribute your newly created app is using
-[Electron Builder](https://www.electron.build).
+`dotenv` 사용 가능. 예시:
+```
+ROOT/.env
+VITE_API_BASE=https://api.example.com
+```
+렌더러에서 `import.meta.env.VITE_API_BASE` 로 접근. Electron 메인에서 사용하려면 `process.env.VITE_API_BASE` 로 직접 로드 (`dotenv.config()`).
 
-Add a description to your `package.json` file, otherwise npmbuild will fail. Blank description are not valid.
+## 8. IPC 패턴 확장
 
-Add a build field to your package.json like this:.
-
-```json
-"build": {
-  "appId": "my-frontron-app",
-  "mac": {
-    "icon": "public/icon.png"
-  },
-  "win": {
-    "icon": "public/icon.png"
-  },
-  "productName": "my-frontron-app",
-  "copyright": "Copyright © your developer name",
-  "nsis": {
-    "oneClick": false,
-    "allowToChangeInstallationDirectory": true
-  },
-  "files": [
-    "node_modules/**/*",
-    "src/electron/**/*",
-    "public/**/*",
-    "dist/**/*"
-  ],
-  "directories": {
-    "buildResources": "assets",
-    "output": "dist_app"
-  }
-}
+메인 (`ipc.ts`):
+```ts
+ipcMain.handle('get-user-data', async () => {
+  return {/* ... */}
+})
+```
+Preload: 이미 `get(key)` 구현이 단일 채널(`get-value`)을 사용하는 경우 별도 채널을 원한다면 새 expose 추가 권장:
+```ts
+contextBridge.exposeInMainWorld('api', {
+  getUserData: () => ipcRenderer.invoke('get-user-data')
+})
+```
+렌더러:
+```ts
+const user = await window.api.getUserData()
 ```
 
-add a `build` command like so:
+## 9. 배포 산출물
 
-```json
-"scripts": {
-  "build": "vite build && electron-builder"
-},
+`npm run build` 후:
 ```
-
-Electron Builder creates the `dist_app` folder where your package will be located:
-
-```plain
-// Example for Windows
 dist_app/
-├── dist_app/my-frontron-app Setup 0.0.1.exe
-└── ...
-
-// Example for macOS
-dist_app/
-├── dist_app/make/zip/darwin/x64/my-frontron-app-darwin-x64-1.0.0.zip
-├── dist_app/my-electron-app-darwin-x64/my-frontron-app.app/Contents/MacOS/my-frontron-app
-└── ...
+  Frontron.exe (Windows portable 예시)
+  latest.yml (업데이트 채널 구성 시)
+  ...
 ```
+
+서명/업데이트 기능은 기본 포함되지 않으므로 상용 배포 전 별도 설정 필요.
+
+## 10. 문제 해결 (Troubleshooting)
+
+| 증상 | 해결 |
+| ---- | ---- |
+| 앱이 바로 종료 | 메인 프로세스 런타임 오류 → `electron .` 단독 실행 로그 확인 |
+| dev HMR 미동작 | 브라우저 캐시 문제보단 Vite 설정 확인 (`vite.config.ts`) |
+| 빌드 후 흰 화면 | 상대 경로/환경 변수 누락, 콘솔 DevTools 열어 404/JS 오류 확인 |
+
+## 11. Next.js 템플릿 주의
+
+Next.js SSR은 기본 Electron 패턴과 충돌 가능 → 초기 버전은 SPA 형태(각 페이지 CSR) 사용 권장. 향후 SSR 최적화 로드맵 예정.
+
+---
+필요한 설정 항목이 누락되었거나 추가 가이드가 필요하면 이슈를 통해 요청해 주세요.

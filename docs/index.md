@@ -2,20 +2,20 @@
 layout: home
 
 title: Frontron
-titleTemplate: Desktop App Template
+titleTemplate: 데스크톱 앱 템플릿
 
 hero:
   name: <a href="https://npmjs.com/package/create-frontron"><img src="https://img.shields.io/npm/v/frontron" alt="npm package"></a>Frontron
-  text: Desktop App Template
-  tagline:  Create desktop app with frontron.
+  text: Electron 데스크톱 템플릿
+  tagline: Frontron으로 더 빠르게 Electron 데스크톱 앱을 만드세요.
   image:
     src: /frontron.svg
     alt: Frontron
   actions:
     - theme: brand
-      text: Get Started
+      text: 시작하기
       link: /guide/
     - theme: alt
-      text: View on GitHub
+      text: GitHub
       link: https://github.com/andongmin94/frontron
 ---

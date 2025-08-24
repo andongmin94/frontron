@@ -12,12 +12,12 @@
 
 Frontron은 Electron 위에서 React / Next.js 환경을 빠르게 셋업하고, Tailwind + Shadcn UI + 다수의 공통 컴포넌트/유틸을 포함한 개발 경험을 제공하는 템플릿 & CLI 도구입니다.
 
-- 💡 React 템플릿 지원
-- ⚡️ Tailwind CSS + Shadcn UI 스타일 구성
-- 📦 자주 쓰는 Radix 기반 UI 컴포넌트 다수 포함
-- 🪟 커스텀 프레임(TitleBar), Splash, Tray, IPC 패턴
-- 🔄 HMR (Vite) + Typescript + ES Module 환경
-- 🧪 구조적 코드 분리 (electron / renderer)
+- React 템플릿 지원
+- Tailwind CSS + Shadcn UI 스타일 구성
+- 자주 쓰는 Radix 기반 UI 컴포넌트 다수 포함
+- 커스텀 프레임(TitleBar), Splash, Tray, IPC 패턴
+- HMR (Vite) + Typescript + ES Module 환경
+- 구조적 코드 분리 (electron / renderer)
 
 ## 핵심 기능 개요
 
@@ -33,16 +33,18 @@ Frontron은 Electron 위에서 React / Next.js 환경을 빠르게 셋업하고,
 ## 디렉터리 구조 (요약)
 
 ```
-packages/
-	create-frontron/          # CLI & 템플릿 소스
-		src/                    # CLI 로직
-		template/               # 실제 생성되는 앱 템플릿
-			src/
-				electron/           # main, preload, tray, splash, ipc, window
-				components/         # UI 컴포넌트(Shadcn 변형 + Radix)
-				hooks/, lib/        # 공용 훅/유틸
-	frontron/                 # (추후 확장 가능) 런타임/공유 패키지 placeholder
-docs/                       # 문서 사이트 (Vite 기반)
+frontron/
+ ├─ docs/               	   # 문서 사이트 (Vite 기반)
+ └─ packages/           	   # 실제 앱 (Electron + React)
+	 ├─ create-frontron/       # CLI & 템플릿 소스
+	 │  ├─ src/                # CLI 로직
+	 │  └─ template/           # 실제 생성되는 앱 템플릿
+	 │  	 └─ src/
+	 │  	 	├─ electron/   # main, preload, tray, splash, ipc, window
+	 │  		├─ components/ # UI 컴포넌트(Shadcn)
+	 │ 			├─ hooks/
+	 │  		└─ lib/        # 공용 훅/유틸
+	 └─ frontron/              # 설명 패키지
 ```
 
 ## Node / 런타임 요구사항

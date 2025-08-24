@@ -2,7 +2,7 @@
 
 이 문서는 기존 프로젝트에 Frontron 구조를 수동 적용하거나, 생성된 템플릿을 커스터마이징할 때 필요한 핵심 설정을 정리합니다. 일반적으로는 `npm create frontron@latest` 로 스캐폴딩하는 것이 가장 빠릅니다.
 
-## 1. 필수 package.json 필드
+## 필수 package.json 필드
 
 ```jsonc
 {
@@ -17,7 +17,7 @@
 
 템플릿은 TypeScript 컴파일 결과(`dist/electron/main.js`)를 메인 엔트리로 사용합니다. 개발 단계에서는 `src/electron/main.ts` 가 실제 소스입니다.
 
-## 2. 디렉터리 구조 권장
+## 디렉터리 기본 구조
 
 ```
 src/
@@ -35,7 +35,7 @@ public/
   icon.png
 ```
 
-## 3. 스크립트 구성
+## 스크립트 구성
 
 ```jsonc
 "scripts": {
@@ -52,7 +52,7 @@ public/
 "app": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .\""
 ```
 
-## 4. TypeScript 설정 개요
+## TypeScript 설정 개요
 
 - `tsconfig.json`: 기본 공통 옵션
 - `tsconfig.app.json`: 렌더러(React/Next) 전용 설정
@@ -60,7 +60,7 @@ public/
 
 Electron main/preload 코드는 Node/Electron API 사용 → `types: ["node", "electron"]` 추가 고려.
 
-## 5. electron-builder 설정 예시
+## electron-builder 설정 예시
 
 템플릿 기본값 (축약):
 ```jsonc
@@ -87,7 +87,7 @@ Electron main/preload 코드는 Node/Electron API 사용 → `types: ["node", "e
 | 파일 용량 축소 | `files` 배열에서 불필요 디렉터리 제외 |
 | 채널 분리 | `publish` 필드 및 auto update 설정(추후 로드맵) |
 
-## 6. 개발 실행
+## 개발 실행
 
 ```bash
 npm run app
@@ -98,7 +98,7 @@ npm run app
 2. Preload 빌드 실패: `tsc -p tsconfig.electron.json` 직접 실행하여 에러 파악
 3. 아이콘 미반영: `dist_app` 삭제 후 재빌드
 
-## 7. 환경 변수
+## 환경 변수
 
 `dotenv` 사용 가능. 예시:
 ```
@@ -107,7 +107,7 @@ VITE_API_BASE=https://api.example.com
 ```
 렌더러에서 `import.meta.env.VITE_API_BASE` 로 접근. Electron 메인에서 사용하려면 `process.env.VITE_API_BASE` 로 직접 로드 (`dotenv.config()`).
 
-## 8. IPC 패턴 확장
+## IPC 패턴 확장
 
 메인 (`ipc.ts`):
 ```ts
@@ -126,7 +126,7 @@ contextBridge.exposeInMainWorld('api', {
 const user = await window.api.getUserData()
 ```
 
-## 9. 배포 산출물
+## 배포 산출물
 
 `npm run build` 후:
 ```
@@ -138,7 +138,7 @@ dist_app/
 
 서명/업데이트 기능은 기본 포함되지 않으므로 상용 배포 전 별도 설정 필요.
 
-## 10. 문제 해결 (Troubleshooting)
+##  문제 해결 (Troubleshooting)
 
 | 증상 | 해결 |
 | ---- | ---- |
@@ -146,7 +146,7 @@ dist_app/
 | dev HMR 미동작 | 브라우저 캐시 문제보단 Vite 설정 확인 (`vite.config.ts`) |
 | 빌드 후 흰 화면 | 상대 경로/환경 변수 누락, 콘솔 DevTools 열어 404/JS 오류 확인 |
 
-## 11. Next.js 템플릿 주의
+## Next.js 템플릿 주의
 
 Next.js SSR은 기본 Electron 패턴과 충돌 가능 → 초기 버전은 SPA 형태(각 페이지 CSR) 사용 권장. 향후 SSR 최적화 로드맵 예정.
 

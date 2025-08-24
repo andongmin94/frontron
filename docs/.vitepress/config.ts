@@ -73,15 +73,15 @@ export default defineConfig({
           text: "프론트론 가이드",
           items: [
             {
-              text: "프론트론 시작하기",
+              text: "시작하기",
               link: "/guide/",
             },
             {
-              text: "프론트론 기능",
+              text: "기능",
               link: "/guide/features",
             },
             {
-              text: "프론트론 설정",
+              text: "설정",
               link: "/guide/config",
             },
           ],

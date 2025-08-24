@@ -12,7 +12,7 @@
   
 **Web to Desktop App**
 
-- React, Next.js 기반 웹 프로젝트를 데스크탑 앱으로 빌드 지원
+- React 기반 웹 프로젝트를 데스크탑 앱으로 빌드 지원 (추후 추가 템플릿 예정)
 - Common Headless Components 48개 지원으로 앱 개발 지원
 - 프론트엔드 기술을 앱의 GUI로 활용하여 형태 구현부와 기능 구현부를 분리
 

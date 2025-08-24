@@ -2,9 +2,9 @@
 
 ## 개요
 
-Frontron은 Electron 기반 데스크톱 애플리케이션을 웹 개발자 경험(React / Next.js, Vite, Tailwind, Shadcn UI)으로 빠르게 구축할 수 있게 도와주는 CLI & 템플릿 컬렉션입니다.
+Frontron은 Electron 기반 데스크톱 애플리케이션을 웹 개발자 경험(React + TypeScript, Vite, Tailwind, Shadcn UI)으로 빠르게 구축할 수 있게 도와주는 단일 템플릿 CLI 입니다.
 
-하나의 템플릿 디렉터리(`packages/create-frontron/template`)를 바탕으로 선택 옵션에 따라 React/TypeScript/SWC/Next.js 변형을 스캐폴딩합니다.
+현재 버전은 하나의 React + TypeScript 템플릿만 제공합니다. (추가 템플릿은 로드맵)
 
 ## 지원 환경 (Runtime)
 
@@ -14,13 +14,9 @@ Frontron은 Electron 기반 데스크톱 애플리케이션을 웹 개발자 경
 
 ## 템플릿 프리셋
 
-| JavaScript | TypeScript |
-| ---------- | ---------- |
-| `react`    | `react-ts` |
-| `react-swc`| `react-swc-ts` |
-| `next`     | `next-ts`  |
+현재: React + TypeScript (단일)
 
-프리셋은 렌더러 빌드 도구(React + Vite vs Next.js) / 언어(JS/TS) / SWC 사용 여부만 달라지며 Electron 아키텍처(메인/프리로드/트레이/스플래시/IPC) 기본 구조는 동일합니다.
+예정(로드맵): Next.js, SWC 변형 등
 
 ## 첫 프로젝트 생성 (Scaffold)
 
@@ -38,15 +34,12 @@ pnpm create frontron
 bun create frontron
 ```
 
-프롬프트에서 프로젝트명 / 템플릿 / TypeScript 여부 등을 선택하면 폴더가 생성됩니다. 현재 디렉터리에 만들려면 이름을 `.` 로 입력하세요.
+프롬프트에서 프로젝트명을 입력하면 폴더가 생성됩니다. (템플릿 선택 단계 없음) 현재 디렉터리에 만들려면 이름을 `.` 로 입력하세요.
 
 **비대화식 예시**
 
 ```bash
-npm create frontron@latest my-app -- --template react
-yarn create frontron my-app --template react
-pnpm create frontron my-app --template react
-bun create frontron my-app --template react
+npm create frontron@latest my-app
 ```
 
 ## 개발 & 빌드
@@ -83,7 +76,7 @@ my-app/
 		electron/        # main.ts, preload.ts, tray.ts, splash.ts, window.ts, ipc.ts
 		components/      # UI 컴포넌트 (Shadcn + Radix 래핑)
 		hooks/, lib/     # 공용 로직
-		...              # 렌더러 SPA/Next 페이지 코드
+		...              # 렌더러 SPA 코드
 	package.json
 ```
 

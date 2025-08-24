@@ -2,7 +2,9 @@
 
 ## 개요
 
-Frontron은 Electron 기반 데스크톱 애플리케이션을 웹 개발자 경험(React / Next.js, Vite, Tailwind, Shadcn UI)으로 빠르게 구축할 수 있게 도와주는 CLI & 템플릿 컬렉션입니다. 하나의 템플릿 디렉터리(`packages/create-frontron/template`)를 바탕으로 선택 옵션에 따라 React/TypeScript/SWC/Next.js 변형을 스캐폴딩합니다.
+Frontron은 Electron 기반 데스크톱 애플리케이션을 웹 개발자 경험(React / Next.js, Vite, Tailwind, Shadcn UI)으로 빠르게 구축할 수 있게 도와주는 CLI & 템플릿 컬렉션입니다.
+
+하나의 템플릿 디렉터리(`packages/create-frontron/template`)를 바탕으로 선택 옵션에 따라 React/TypeScript/SWC/Next.js 변형을 스캐폴딩합니다.
 
 ## 지원 환경 (Runtime)
 
@@ -38,7 +40,7 @@ bun create frontron
 
 프롬프트에서 프로젝트명 / 템플릿 / TypeScript 여부 등을 선택하면 폴더가 생성됩니다. 현재 디렉터리에 만들려면 이름을 `.` 로 입력하세요.
 
-### 비대화식 예시
+**비대화식 예시**
 
 ```bash
 npm create frontron@latest my-app -- --template react

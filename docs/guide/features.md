@@ -5,7 +5,7 @@ Frontron은 단순한 Electron + React 초기화 이상의 개발 경험을 제�
 ## 스캐폴딩 (CLI)
 
 - `npm create frontron@latest` 명령으로 프로젝트 구조/스크립트/의존성을 즉시 구성
-- React / Next.js / TypeScript / SWC 조합 선택
+- React + TypeScript 단일 템플릿 (추후 확장 예정)
 - 프로젝트명/템플릿 지정 비대화식 옵션 (`--template`)
 
 ## Electron 아키텍처
@@ -86,7 +86,7 @@ Frontron은 단순한 Electron + React 초기화 이상의 개발 경험을 제�
 ## 주의사항
 
 - `preload.ts` 직접 수정 시 타입 재생성을 위해 TS 재컴파일 필요
-- Next.js 템플릿은 SSR 이점이 Electron 환경에서 제한적 → CSR-only 페이지 패턴 권장 (로드맵 개선 예정)
+  
 - 자동 업데이트/서명 코드는 기본 제공되지 않으므로 배포 전 필수 검토
 
 ## 로드맵 (요약)

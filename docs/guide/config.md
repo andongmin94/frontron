@@ -55,7 +55,7 @@ public/
 ## TypeScript 설정 개요
 
 - `tsconfig.json`: 기본 공통 옵션
-- `tsconfig.app.json`: 렌더러(React/Next) 전용 설정
+- `tsconfig.app.json`: 렌더러(React) 전용 설정
 - `tsconfig.electron.json`: `src/electron` 컴파일 (module=ESNext, outDir=dist/electron)
 
 Electron main/preload 코드는 Node/Electron API 사용 → `types: ["node", "electron"]` 추가 고려.
@@ -146,9 +146,7 @@ dist_app/
 | dev HMR 미동작 | 브라우저 캐시 문제보단 Vite 설정 확인 (`vite.config.ts`) |
 | 빌드 후 흰 화면 | 상대 경로/환경 변수 누락, 콘솔 DevTools 열어 404/JS 오류 확인 |
 
-## Next.js 템플릿 주의
-
-Next.js SSR은 기본 Electron 패턴과 충돌 가능 → 초기 버전은 SPA 형태(각 페이지 CSR) 사용 권장. 향후 SSR 최적화 로드맵 예정.
+<!-- (추후 Next.js 템플릿 추가 시 주의사항 섹션 재도입 예정) -->
 
 ---
 필요한 설정 항목이 누락되었거나 추가 가이드가 필요하면 이슈를 통해 요청해 주세요.

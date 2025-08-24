@@ -12,7 +12,7 @@ npm create frontron@latest
 npx create-frontron@latest
 ```
 
-프롬프트에 따라 템플릿(react / next / ts / swc)을 선택하면 Electron + Vite + Tailwind + Shadcn UI 기반 구조가 생성됩니다.
+현재 버전은 React + TypeScript 단일 템플릿만 생성합니다. (추가 템플릿은 로드맵)
 
 자세한 가이드는 문서 사이트 참고: https://frontron.andongmin.com
 

@@ -38,7 +38,7 @@ export default defineConfig({
     logo: "/frontron.svg",
 
     editLink: {
-      pattern: "https://github.com/andongmin94/frontron/edit/main/docs",
+      pattern: "https://github.com/andongmin94/frontron/issues",
       text: "가이드 수정 제안하기",
     },
 
@@ -91,7 +91,7 @@ export default defineConfig({
 
     outline: {
       level: [2, 3],
-      label: "목차"    // ← 추가: 원하는 한글로 변경
+      label: "목차", // ← 추가: 원하는 한글로 변경
     },
   },
   transformPageData(pageData) {

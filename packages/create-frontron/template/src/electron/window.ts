@@ -4,7 +4,7 @@ import { app, BrowserWindow } from "electron";
 import { __dirname, isDev } from "./main.js"; // isDev를 main.ts에서 가져옴
 import { closeSplash } from "./splash.js";
 
-export let mainWindow: BrowserWindow | null;
+export let mainWindow: any;
 
 export function createWindow(port: number) {
   mainWindow = new BrowserWindow({
@@ -25,7 +25,7 @@ export function createWindow(port: number) {
 
   mainWindow.webContents.on("did-finish-load", () => {
     closeSplash(); // 스플래시 닫기
-    mainWindow?.show();
+    mainWindow.show();
   });
 
   // --- 플랫폼별 우클릭 메뉴 비활성화 시도 ---
@@ -42,19 +42,19 @@ export function createWindow(port: number) {
       return true;
     });
   } else {
-    mainWindow.webContents.on("context-menu", (event) => {
+    mainWindow.webContents.on("context-menu", (event: any) => {
       console.log("Main process context-menu event triggered on macOS/Linux");
       event.preventDefault();
     });
   }
 
   // 창 닫기 이벤트 처리
-  mainWindow.on("close", (e) => {
+  mainWindow.on("close", (e: any) => {
     if (process.platform === "darwin") {
       // macOS: 사용자가 명시적으로 종료(Cmd+Q 등)하지 않으면 숨김
       e.preventDefault();
-      mainWindow?.hide();
-      app.dock?.hide(); // Dock 에서도 숨김
+      mainWindow.hide();
+      app.dock.hide(); // Dock 에서도 숨김
     }
     // 다른 OS 에서는 window-all-closed 에서 앱 종료 처리
   });

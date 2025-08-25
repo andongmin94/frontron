@@ -38,8 +38,9 @@ export default defineConfig({
     logo: "/frontron.svg",
 
     editLink: {
-      pattern: "https://github.com/andongmin94/frontron/issues",
-      text: "가이드 수정 제안하기",
+      pattern:
+        "https://mail.google.com/mail/?view=cm&fs=1&to=andongmin94@gmail.com&su=Frontron%20문의&body=",
+      text: "Gmail로 문의하기",
     },
 
     socialLinks: [

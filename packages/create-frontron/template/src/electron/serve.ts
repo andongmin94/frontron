@@ -3,11 +3,6 @@ import path from "path";
 
 import { __dirname, isDev } from "./main.js"; // isDev를 main.ts에서 가져옴
 
-/**
- * Vite 설정 파일에서 서버 포트를 추출합니다.
- * @param {string} configPath - vite.config.ts 파일 경로
- * @returns {number | null} 추출된 포트 번호 또는 null
- */
 function getPortFromViteConfig(configPath: string) {
   try {
     if (!fs.existsSync(configPath)) {

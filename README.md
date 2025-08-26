@@ -30,7 +30,7 @@ Frontron은 Electron 위에서 React + TypeScript 환경을 빠르게 셋업하�
 | Build | Vite (프론트), `tsc` (main/preload), electron-builder (배포) |
 | 품질 | ESLint + Prettier + Import Sort + TypeScript strict 구성 |
 
-## 디렉터리 구조 (요약)
+## 프로젝트 구조 (요약)
 
 ```
 frontron/

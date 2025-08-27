@@ -1,15 +1,14 @@
 {
   "name": "frontron",
-  "version": "0.0.1",
+  "version": "0.6.0",
   "type": "module",
   "author": "안동민",
-  "description": "Electron 기반 데스크탑 애플리케이션",
+  "description": "Electron 개발 템플릿",
   "main": "dist/electron/main.js",
   "build": {
     "appId": "Frontron",
     "productName": "Frontron",
     "copyright": "Copyright © andongmin",
-    "artifactName": "${productName}.${ext}",
     "icon": "public/icon.png",
     "compression": "store",
     "mac": {
@@ -19,12 +18,15 @@
     },
     "win": {
       "target": [
+        "msi",
         "portable"
       ]
     },
-    "nsis": {
-      "oneClick": true,
-      "uninstallDisplayName": "Frontron"
+    "msi": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}.${ext}"
     },
     "files": [
       "node_modules/**/*",

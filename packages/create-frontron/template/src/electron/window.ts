@@ -54,7 +54,7 @@ export function createWindow(port: number) {
       // macOS: 사용자가 명시적으로 종료(Cmd+Q 등)하지 않으면 숨김
       e.preventDefault();
       mainWindow.hide();
-      app.dock.hide(); // Dock 에서도 숨김
+      app.dock?.hide(); // Dock 에서도 숨김
     }
     // 다른 OS 에서는 window-all-closed 에서 앱 종료 처리
   });

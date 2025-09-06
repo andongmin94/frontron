@@ -1,6 +1,6 @@
 {
   "name": "create-frontron",
-  "version": "0.6.0",
+  "version": "0.6.3",
   "type": "module",
   "license": "MIT",
   "author": "andongmin",
@@ -45,7 +45,7 @@
     "shebang-command": "^2.0.0",
     "shebang-regex": "^4.0.0",
     "sisteransi": "^1.0.5",
-    "unbuild": "^3.5.0",
+    "unbuild": "^3.6.1",
     "which": "^5.0.0"
   },
   "devDependencies": {

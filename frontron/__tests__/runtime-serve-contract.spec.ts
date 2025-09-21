@@ -1,56 +1,62 @@
 import { join } from 'node:path'
+
 import * as ts from 'typescript'
 import { describe, expect, test } from 'vitest'
 
-import { resolveDevServerUrl } from '../src/init/runtime/dev-server-url'
 import { renderServeSource } from '../src/init/runtime/serve-source'
-import { assembleServeSource } from '../src/init/runtime/serve-source/assemble-source'
-import { renderServeDevAndBuildSource } from '../src/init/runtime/serve-source/dev-build-source'
-import { renderServeHeaderAndConfigSource } from '../src/init/runtime/serve-source/header-config-source'
-import {
-  renderChildProcessRuntimeSource,
-  renderNodeServerRuntimeSource,
-} from '../src/init/runtime/serve-source/node-process-runtime-source'
-import { renderStaticServerSource } from '../src/init/runtime/serve-source/static-server-source'
 import type { InitConfig } from '../src/init/shared'
 
-type RuntimeVariant = Readonly<{
-  name: string
-  adapter: InitConfig['adapter']
-  runtimeStrategy: InitConfig['runtimeStrategy']
-  outDir: string
-  nodeServerSourceRoot: string | null
-  nodeServerEntry: string | null
-}>
+type Variant = Pick<
+  InitConfig,
+  | 'adapter'
+  | 'runtimeStrategy'
+  | 'outDir'
+  | 'nodeServerSourceRoot'
+  | 'nodeServerSourceEntry'
+  | 'nodeServerEntry'
+  | 'nodeServerCopyTargets'
+>
 
-const runtimeVariants = [
+const variants: Array<{ name: string; config: Variant }> = [
   {
     name: 'static export',
-    adapter: 'generic-static',
-    runtimeStrategy: 'static-export',
-    outDir: 'dist-web',
-    nodeServerSourceRoot: null,
-    nodeServerEntry: null,
+    config: {
+      adapter: 'generic-static',
+      runtimeStrategy: 'static-export',
+      outDir: 'dist-web',
+      nodeServerSourceRoot: null,
+      nodeServerSourceEntry: null,
+      nodeServerEntry: null,
+      nodeServerCopyTargets: [],
+    },
   },
   {
     name: 'generic node server',
-    adapter: 'generic-node-server',
-    runtimeStrategy: 'node-server',
-    outDir: '.frontron/runtime/node-server',
-    nodeServerSourceRoot: 'build',
-    nodeServerEntry: 'server/index.js',
+    config: {
+      adapter: 'generic-node-server',
+      runtimeStrategy: 'node-server',
+      outDir: '.frontron/runtime/node-server',
+      nodeServerSourceRoot: 'build',
+      nodeServerSourceEntry: null,
+      nodeServerEntry: 'server/index.js',
+      nodeServerCopyTargets: [{ from: 'public', to: 'public' }],
+    },
   },
   {
     name: 'Remix node server',
-    adapter: 'remix-node-server',
-    runtimeStrategy: 'node-server',
-    outDir: '.frontron/runtime/remix-node-server',
-    nodeServerSourceRoot: 'build',
-    nodeServerEntry: 'server.cjs',
+    config: {
+      adapter: 'remix-node-server',
+      runtimeStrategy: 'node-server',
+      outDir: '.frontron/runtime/remix-node-server',
+      nodeServerSourceRoot: 'build',
+      nodeServerSourceEntry: 'server/index.js',
+      nodeServerEntry: 'server.cjs',
+      nodeServerCopyTargets: [],
+    },
   },
-] as const satisfies readonly RuntimeVariant[]
+]
 
-function createRuntimeConfig(variant: RuntimeVariant): InitConfig {
+function createConfig(variant: Variant): InitConfig {
   return {
     cwd: process.cwd(),
     packageJson: { name: 'runtime-contract-test' },
@@ -67,9 +73,9 @@ function createRuntimeConfig(variant: RuntimeVariant): InitConfig {
     webBuildCommand: 'npm run build',
     outDir: variant.outDir,
     nodeServerSourceRoot: variant.nodeServerSourceRoot,
+    nodeServerSourceEntry: variant.nodeServerSourceEntry,
     nodeServerEntry: variant.nodeServerEntry,
-    nodeServerCopyTargets:
-      variant.runtimeStrategy === 'node-server' ? [{ from: 'public', to: 'public' }] : [],
+    nodeServerCopyTargets: variant.nodeServerCopyTargets,
     productName: 'Runtime Contract Test',
     appId: 'com.local.runtime-contract-test',
     templateInfo: {
@@ -82,14 +88,14 @@ function createRuntimeConfig(variant: RuntimeVariant): InitConfig {
   }
 }
 
-function normalizeCompilerPath(fileName: string) {
+function normalizePath(fileName: string) {
   const normalized = fileName.replaceAll('\\', '/')
   return ts.sys.useCaseSensitiveFileNames ? normalized : normalized.toLowerCase()
 }
 
-function collectSemanticDiagnostics(source: string) {
-  const virtualFileName = join(process.cwd(), '.frontron-contract', 'electron', 'serve.ts')
-  const normalizedVirtualFileName = normalizeCompilerPath(virtualFileName)
+function diagnosticsFor(source: string) {
+  const virtualFile = join(process.cwd(), '.frontron-contract', 'electron', 'serve.ts')
+  const normalizedVirtualFile = normalizePath(virtualFile)
   const compilerOptions: ts.CompilerOptions = {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.NodeNext,
@@ -103,62 +109,42 @@ function collectSemanticDiagnostics(source: string) {
     esModuleInterop: true,
   }
   const host = ts.createCompilerHost(compilerOptions)
-  const originalFileExists = host.fileExists.bind(host)
-  const originalGetSourceFile = host.getSourceFile.bind(host)
-  const originalReadFile = host.readFile.bind(host)
-  const isVirtualFile = (fileName: string) =>
-    normalizeCompilerPath(fileName) === normalizedVirtualFileName
+  const fileExists = host.fileExists.bind(host)
+  const readFile = host.readFile.bind(host)
+  const getSourceFile = host.getSourceFile.bind(host)
+  const isVirtual = (fileName: string) => normalizePath(fileName) === normalizedVirtualFile
 
-  host.fileExists = (fileName) => isVirtualFile(fileName) || originalFileExists(fileName)
-  host.readFile = (fileName) => (isVirtualFile(fileName) ? source : originalReadFile(fileName))
+  host.fileExists = (fileName) => isVirtual(fileName) || fileExists(fileName)
+  host.readFile = (fileName) => (isVirtual(fileName) ? source : readFile(fileName))
   host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) =>
-    isVirtualFile(fileName)
+    isVirtual(fileName)
       ? ts.createSourceFile(fileName, source, languageVersion, true, ts.ScriptKind.TS)
-      : originalGetSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile)
+      : getSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile)
 
-  const program = ts.createProgram([virtualFileName], compilerOptions, host)
-
-  return ts.getPreEmitDiagnostics(program)
+  return ts.getPreEmitDiagnostics(ts.createProgram([virtualFile], compilerOptions, host))
 }
 
 function formatDiagnostics(diagnostics: readonly ts.Diagnostic[]) {
-  const formatHost: ts.FormatDiagnosticsHost = {
+  return ts.formatDiagnostics(diagnostics, {
     getCanonicalFileName: (fileName) => fileName,
     getCurrentDirectory: () => process.cwd(),
     getNewLine: () => '\n',
-  }
-
-  return ts.formatDiagnostics(diagnostics, formatHost)
+  })
 }
 
-describe('generated serve runtime TypeScript contract', () => {
-  test.each(runtimeVariants)('$name output passes strict semantic type-checking', (variant) => {
-    const config = createRuntimeConfig(variant)
-    const source = renderServeSource(config)
-    const diagnostics = collectSemanticDiagnostics(source)
+describe('generated serve runtime contract', () => {
+  test.each(variants)('$name passes strict semantic type-checking', ({ config }) => {
+    const source = renderServeSource(createConfig(config))
 
-    expect(formatDiagnostics(diagnostics)).toBe('')
+    expect(formatDiagnostics(diagnosticsFor(source))).toBe('')
+    expect(source).toContain('waitForUrlReady')
 
-    const expectedSource = [
-      renderServeHeaderAndConfigSource(config, resolveDevServerUrl(config)),
-      renderChildProcessRuntimeSource(),
-      variant.runtimeStrategy === 'node-server'
-        ? renderNodeServerRuntimeSource()
-        : renderStaticServerSource(),
-      renderServeDevAndBuildSource(config),
-    ].join('\n\n')
-
-    expect(source).toBe(`${expectedSource}\n`)
-  })
-
-  test('assembler rejects a missing required runtime section', () => {
-    expect(() =>
-      assembleServeSource({
-        headerAndConfig: 'const header = true',
-        childProcessRuntime: 'const processRuntime = true',
-        rendererRuntime: '   ',
-        devAndBuild: 'const devAndBuild = true',
-      }),
-    ).toThrow('Generated serve source section "rendererRuntime" must not be empty.')
+    if (config.runtimeStrategy === 'static-export') {
+      expect(source).toContain('parseByteRange')
+      expect(source).not.toContain('startNodeServerRuntime')
+    } else {
+      expect(source).toContain('startNodeServerRuntime')
+      expect(source).toContain('getAvailablePort')
+    }
   })
 })

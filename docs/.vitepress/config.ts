@@ -4,14 +4,14 @@ import { buildEnd } from "./buildEnd.config";
 const ogTitle = "Frontron";
 const ogDescription = "Desktop App Template";
 const ogUrl = "https://frontron.andongmin.com";
-const ogImage = "https://frontron.andongmin.com/logo.svg";
+const ogImage = "https://frontron.andongmin.com/logo.png";
 
 export default defineConfig({
   title: "Frontron",
   description: "Desktop App Template",
 
   head: [
-    ["link", { rel: "icon", type: "image/svg+xml", href: "/logo.svg" }],
+    ["link", { rel: "icon", type: "image/svg+xml", href: "/logo.png" }],
     [
       "link",
       { rel: "alternate", type: "application/rss+xml", href: "/blog.rss" },
@@ -35,7 +35,7 @@ export default defineConfig({
   ],
 
   themeConfig: {
-    logo: "/logo.svg",
+    logo: "/logo.png",
 
     editLink: {
       pattern:

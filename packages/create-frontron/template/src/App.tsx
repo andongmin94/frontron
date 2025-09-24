@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import reactLogo from "./assets/react.svg";
-import frontronLogo from "/logo.svg";
+import frontronLogo from "/logo.png";
 import viteLogo from "/vite.svg";
 
 import "./App.css";

@@ -9,7 +9,7 @@ hero:
   text: Electron 개발 템플릿
   tagline: Frontron으로 더 빠르게 Electron 데스크톱 앱을 만드세요.
   image:
-    src: /frontron.svg
+    src: /logo.svg
     alt: Frontron
   actions:
     - theme: brand

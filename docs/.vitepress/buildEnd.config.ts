@@ -13,8 +13,8 @@ export const buildEnd = async (config: SiteConfig) => {
     id: blogUrl,
     link: blogUrl,
     language: 'en',
-    image: 'https://frontron.andongmin.com/logo.svg',
-    favicon: 'https://frontron.andongmin.com/logo.svg',
+    image: 'https://frontron.andongmin.com/logo.png',
+    favicon: 'https://frontron.andongmin.com/logo.png',
     copyright: 'Copyright © 2024 andongmin',
   })
 

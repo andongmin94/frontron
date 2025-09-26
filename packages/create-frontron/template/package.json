@@ -9,7 +9,7 @@
     "appId": "Frontron",
     "productName": "Frontron",
     "copyright": "Copyright © andongmin",
-    "icon": "public/icon.png",
+    "icon": "public/icon.ico",
     "compression": "store",
     "mac": {
       "target": [

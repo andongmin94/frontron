@@ -53,7 +53,7 @@ npm run build  # 프론트(Vite) + Electron 컴파일 + electron-builder 패키�
 
 ## 아이콘 교체 (Icon & Branding)
 
-단일 `public/icon.png` 를 교체하면 다음 영역에 반영됩니다:
+단일 `public/icon.png` 를 교체하면 다음 영역에 반영됩니다.
 1. 태스크바 / Dock 아이콘
 2. 시스템 트레이 아이콘
 3. 앱 패키징 아이콘 (electron-builder)
@@ -82,7 +82,7 @@ my-app/
 
 ## IPC & Preload 간단 예시
 
-Preload (`preload.ts`) 에서 window.electron 브리지 노출:
+Preload (`preload.ts`) 에서 window.electron 브리지 노출
 ```ts
 contextBridge.exposeInMainWorld('electron', {
 	send: (ch, data) => ipcRenderer.send(ch, data),
@@ -90,7 +90,7 @@ contextBridge.exposeInMainWorld('electron', {
 	get: (key) => ipcRenderer.invoke('get-value', key)
 })
 ```
-렌더러 사용:
+렌더러 사용
 ```ts
 window.electron.send('toggle-maximize')
 window.electron.on('window-maximized-changed', (isMax) => { /* ... */ })

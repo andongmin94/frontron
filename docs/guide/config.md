@@ -62,7 +62,7 @@ Electron main/preload 코드는 Node/Electron API 사용 → `types: ["node", "e
 
 ## electron-builder 설정 예시
 
-템플릿 기본값 (축약):
+템플릿 기본값 (축약)
 ```jsonc
 "build": {
   "appId": "Frontron",
@@ -78,7 +78,7 @@ Electron main/preload 코드는 Node/Electron API 사용 → `types: ["node", "e
 }
 ```
 
-커스터마이징 팁:
+커스터마이징 팁
 
 | 요구사항 | 수정 포인트 |
 | -------- | ----------- |
@@ -93,14 +93,14 @@ Electron main/preload 코드는 Node/Electron API 사용 → `types: ["node", "e
 npm run app
 ```
 
-문제 발생 시 체크리스트:
+문제 발생 시 체크리스트
 1. dev 서버 포트: 콘솔 로그로 실제 포트 확인 후 `createWindow(port)` 주소 일치 여부 확인
 2. Preload 빌드 실패: `tsc -p tsconfig.electron.json` 직접 실행하여 에러 파악
 3. 아이콘 미반영: `dist_app` 삭제 후 재빌드
 
 ## 환경 변수
 
-`dotenv` 사용 가능. 예시:
+`dotenv` 사용 가능. 예시
 ```
 ROOT/.env
 VITE_API_BASE=https://api.example.com
@@ -109,7 +109,7 @@ VITE_API_BASE=https://api.example.com
 
 ## IPC 패턴 확장
 
-메인 (`ipc.ts`):
+메인 (`ipc.ts`)
 ```ts
 ipcMain.handle('get-user-data', async () => {
   return {/* ... */}
@@ -121,14 +121,14 @@ contextBridge.exposeInMainWorld('api', {
   getUserData: () => ipcRenderer.invoke('get-user-data')
 })
 ```
-렌더러:
+렌더러
 ```ts
 const user = await window.api.getUserData()
 ```
 
 ## 배포 산출물
 
-`npm run build` 후:
+`npm run build` 후
 ```
 dist_app/
   Frontron.exe (Windows portable 예시)

@@ -13,7 +13,7 @@ export function createWindow(port: number) {
     height: 600,
     frame: false,
     resizable: isDev,
-    icon: path.join(__dirname, "../../public/icon.png"),
+    icon: path.join(__dirname, "../../public/icon.ico"),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

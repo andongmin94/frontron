@@ -10,7 +10,7 @@ export function createTray() {
   if (tray || !mainWindow) return; // 중복 생성 방지 및 mainWindow 확인
 
   try {
-    const iconPath = path.join(__dirname, "../../public/icon.png");
+    const iconPath = path.join(__dirname, "../../public/icon.ico");
     const icon = nativeImage.createFromPath(iconPath);
     if (icon.isEmpty()) {
       console.error("Failed to load tray icon:", iconPath);

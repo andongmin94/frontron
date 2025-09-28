@@ -13,29 +13,29 @@
   font-feature-settings: "rlig" 1, "calt" 1;
 }
 
-/** https://www.figma.com/colors/cobalt-blue/
- *  Colors #BFD1E5 #0066FF #0047AB #002F6C
+/** 
+ * Colors
  * -------------------------------------------------------------------------- */
 
 :root {
-  --vp-c-brand: #0047AB;
-  --vp-c-brand-1: #0047AB;
-  --vp-c-brand-light: #002F6C;
-  --vp-c-brand-lighter: #0047AB;
-  --vp-c-brand-lightest: #0047AB;
-  --vp-c-brand-dark: #0047AB;
-  --vp-c-brand-darker: #0047AB;
+  --vp-c-brand: #1573FF;
+  --vp-c-brand-1: #1573FF;
+  --vp-c-brand-light: #105dcf;
+  --vp-c-brand-lighter: #1573FF;
+  --vp-c-brand-lightest: #1573FF;
+  --vp-c-brand-dark: #1573FF;
+  --vp-c-brand-darker: #1573FF;
   --vp-c-brand-dimm: rgba(100, 108, 255, 0.08);
 }
 
 .dark {
-  --vp-c-brand: #0066FF;
-  --vp-c-brand-1: #0066FF;
-  --vp-c-brand-light: #002F6C;
-  --vp-c-brand-lighter: #0066FF;
-  --vp-c-brand-lightest: #0066FF;
-  --vp-c-brand-dark: #0066FF;
-  --vp-c-brand-darker: #0066FF;
+  --vp-c-brand: #4E95FF;
+  --vp-c-brand-1: #4E95FF;
+  --vp-c-brand-light: #105dcf;
+  --vp-c-brand-lighter: #4E95FF;
+  --vp-c-brand-lightest: #4E95FF;
+  --vp-c-brand-dark: #4E95FF;
+  --vp-c-brand-darker: #4E95FF;
   --vp-c-brand-dimm: rgba(100, 108, 255, 0.08);
 }
 
@@ -63,14 +63,14 @@
   --vp-home-hero-name-color: transparent;
   --vp-home-hero-name-background: -webkit-linear-gradient(
     120deg,
-    #BFD1E5 0%,
-    #0047AB
+    #4E95FF 0%,
+    #1573FF
   );
 
   --vp-home-hero-image-background-image: linear-gradient(
     -45deg,
-    #BFD1E5 50%,
-    #0047AB 50%
+    #4E95FF 50%,
+    #1573FF 50%
   );
   --vp-home-hero-image-filter: blur(40px);
 }

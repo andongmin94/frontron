@@ -54,19 +54,19 @@ frontron/
 
 ## 시작하기 (CLI 사용)
 
-NPM:
+NPM
 ```bash
 npm create frontron@latest
 ```
-Yarn:
+Yarn
 ```bash
 yarn create frontron
 ```
-PNPM:
+PNPM
 ```bash
 pnpm create frontron
 ```
-Bun:
+Bun
 ```bash
 bun create frontron
 ```
@@ -82,13 +82,13 @@ npm create frontron@latest my-app
 
 ## 개발 흐름
 
-템플릿 생성 후:
+템플릿 생성 후
 ```bash
 npm run app
 ```
 동시에 Vite 개발 서버 + Electron 메인 프로세스(dev) 실행(HMR 반영). 
 
-프로덕션 빌드:
+프로덕션 빌드
 ```bash
 npm run build
 ```
@@ -105,15 +105,15 @@ npm run build
 
 ### IPC 패턴
 
-렌더러 → 메인:
+렌더러 → 메인
 ```ts
 window.electron.send('toggle-maximize')
 ```
-메인 → 렌더러 (예: 창 상태 브로드캐스트):
+메인 → 렌더러 (예: 창 상태 브로드캐스트)
 ```ts
 webContents.send('window-maximized-changed', isMaximized)
 ```
-렌더러 초기 상태 요청:
+렌더러 초기 상태 요청
 ```ts
 const state = await window.electron.get('get-window-state') // handle 사용 예시
 ```
@@ -142,7 +142,9 @@ const state = await window.electron.get('get-window-state') // handle 사용 예
 
 ## 배포 (electron-builder)
 
-`build` 스크립트 실행 시 `dist_app/` 에 플랫폼 별 산출물 생성. 현재 설정:
+`build` 스크립트 실행 시 `dist_app/` 에 플랫폼 별 산출물 생성.
+
+현재 설정
 - Windows: portable
 - macOS: dir (샘플 설정, 필요 시 dmg/zip 추가 가능)
 
@@ -162,7 +164,7 @@ const state = await window.electron.get('get-window-state') // handle 사용 예
 
 이슈나 PR 환영합니다. 버그/제안 라벨을 활용해 주세요.
 
-기여 절차 요약:
+기여 절차 요약
 1. Fork & 브랜치 생성 (`feat/`, `fix/` prefix)
 2. 변경 및 테스트
 3. 커밋 컨벤션(간단 명령형) 권장

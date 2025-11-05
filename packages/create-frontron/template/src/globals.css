@@ -119,9 +119,7 @@
     width: 100vw; /* 뷰포트 너비 전체 사용 */
     height: 100vh; /* 뷰포트 높이 전체 사용 */
     font-family: "Pretendard";
-    font-feature-settings:
-      "rlig" 1,
-      "calt" 1;
+    font-variant-numeric: tabular-nums;
     user-select: none;
   }
   @font-face {

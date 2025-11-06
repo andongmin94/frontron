@@ -57,11 +57,8 @@ export async function determinePort() {
       server.use(express.static(distPath));
       server.get("/", (_, res) => {
         const indexPath = path.join(distPath, "index.html");
-        if (fs.existsSync(indexPath)) {
-          res.sendFile(indexPath);
-        } else {
-          res.status(404).send("index.html not found");
-        }
+        if (fs.existsSync(indexPath)) res.sendFile(indexPath);
+        else res.status(404).send("index.html not found");
       });
 
       return new Promise((resolve, reject) => {

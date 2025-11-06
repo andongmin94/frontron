@@ -44,8 +44,6 @@ export function createTray() {
  * 트레이 아이콘 제거
  */
 export function destroyTray() {
-  if (tray && !tray.isDestroyed()) {
-    tray.destroy();
-  }
+  if (tray && !tray.isDestroyed()) tray.destroy();
   tray = null;
 }

@@ -108,8 +108,6 @@ export function createSplash() {
 
 export function closeSplash() {
   // 창이 존재하고 파괴되지 않았는지 확인 후 destroy 호출
-  if (splashWindow && !splashWindow.isDestroyed()) {
-    splashWindow.destroy();
-  }
+  if (splashWindow && !splashWindow.isDestroyed()) splashWindow.destroy();
   splashWindow = null;
 }

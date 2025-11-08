@@ -1,0 +1,308 @@
+name: temporary-finalize-frontron-v2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/temporary-finalize-frontron-v2.yml"
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    outputs:
+      commit_sha: ${{ steps.commit.outputs.commit_sha }}
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Publish observable run status
+        id: status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          url=$(gh issue create \
+            --title "Temporary finalization v2 run ${GITHUB_RUN_ID}" \
+            --body "Applies and validates the reviewed Frontron hardening changes with bounded package-manager smoke. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
+          echo "issue_number=${url##*/}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: |
+            frontron/package-lock.json
+            create-frontron/package-lock.json
+
+      - name: Install validation runtimes
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes xvfb
+          npm install --global pnpm@11.11.0 @yarnpkg/cli-dist@4.9.2
+          pnpm --version
+          yarn --version
+
+      - name: Apply reviewed product changes
+        run: |
+          python3 .github/temporary-frontron-hardening.py
+          python3 .github/temporary-frontron-hardening-v4.py
+          python3 .github/temporary-frontron-hardening-v6.py
+          python3 .github/temporary-frontron-hardening-v7.py
+          python3 .github/temporary-frontron-hardening-v8.py
+
+      - name: Replace package-manager smoke with direct bounded commands
+        run: |
+          mkdir -p scripts
+          cat > scripts/package-manager-smoke.mjs <<'EOF'
+          import { spawnSync } from "node:child_process"
+          import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+          import { tmpdir } from "node:os"
+          import { dirname, join } from "node:path"
+          import { fileURLToPath } from "node:url"
+
+          const root = dirname(dirname(fileURLToPath(import.meta.url)))
+          const createRoot = join(root, "create-frontron")
+          const frontronRoot = join(root, "frontron")
+          const temporaryDirectories = []
+          const validationEnv = { ...process.env, CI: "1", COREPACK_ENABLE_DOWNLOAD_PROMPT: "0" }
+
+          function run(command, args, cwd, env = validationEnv) {
+            console.log(`[package-manager-smoke] ${command} ${args.join(" ")}`)
+            const result = spawnSync(command, args, {
+              cwd,
+              env,
+              stdio: "inherit",
+              shell: false,
+              timeout: 300_000,
+            })
+            if (result.error) throw result.error
+            if (result.status !== 0) {
+              throw new Error(`${command} failed with exit code ${result.status ?? "unknown"}`)
+            }
+          }
+
+          function npm(args, cwd) {
+            run("npm", args, cwd)
+          }
+
+          function pack(packageRoot, prefix) {
+            const output = mkdtempSync(join(tmpdir(), prefix))
+            temporaryDirectories.push(output)
+            const result = spawnSync(
+              "npm",
+              ["pack", "--json", "--ignore-scripts", "--pack-destination", output],
+              { cwd: packageRoot, env: validationEnv, encoding: "utf8", shell: false, timeout: 120_000 },
+            )
+            if (result.error) throw result.error
+            if (result.status !== 0) throw new Error(result.stderr || result.stdout || "npm pack failed")
+            const filename = JSON.parse(result.stdout)[0]?.filename
+            if (!filename) throw new Error("npm pack did not report a filename")
+            return join(output, filename)
+          }
+
+          function writeJson(path, value) {
+            writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8")
+          }
+
+          try {
+            npm(["run", "build"], createRoot)
+            npm(["run", "build"], frontronRoot)
+            const createTarball = pack(createRoot, "frontron-create-pack-")
+            const frontronTarball = pack(frontronRoot, "frontron-pack-")
+
+            const pnpmRetrofitRoot = mkdtempSync(join(tmpdir(), "frontron-pnpm-retrofit-"))
+            temporaryDirectories.push(pnpmRetrofitRoot)
+            writeJson(join(pnpmRetrofitRoot, "package.json"), {
+              name: "pnpm-retrofit-smoke",
+              version: "0.0.0",
+              private: true,
+              packageManager: "pnpm@11.11.0",
+              scripts: { dev: "vite", build: "vite build" },
+              devDependencies: {
+                "create-frontron": `file:${createTarball}`,
+                frontron: `file:${frontronTarball}`,
+                vite: "^8.0.1",
+              },
+            })
+            writeFileSync(
+              join(pnpmRetrofitRoot, "pnpm-workspace.yaml"),
+              `overrides:\n  create-frontron: ${JSON.stringify(`file:${createTarball}`)}\n`,
+              "utf8",
+            )
+            run("pnpm", ["install", "--ignore-scripts", "--no-frozen-lockfile"], pnpmRetrofitRoot)
+            run(
+              "pnpm",
+              ["exec", "frontron", "init", "--yes", "--adapter", "generic-static", "--out-dir", "dist"],
+              pnpmRetrofitRoot,
+            )
+            run("pnpm", ["install", "--ignore-scripts", "--no-frozen-lockfile"], pnpmRetrofitRoot)
+            run("pnpm", ["exec", "frontron", "doctor"], pnpmRetrofitRoot)
+            run("pnpm", ["exec", "frontron", "clean", "--yes"], pnpmRetrofitRoot)
+
+            const generatedRoot = mkdtempSync(join(tmpdir(), "frontron-package-manager-"))
+            temporaryDirectories.push(generatedRoot)
+            const createBin = join(createRoot, "index.js")
+
+            run(process.execPath, [createBin, "pnpm-app"], generatedRoot, {
+              ...validationEnv,
+              npm_config_user_agent: "pnpm/11.11.0 npm/? node/v24.0.0 linux x64",
+            })
+            const pnpmApp = join(generatedRoot, "pnpm-app")
+            const pnpmConfig = readFileSync(join(pnpmApp, "pnpm-workspace.yaml"), "utf8")
+            if (!pnpmConfig.includes("electron-winstaller: true")) {
+              throw new Error("pnpm allowBuilds configuration was not generated")
+            }
+            run("pnpm", ["install", "--ignore-scripts", "--no-frozen-lockfile"], pnpmApp)
+            run("pnpm", ["run", "typecheck"], pnpmApp)
+
+            run(process.execPath, [createBin, "yarn-app"], generatedRoot, {
+              ...validationEnv,
+              npm_config_user_agent: "yarn/4.9.2 npm/? node/v24.0.0 linux x64",
+            })
+            const yarnApp = join(generatedRoot, "yarn-app")
+            if (readFileSync(join(yarnApp, ".yarnrc.yml"), "utf8").trim() !== "nodeLinker: node-modules") {
+              throw new Error("Yarn node-modules linker configuration was not generated")
+            }
+            run("yarn", ["install", "--mode=skip-builds"], yarnApp)
+            run("yarn", ["typecheck"], yarnApp)
+
+            console.log("[package-manager-smoke] pnpm and Yarn consumers passed")
+          } finally {
+            for (const directory of temporaryDirectories.reverse()) {
+              rmSync(directory, { recursive: true, force: true })
+            }
+          }
+          EOF
+
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/frontron-ci.yml')
+          source = path.read_text(encoding='utf-8')
+          needle = '''      - name: Verify pnpm and Yarn consumers
+                run: node scripts/package-manager-smoke.mjs'''
+          replacement = '''      - name: Install package-manager smoke tools
+                run: npm install --global pnpm@11.11.0 @yarnpkg/cli-dist@4.9.2
+
+              - name: Verify pnpm and Yarn consumers
+                run: timeout 20m node scripts/package-manager-smoke.mjs'''
+          if needle not in source:
+              raise SystemExit('CI package-manager smoke step was not found')
+          path.write_text(source.replace(needle, replacement, 1), encoding='utf-8')
+          PY
+
+      - name: Refresh audit-fixable lockfile entries
+        run: |
+          npm --prefix create-frontron audit fix --package-lock-only --ignore-scripts
+          npm --prefix frontron audit fix --package-lock-only --ignore-scripts
+
+      - name: Verify repository, packed artifacts, and real Electron runtime
+        run: node release.mjs verify
+        env:
+          FRONTRON_TEST_ELECTRON_RUNTIME: "1"
+
+      - name: Verify pnpm and Yarn consumers
+        run: timeout 20m node scripts/package-manager-smoke.mjs
+
+      - name: Remove all temporary automation
+        run: |
+          rm -f .github/temporary-frontron-hardening*.py
+          rm -f .github/workflows/temporary-frontron-hardening*.yml
+          rm -f .github/workflows/temporary-package-manager-diagnostic.yml
+          rm -f .github/workflows/temporary-finalize-frontron*.yml
+
+      - name: Commit validated product changes directly to main
+        id: commit
+        run: |
+          git diff --check
+          git add -- .github README.md release.mjs scripts create-frontron frontron
+          git diff --cached --check
+          test -n "$(git diff --cached --name-only)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix: complete runtime and package-manager hardening"
+          git push origin HEAD:main
+          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Refresh repository description
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}" \
+            -f description="Electron starter and retrofit tooling for existing web frontends"
+
+      - name: Close temporary validation issues
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for issue in 67 68 69 70 71 72 73 74 75; do
+            gh issue close "$issue" --reason "not planned" \
+              --comment "Temporary validation issue superseded by commit ${{ steps.commit.outputs.commit_sha }}." || true
+          done
+          gh issue close "${{ steps.status.outputs.issue_number }}" --reason completed \
+            --comment "Validation succeeded and commit ${{ steps.commit.outputs.commit_sha }} was pushed to main."
+
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment "${{ steps.status.outputs.issue_number }}" \
+            --body "Finalization failed. Inspect ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
+
+  validate:
+    needs: finalize
+    if: needs.finalize.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            node: "22.15.0"
+          - os: ubuntu-latest
+            node: "26"
+          - os: macos-latest
+            node: "24"
+          - os: windows-latest
+            node: "24"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ needs.finalize.outputs.commit_sha }}
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: |
+            frontron/package-lock.json
+            create-frontron/package-lock.json
+
+      - name: Validate create-frontron
+        working-directory: create-frontron
+        shell: bash
+        run: |
+          npm ci --ignore-scripts
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Validate frontron
+        working-directory: frontron
+        shell: bash
+        run: |
+          npm ci --ignore-scripts
+          npm run typecheck
+          npm test
+          npm run build

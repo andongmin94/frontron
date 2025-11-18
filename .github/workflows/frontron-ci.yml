@@ -37,8 +37,15 @@ jobs:
             frontron/package-lock.json
             create-frontron/package-lock.json
 
+      - name: Install headless Electron runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes xvfb
+
       - name: Verify repository and packed artifacts
         run: node release.mjs verify
+        env:
+          FRONTRON_TEST_ELECTRON_RUNTIME: "1"
 
   runtime:
     name: runtime / ${{ matrix.os }} / node ${{ matrix.node }}

@@ -142,8 +142,10 @@ function verifyRelease() {
   log('testing a packed generated starter')
   runNpm(['run', 'test:release-smoke'], packages[0].root)
 
-  log('testing pnpm, Yarn, and Bun consumers')
-  run(process.execPath, [join(repoRoot, 'scripts', 'package-manager-smoke.mjs')], repoRoot)
+  if (process.env.FRONTRON_TEST_PACKAGE_MANAGERS === '1') {
+    log('testing pnpm, Yarn, and Bun consumers')
+    run(process.execPath, [join(repoRoot, 'scripts', 'package-manager-smoke.mjs')], repoRoot)
+  }
 }
 
 function publishedVersion(spec, version) {

@@ -302,13 +302,13 @@ describe('create-frontron runtime security', () => {
       privileges: {
         standard: true,
         secure: true,
-        allowServiceWorkers: true,
         supportFetchAPI: true,
         corsEnabled: true,
         stream: true,
         codeCache: true,
       },
     })
+    expect(state.schemes?.[0]?.privileges).not.toHaveProperty('allowServiceWorkers')
     expect(state.schemes?.[0]?.privileges).not.toHaveProperty('bypassCSP')
     expect(capturedRequest).toEqual({
       url: 'http://127.0.0.1:4321/api/items?filter=active',

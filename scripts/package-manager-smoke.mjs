@@ -95,7 +95,6 @@ function smokePnpm(createTarball, frontronTarball) {
     ],
     projectRoot,
   )
-  run('pnpm', ['install', '--ignore-scripts', '--no-frozen-lockfile'], projectRoot)
   run('pnpm', ['exec', 'frontron', 'doctor'], projectRoot)
   run('pnpm', ['exec', 'frontron', 'clean', '--yes'], projectRoot)
 }

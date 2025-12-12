@@ -14,11 +14,11 @@ const environment = {
   COREPACK_ENABLE_DOWNLOAD_PROMPT: '0',
 }
 
-function run(command, args, cwd) {
+function run(command, args, cwd, env = {}) {
   console.log(`[package-manager-smoke] ${command} ${args.join(' ')}`)
   const result = spawnSync(command, args, {
     cwd,
-    env: environment,
+    env: { ...environment, ...env },
     stdio: 'inherit',
     shell: false,
     timeout: 300_000,
@@ -59,6 +59,10 @@ function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
 }
 
+function installedCli(projectRoot, packageName) {
+  return join(projectRoot, 'node_modules', packageName, 'index.js')
+}
+
 function smokePnpm(createTarball, frontronTarball) {
   const projectRoot = mkdtempSync(join(tmpdir(), 'frontron-pnpm-'))
   temporaryDirectories.push(projectRoot)
@@ -81,22 +85,20 @@ function smokePnpm(createTarball, frontronTarball) {
   )
 
   run('pnpm', ['install', '--ignore-scripts', '--no-frozen-lockfile'], projectRoot)
+  const cli = installedCli(projectRoot, 'frontron')
+  const userAgent = 'pnpm/11.11.0 npm/? node/v24 linux x64'
   run(
-    'pnpm',
-    [
-      'exec',
-      'frontron',
-      'init',
-      '--yes',
-      '--adapter',
-      'generic-static',
-      '--out-dir',
-      'dist',
-    ],
+    process.execPath,
+    [cli, 'init', '--yes', '--adapter', 'generic-static', '--out-dir', 'dist'],
     projectRoot,
+    { npm_config_user_agent: userAgent },
   )
-  run('pnpm', ['exec', 'frontron', 'doctor'], projectRoot)
-  run('pnpm', ['exec', 'frontron', 'clean', '--yes'], projectRoot)
+  run(process.execPath, [cli, 'doctor'], projectRoot, {
+    npm_config_user_agent: userAgent,
+  })
+  run(process.execPath, [cli, 'clean', '--yes'], projectRoot, {
+    npm_config_user_agent: userAgent,
+  })
 }
 
 function smokeYarn(createTarball) {
@@ -112,7 +114,12 @@ function smokeYarn(createTarball) {
   writeFileSync(join(runnerRoot, '.yarnrc.yml'), 'nodeLinker: node-modules\n', 'utf8')
 
   run('yarn', ['install', '--mode=skip-builds'], runnerRoot)
-  run('yarn', ['exec', 'create-frontron', 'yarn-app'], runnerRoot)
+  run(
+    process.execPath,
+    [installedCli(runnerRoot, 'create-frontron'), 'yarn-app'],
+    runnerRoot,
+    { npm_config_user_agent: 'yarn/4.9.2 npm/? node/v24 linux x64' },
+  )
 
   const appRoot = join(runnerRoot, 'yarn-app')
   if (readFileSync(join(appRoot, '.yarnrc.yml'), 'utf8').trim() !== 'nodeLinker: node-modules') {
@@ -134,7 +141,12 @@ function smokeBun(createTarball) {
   })
 
   run('bun', ['install', '--ignore-scripts'], runnerRoot)
-  run('bun', ['run', 'create-frontron', 'bun-app'], runnerRoot)
+  run(
+    process.execPath,
+    [installedCli(runnerRoot, 'create-frontron'), 'bun-app'],
+    runnerRoot,
+    { npm_config_user_agent: 'bun/1.3.14 npm/? node/v24 linux x64' },
+  )
 
   const appRoot = join(runnerRoot, 'bun-app')
   run('bun', ['install', '--ignore-scripts'], appRoot)

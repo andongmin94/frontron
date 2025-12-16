@@ -113,7 +113,7 @@ function smokeYarn(createTarball) {
   })
   writeFileSync(join(runnerRoot, '.yarnrc.yml'), 'nodeLinker: node-modules\n', 'utf8')
 
-  run('yarn', ['install', '--mode=skip-builds'], runnerRoot)
+  run('yarn', ['install', '--mode=skip-build'], runnerRoot)
   run(
     process.execPath,
     [installedCli(runnerRoot, 'create-frontron'), 'yarn-app'],
@@ -125,7 +125,7 @@ function smokeYarn(createTarball) {
   if (readFileSync(join(appRoot, '.yarnrc.yml'), 'utf8').trim() !== 'nodeLinker: node-modules') {
     throw new Error('Yarn node-modules linker configuration was not generated')
   }
-  run('yarn', ['install', '--mode=skip-builds'], appRoot)
+  run('yarn', ['install', '--mode=skip-build'], appRoot)
   run('yarn', ['typecheck'], appRoot)
 }
 

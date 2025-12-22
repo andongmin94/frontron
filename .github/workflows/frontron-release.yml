@@ -35,7 +35,7 @@ jobs:
         run: |
           url=$(gh issue create \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Temporary final npm release retry 2 ${GITHUB_RUN_ID}" \
+            --title "Temporary final npm release retry 3 ${GITHUB_RUN_ID}" \
             --body "Validates the current main HEAD, publishes Frontron 0.13.4, and verifies registry installation. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
           echo "issue_number=${url##*/}" >> "$GITHUB_OUTPUT"
 

@@ -145,8 +145,8 @@ test('prints package-manager-specific next steps', async () => {
   expect(readFileSync(join(workspace, 'app', '.yarnrc.yml'), 'utf8')).toBe(
     'nodeLinker: node-modules\n',
   )
+  expect(readFileSync(join(workspace, 'app', 'yarn.lock'), 'utf8')).toBe('')
 })
-
 
 test('writes pnpm Electron build approvals only for pnpm consumers', async () => {
   const workspace = createWorkspace('pnpm-config')

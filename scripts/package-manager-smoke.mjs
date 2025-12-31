@@ -63,6 +63,25 @@ function installedCli(projectRoot, packageName) {
   return join(projectRoot, 'node_modules', packageName, 'index.js')
 }
 
+function assertPnpmRetrofitConfig(projectRoot) {
+  const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8'))
+  const devDependencies = packageJson.devDependencies ?? {}
+
+  for (const dependency of ['electron', 'electron-builder', 'typescript', '@types/node']) {
+    if (typeof devDependencies[dependency] !== 'string') {
+      throw new Error(`pnpm retrofit did not add devDependencies.${dependency}`)
+    }
+  }
+
+  const workspaceSource = readFileSync(join(projectRoot, 'pnpm-workspace.yaml'), 'utf8')
+  if (!/^\s{2}electron:\s*true\s*$/m.test(workspaceSource)) {
+    throw new Error('pnpm retrofit did not approve the Electron install script')
+  }
+  if (!/^\s{2}electron-winstaller:\s*true\s*$/m.test(workspaceSource)) {
+    throw new Error('pnpm retrofit did not approve the electron-winstaller install script')
+  }
+}
+
 function smokePnpm(createTarball, frontronTarball) {
   const projectRoot = mkdtempSync(join(tmpdir(), 'frontron-pnpm-'))
   temporaryDirectories.push(projectRoot)
@@ -93,6 +112,7 @@ function smokePnpm(createTarball, frontronTarball) {
     projectRoot,
     { npm_config_user_agent: userAgent },
   )
+  assertPnpmRetrofitConfig(projectRoot)
   run(process.execPath, [cli, 'doctor'], projectRoot, {
     npm_config_user_agent: userAgent,
   })

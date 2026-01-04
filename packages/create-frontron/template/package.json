@@ -34,7 +34,7 @@
       "dist/**/*"
     ],
     "directories": {
-      "output": "dist_app"
+      "output": "output"
     }
   },
   "scripts": {

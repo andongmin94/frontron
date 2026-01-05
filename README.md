@@ -142,7 +142,7 @@ const state = await window.electron.get('get-window-state') // handle 사용 예
 
 ## 배포 (electron-builder)
 
-`build` 스크립트 실행 시 `dist_app/` 에 플랫폼 별 산출물 생성.
+`build` 스크립트 실행 시 `output/` 에 플랫폼 별 산출물 생성.
 
 현재 설정
 - Windows: portable

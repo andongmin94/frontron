@@ -49,7 +49,7 @@ npm run app    # Vite dev + Electron 동시 실행 (HMR)
 npm run build  # 프론트(Vite) + Electron 컴파일 + electron-builder 패키징
 ```
 
-빌드 산출물은 기본적으로 `dist_app/` 에 생성됩니다 (portable exe / dir 등). 필요시 `package.json` 의 `build` 필드를 편집하세요.
+빌드 산출물은 기본적으로 `output/` 에 생성됩니다 (portable exe / dir 등). 필요시 `package.json` 의 `build` 필드를 편집하세요.
 
 ## 아이콘 교체 (Icon & Branding)
 
@@ -116,7 +116,7 @@ window.electron.on('window-maximized-changed', (isMax) => { /* ... */ })
 | ---- | -------- |
 | 창이 흰 화면 | Vite dev 서버 포트 미매칭 → `determinePort()` 로그 확인 |
 | IPC 수신 안 됨 | `setupIpcHandlers()` 실행 이전 채널 사용 → 렌더러 마운트 순서 확인 |
-| 아이콘 적용 안 됨 | 빌드 캐시 남음 → `dist_app` 삭제 후 재빌드 |
+| 아이콘 적용 안 됨 | 빌드 캐시 남음 → `output` 삭제 후 재빌드 |
 | 폰트 깨짐 | `public/fonts` 경로 / MIME 설정 확인 |
 
 ## 참조 링크

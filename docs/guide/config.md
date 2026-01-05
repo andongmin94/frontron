@@ -74,7 +74,7 @@ Electron main/preload 코드는 Node/Electron API 사용 → `types: ["node", "e
   "win": { "target": ["portable"] },
   "nsis": { "oneClick": true, "uninstallDisplayName": "Frontron" },
   "files": ["node_modules/**/*", "public/**/*", "dist/**/*"],
-  "directories": { "output": "dist_app" }
+  "directories": { "output": "output" }
 }
 ```
 
@@ -96,7 +96,7 @@ npm run app
 문제 발생 시 체크리스트
 1. dev 서버 포트: 콘솔 로그로 실제 포트 확인 후 `createWindow(port)` 주소 일치 여부 확인
 2. Preload 빌드 실패: `tsc -p tsconfig.electron.json` 직접 실행하여 에러 파악
-3. 아이콘 미반영: `dist_app` 삭제 후 재빌드
+3. 아이콘 미반영: `output` 삭제 후 재빌드
 
 ## 환경 변수
 
@@ -130,7 +130,7 @@ const user = await window.api.getUserData()
 
 `npm run build` 후
 ```
-dist_app/
+output/
   Frontron.exe (Windows portable 예시)
   latest.yml (업데이트 채널 구성 시)
   ...

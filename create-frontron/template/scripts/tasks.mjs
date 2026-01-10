@@ -62,11 +62,10 @@ switch (command) {
     runBin("vite", extraArgs)
     break
   case "app":
+    runBin("tsc", ["-p", "tsconfig.electron.json"])
     runNode([
       "--no-deprecation",
-      "--disable-warning=ExperimentalWarning",
-      "--experimental-strip-types",
-      "src/electron/serve.ts",
+      "dist/electron/serve.js",
       "--dev-app",
       ...extraArgs,
     ])

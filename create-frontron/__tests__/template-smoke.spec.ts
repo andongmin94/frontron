@@ -33,6 +33,7 @@ test('starter template exposes the supported Electron and React contract', async
     scripts: Record<string, string>
     dependencies: Record<string, string>
     devDependencies: Record<string, string>
+    trustedDependencies?: string[]
     main: string
     build: { appId: string; files: string[]; npmRebuild: boolean; productName: string }
   }
@@ -42,6 +43,7 @@ test('starter template exposes the supported Electron and React contract', async
   const electronIpc = readFileSync(join(projectRoot, 'src/electron/ipc.ts'), 'utf8')
   const rendererMain = readFileSync(join(projectRoot, 'src/main.tsx'), 'utf8')
   const rendererApp = readFileSync(join(projectRoot, 'src/App.tsx'), 'utf8')
+  const taskRunner = readFileSync(join(projectRoot, 'scripts/tasks.mjs'), 'utf8')
 
   expect(packageJson.private).toBe(true)
   expect(packageJson.scripts).toMatchObject({
@@ -61,12 +63,16 @@ test('starter template exposes the supported Electron and React contract', async
   expect(packageJson.devDependencies).toHaveProperty('electron-builder')
   expect(packageJson.devDependencies).not.toHaveProperty('tailwindcss')
   expect(packageJson.devDependencies).not.toHaveProperty('@tailwindcss/vite')
+  expect(packageJson.trustedDependencies).toEqual(['electron', 'electron-winstaller'])
   expect(packageJson.main).toBe('dist/electron/main.js')
   expect(packageJson.build.productName).toBe(projectName)
   expect(packageJson.build.appId).toBe(`com.example.${projectName}`)
   expect(packageJson.build.npmRebuild).toBe(false)
   expect(packageJson.build.files).toContain('!node_modules{,/**/*}')
 
+  expect(taskRunner).toContain('runBin("tsc", ["-p", "tsconfig.electron.json"])')
+  expect(taskRunner).toContain('"dist/electron/serve.js"')
+  expect(taskRunner).not.toContain('"src/electron/serve.ts"')
   expect(electronMain).toContain('protocol.registerSchemesAsPrivileged')
   expect(electronMain).toContain('ensureRendererCsp(responseHeaders)')
   expect(electronMain).toContain('createWindow(rendererUrl, setupIpcHandlers)')

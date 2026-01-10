@@ -56,7 +56,7 @@ jobs:
   runtime:
     name: runtime / ${{ matrix.os }} / node ${{ matrix.node }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     strategy:
       fail-fast: false
@@ -98,3 +98,7 @@ jobs:
           npm run typecheck --prefix frontron
           npm test --prefix frontron
           npm run build --prefix frontron
+
+      - name: Package a generated starter on the desktop host
+        if: matrix.os == 'macos-latest' || matrix.os == 'windows-latest'
+        run: npm run test:release-smoke --prefix create-frontron

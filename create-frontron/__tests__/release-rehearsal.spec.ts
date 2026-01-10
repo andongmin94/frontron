@@ -62,6 +62,41 @@ function packPackageForReal(packageRoot: string, tempPrefix: string) {
   return join(outputDir, filename)
 }
 
+function readRendererProbe(probePath: string) {
+  return JSON.parse(readFileSync(probePath, 'utf8')) as {
+    ok: boolean
+    protocol: string
+    bridgeType: string
+    appInfo: { name: string; version: string } | null
+  }
+}
+
+function expectHealthyRendererProbe(probePath: string) {
+  const probe = readRendererProbe(probePath)
+  expect(probe).toMatchObject({
+    ok: true,
+    protocol: 'frontron:',
+    bridgeType: 'object',
+  })
+  expect(probe.appInfo?.name).toBeTruthy()
+}
+
+function runDevelopmentAppProbe(generatedAppRoot: string, probePath: string) {
+  const result = spawnSync('xvfb-run', ['-a', 'npm', 'run', 'app'], {
+    cwd: generatedAppRoot,
+    encoding: 'utf8',
+    timeout: 120_000,
+    env: {
+      ...process.env,
+      CI: '1',
+      FRONTRON_RENDERER_PROBE_PATH: probePath,
+    },
+  })
+
+  expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0)
+  expectHealthyRendererProbe(probePath)
+}
+
 afterEach(() => {
   for (const tempDir of tempDirs.splice(0)) {
     rmSync(tempDir, { recursive: true, force: true })
@@ -88,6 +123,7 @@ test('packed create-frontron generates a buildable template-owned Electron start
     scripts: Record<string, string>
     dependencies: Record<string, string>
     devDependencies: Record<string, string>
+    trustedDependencies?: string[]
     main?: string
     build?: {
       productName?: string
@@ -103,6 +139,7 @@ test('packed create-frontron generates a buildable template-owned Electron start
   expect(generatedPackage.dependencies).not.toHaveProperty('frontron')
   expect(generatedPackage.devDependencies).toHaveProperty('electron')
   expect(generatedPackage.devDependencies).toHaveProperty('electron-builder')
+  expect(generatedPackage.trustedDependencies).toEqual(['electron', 'electron-winstaller'])
   expect(generatedPackage.main).toBe('dist/electron/main.js')
   expect(generatedPackage.build?.productName).toBe(generatedAppName)
   expect(generatedPackage.build?.appId).toContain(generatedAppName)
@@ -119,6 +156,11 @@ test('packed create-frontron generates a buildable template-owned Electron start
   runNpm(['install'], generatedAppRoot)
   runNpm(['audit', '--audit-level=moderate'], generatedAppRoot)
   runNpm(['run', 'typecheck'], generatedAppRoot)
+
+  if (process.env.FRONTRON_TEST_ELECTRON_RUNTIME === '1') {
+    runDevelopmentAppProbe(generatedAppRoot, join(rehearsalRoot, 'dev-renderer-probe.json'))
+  }
+
   runNpm(['run', 'build', '--', '--dir'], generatedAppRoot)
 
   if (process.env.FRONTRON_TEST_ELECTRON_RUNTIME === '1') {
@@ -128,7 +170,7 @@ test('packed create-frontron generates a buildable template-owned Electron start
       'linux-unpacked',
       generatedAppName,
     )
-    const probePath = join(rehearsalRoot, 'renderer-probe.json')
+    const probePath = join(rehearsalRoot, 'packaged-renderer-probe.json')
     const result = spawnSync(
       'xvfb-run',
       ['-a', executablePath, '--no-sandbox'],
@@ -144,17 +186,6 @@ test('packed create-frontron generates a buildable template-owned Electron start
     )
 
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0)
-    const probe = JSON.parse(readFileSync(probePath, 'utf8')) as {
-      ok: boolean
-      protocol: string
-      bridgeType: string
-      appInfo: { name: string; version: string } | null
-    }
-    expect(probe).toMatchObject({
-      ok: true,
-      protocol: 'frontron:',
-      bridgeType: 'object',
-    })
-    expect(probe.appInfo?.name).toBeTruthy()
+    expectHealthyRendererProbe(probePath)
   }
 }, 600000)

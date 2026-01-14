@@ -89,6 +89,7 @@ function runDevelopmentAppProbe(generatedAppRoot: string, probePath: string) {
     env: {
       ...process.env,
       CI: '1',
+      ELECTRON_DISABLE_SANDBOX: '1',
       FRONTRON_RENDERER_PROBE_PATH: probePath,
     },
   })

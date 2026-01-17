@@ -1,0 +1,88 @@
+name: temporary-ubuntu-hardening-validation
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  validate:
+    if: github.event.issue.title == 'Run Frontron Ubuntu hardening validation'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: main
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Install headless Electron runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes xvfb
+
+      - name: Install package-manager smoke tools
+        run: npm install --global --allow-scripts=bun pnpm@11.11.0 @yarnpkg/cli-dist@4.9.2 bun@1.3.14
+
+      - name: Verify source, development runtime, packed app, and package-manager consumers
+        run: node release.mjs verify
+        env:
+          FRONTRON_TEST_ELECTRON_RUNTIME: "1"
+          FRONTRON_TEST_PACKAGE_MANAGERS: "1"
+
+  record-and-clean:
+    if: always() && github.event.issue.title == 'Run Frontron Ubuntu hardening validation'
+    needs: validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Record validation result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ needs.validate.result }}
+        run: |
+          gh issue comment "${{ github.event.issue.number }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "Ubuntu hardening validation result: ${RESULT}. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+      - name: Remove this one-time workflow
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          remote="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git pull --ff-only origin main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/temporary-ubuntu-hardening-validation.yml
+          git commit -m "chore: remove temporary Ubuntu hardening validation workflow"
+          git push "$remote" HEAD:main
+
+      - name: Close validation issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ needs.validate.result }}
+        run: |
+          if [ "$RESULT" = "success" ]; then
+            reason=completed
+          else
+            reason="not planned"
+          fi
+          gh issue close "${{ github.event.issue.number }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --reason "$reason"

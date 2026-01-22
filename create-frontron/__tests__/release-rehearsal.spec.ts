@@ -71,11 +71,11 @@ function readRendererProbe(probePath: string) {
   }
 }
 
-function expectHealthyRendererProbe(probePath: string) {
+function expectHealthyRendererProbe(probePath: string, protocol: 'http:' | 'frontron:') {
   const probe = readRendererProbe(probePath)
   expect(probe).toMatchObject({
     ok: true,
-    protocol: 'frontron:',
+    protocol,
     bridgeType: 'object',
   })
   expect(probe.appInfo?.name).toBeTruthy()
@@ -95,7 +95,7 @@ function runDevelopmentAppProbe(generatedAppRoot: string, probePath: string) {
   })
 
   expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0)
-  expectHealthyRendererProbe(probePath)
+  expectHealthyRendererProbe(probePath, 'http:')
 }
 
 afterEach(() => {
@@ -187,6 +187,6 @@ test('packed create-frontron generates a buildable template-owned Electron start
     )
 
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0)
-    expectHealthyRendererProbe(probePath)
+    expectHealthyRendererProbe(probePath, 'frontron:')
   }
 }, 600000)

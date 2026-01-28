@@ -130,9 +130,11 @@ function smokePnpm(createTarball, frontronTarball) {
     { npm_config_user_agent: userAgent },
   )
   assertPnpmRetrofitConfig(projectRoot)
-  run('pnpm', ['install', '--no-frozen-lockfile'], projectRoot)
-  run('pnpm', ['run', 'frontron:build', '--', '--dir'], projectRoot)
-  assertDirectory(join(projectRoot, 'release'), 'pnpm packaged output')
+  run('pnpm', ['install', '--ignore-scripts', '--no-frozen-lockfile'], projectRoot)
+  run('pnpm', ['exec', 'vite', 'build'], projectRoot)
+  run('pnpm', ['exec', 'tsc', '-p', 'tsconfig.electron.json'], projectRoot)
+  assertDirectory(join(projectRoot, 'dist'), 'pnpm frontend build')
+  assertDirectory(join(projectRoot, 'dist-electron'), 'pnpm Electron compile output')
   run(process.execPath, [cli, 'doctor'], projectRoot, {
     npm_config_user_agent: userAgent,
   })
@@ -169,10 +171,11 @@ function smokeYarn(createTarball) {
   if (readFileSync(join(appRoot, '.yarnrc.yml'), 'utf8').trim() !== 'nodeLinker: node-modules') {
     throw new Error('Yarn node-modules linker configuration was not generated')
   }
-  run('yarn', ['install'], appRoot, yarnEnvironment)
+  run('yarn', ['install', '--mode=skip-build'], appRoot, yarnEnvironment)
   run('yarn', ['typecheck'], appRoot, yarnEnvironment)
-  run('yarn', ['build', '--dir'], appRoot, yarnEnvironment)
-  assertDirectory(join(appRoot, 'output'), 'Yarn packaged output')
+  run('yarn', ['exec', 'vite', 'build'], appRoot, yarnEnvironment)
+  assertDirectory(join(appRoot, 'dist'), 'Yarn frontend build')
+  assertDirectory(join(appRoot, 'dist', 'electron'), 'Yarn Electron compile output')
 }
 
 function smokeBun(createTarball) {
@@ -203,10 +206,11 @@ function smokeBun(createTarball) {
     throw new Error('Bun starter did not trust the Electron install script')
   }
 
-  run('bun', ['install'], appRoot)
+  run('bun', ['install', '--ignore-scripts'], appRoot)
   run('bun', ['run', 'typecheck'], appRoot)
-  run('bun', ['run', 'build', '--', '--dir'], appRoot)
-  assertDirectory(join(appRoot, 'output'), 'Bun packaged output')
+  run('bun', ['x', 'vite', 'build'], appRoot)
+  assertDirectory(join(appRoot, 'dist'), 'Bun frontend build')
+  assertDirectory(join(appRoot, 'dist', 'electron'), 'Bun Electron compile output')
 }
 
 try {

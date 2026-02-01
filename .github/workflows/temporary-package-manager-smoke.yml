@@ -1,8 +1,10 @@
 name: temporary-package-manager-smoke
 
 on:
-  issues:
-    types: [opened]
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/temporary-package-manager-smoke.yml"
 
 permissions:
   contents: write
@@ -10,7 +12,6 @@ permissions:
 
 jobs:
   validate:
-    if: github.event.issue.title == 'Run focused package-manager smoke'
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -45,16 +46,15 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-          ISSUE: ${{ github.event.issue.number }}
           OUTCOME: ${{ steps.smoke.outcome }}
         run: |
           run_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           if [ "$OUTCOME" = "success" ]; then
-            gh issue comment "$ISSUE" --body "Focused pnpm/Yarn/Bun smoke succeeded. Run: ${run_url}"
-            gh issue close "$ISSUE" --reason completed
+            gh issue comment 99 --body "Focused pnpm/Yarn/Bun smoke succeeded. Run: ${run_url}"
+            gh issue close 99 --reason completed
           else
-            gh issue comment "$ISSUE" --body "Focused pnpm/Yarn/Bun smoke failed. Run: ${run_url}"
-            gh issue close "$ISSUE" --reason not_planned
+            gh issue comment 99 --body "Focused pnpm/Yarn/Bun smoke failed. Run: ${run_url}"
+            gh issue close 99 --reason not_planned
           fi
 
       - name: Remove this one-time workflow

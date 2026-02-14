@@ -1,5 +1,4 @@
 import { defineConfig } from "vitepress";
-import { buildEnd } from "./buildEnd.config";
 
 const ogTitle = "Frontron";
 const ogDescription = "Desktop App Template";
@@ -12,17 +11,13 @@ export default defineConfig({
 
   head: [
     ["link", { rel: "icon", type: "image/png", href: "/logo.png" }],
-    [
-      "link",
-      { rel: "alternate", type: "application/rss+xml", href: "/blog.rss" },
-    ],
     ["link", { rel: "organization", href: "https://github.com/andongmin94" }],
     ["meta", { property: "og:type", content: "website" }],
     ["meta", { property: "og:title", content: ogTitle }],
     ["meta", { property: "og:image", content: ogImage }],
     ["meta", { property: "og:url", content: ogUrl }],
     ["meta", { property: "og:description", content: ogDescription }],
-    ["meta", { name: "theme-color", content: "#646cff" }],
+    ["meta", { name: "theme-color", content: "#1573FF" }],
     [
       "script",
       {
@@ -106,5 +101,10 @@ export default defineConfig({
     ]);
     return pageData;
   },
-  buildEnd,
+  vite: {
+    server: {
+      port: 3000,
+      host: "0.0.0.0",
+    },
+  },
 });

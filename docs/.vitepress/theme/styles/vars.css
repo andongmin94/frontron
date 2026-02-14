@@ -110,14 +110,6 @@
 }
 
 /**
- * Component: Algolia
- * -------------------------------------------------------------------------- */
-
-.DocSearch {
-  --docsearch-primary-color: var(--vp-c-brand) !important;
-}
-
-/**
  * VitePress: Custom fix
  * -------------------------------------------------------------------------- */
 
@@ -146,26 +138,6 @@
 /* Transition by color instead of opacity */
 .dark .vp-doc .custom-block a {
   transition: color 0.25s;
-}
-
-.vp-sponsor.aside .vp-sponsor-grid.mini .vp-sponsor-grid-image {
-  max-width: 124px;
-}
-
-.vp-sponsor-grid.big .vp-sponsor-grid-image {
-  max-height: 96px;
-}
-
-.vp-sponsor-grid.mini .vp-sponsor-grid-image[alt='Bit'] {
-  max-height: 48px;
-}
-
-.vp-sponsor-grid.xmini .vp-sponsor-grid-image[alt='JetBrains'] {
-  max-height: 54px;
-}
-
-.vp-sponsor-grid.medium .vp-sponsor-grid-image[alt='JetBrains'] {
-  max-height: 100px;
 }
 
 /* 스크롤바 숨기기 (마우스 휠 스크롤은 유지) */

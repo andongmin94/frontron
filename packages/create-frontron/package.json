@@ -1,9 +1,9 @@
 {
   "name": "create-frontron",
-  "version": "0.7.4",
+  "version": "0.8.2",
   "type": "module",
   "license": "MIT",
-  "author": "andongmin",
+  "author": "안동민",
   "bin": {
     "create-frontron": "index.js",
     "cva": "index.js"
@@ -11,6 +11,8 @@
   "files": [
     "index.js",
     "template",
+    "template-react",
+    "template-next",
     "dist"
   ],
   "scripts": {

@@ -3,16 +3,39 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import minimist from 'minimist'
 import prompts from 'prompts'
-import {
-  red,
-  reset
-} from 'kolorist'
+import { cyan, red, reset, white } from 'kolorist'
+
+type ColorFn = (str: string | number) => string
+
+type Framework = {
+  name: string
+  display: string
+  color: ColorFn
+  templateDir: string
+}
+
+const FRAMEWORKS: Framework[] = [
+  {
+    name: 'react',
+    display: 'React',
+    color: cyan,
+    templateDir: 'template-react',
+  },
+  {
+    name: 'next',
+    display: 'Next.js',
+    color: white,
+    templateDir: 'template-next',
+  },
+]
+
+const TEMPLATE_NAMES = new Set(FRAMEWORKS.map((framework) => framework.name))
 
 // Avoids autoconversion to number of the project name by defining that the args
 // non associated with an option ( _ ) needs to be parsed as a string. See #4606
 const argv = minimist<{
-  t?: string
-  template?: string
+  t?: string | boolean
+  template?: string | boolean
 }>(process.argv.slice(2), { string: ['_'] })
 const cwd = process.cwd()
 
@@ -22,15 +45,24 @@ const renameFiles: Record<string, string | undefined> = {
 
 const defaultTargetDir = 'frontron'
 
+function parseTemplateArg(value: string | boolean | undefined) {
+  if (typeof value !== 'string') {
+    return undefined
+  }
+  const normalized = value.trim().toLowerCase()
+  return normalized.length > 0 ? normalized : undefined
+}
+
 async function init() {
   const argTargetDir = formatTargetDir(argv._[0])
+  const argTemplate = parseTemplateArg(argv.template ?? argv.t)
 
   let targetDir = argTargetDir || defaultTargetDir
   const getProjectName = () =>
     targetDir === '.' ? path.basename(path.resolve()) : targetDir
 
   let result: prompts.Answers<
-    'projectName' | 'overwrite' | 'packageName'
+    'projectName' | 'overwrite' | 'packageName' | 'framework'
   >
 
   prompts.override({
@@ -57,7 +89,7 @@ async function init() {
             (targetDir === '.'
               ? 'Current directory'
               : `Target directory "${targetDir}"`) +
-            ` is not empty. Please choose how to proceed:`,
+            ' is not empty. Please choose how to proceed:',
           initial: 0,
           choices: [
             {
@@ -77,7 +109,7 @@ async function init() {
         {
           type: (_, { overwrite }: { overwrite?: string }) => {
             if (overwrite === 'no') {
-              throw new Error(red('✖') + ' Operation cancelled')
+              throw new Error(red('x') + ' Operation cancelled')
             }
             return null
           },
@@ -90,11 +122,26 @@ async function init() {
           initial: () => toValidPackageName(getProjectName()),
           validate: (dir) =>
             isValidPackageName(dir) || 'Invalid package.json name',
-        }
+        },
+        {
+          type: argTemplate && TEMPLATE_NAMES.has(argTemplate) ? null : 'select',
+          name: 'framework',
+          message:
+            typeof argTemplate === 'string' && !TEMPLATE_NAMES.has(argTemplate)
+              ? reset(
+                  `"${argTemplate}" isn't a valid template. Please choose from below:`,
+                )
+              : reset('Select a framework:'),
+          initial: 0,
+          choices: FRAMEWORKS.map((framework) => ({
+            title: framework.color(framework.display),
+            value: framework.name,
+          })),
+        },
       ],
       {
         onCancel: () => {
-          throw new Error(red('✖') + ' Operation cancelled')
+          throw new Error(red('x') + ' Operation cancelled')
         },
       },
     )
@@ -104,7 +151,14 @@ async function init() {
   }
 
   // user choice associated with prompts
-  const { overwrite, packageName } = result
+  const { framework, overwrite, packageName } = result
+
+  const selectedTemplate =
+    framework ||
+    (argTemplate && TEMPLATE_NAMES.has(argTemplate) ? argTemplate : undefined) ||
+    FRAMEWORKS[0].name
+  const selectedFramework =
+    FRAMEWORKS.find((item) => item.name === selectedTemplate) || FRAMEWORKS[0]
 
   const root = path.join(cwd, targetDir)
 
@@ -114,17 +168,22 @@ async function init() {
     fs.mkdirSync(root, { recursive: true })
   }
 
-  // determine template
   const pkgInfo = pkgFromUserAgent(process.env.npm_config_user_agent)
   const pkgManager = pkgInfo ? pkgInfo.name : 'npm'
-  
+
   console.log(`\nScaffolding project in ${root}...`)
 
   const templateDir = path.resolve(
     fileURLToPath(import.meta.url),
     '../..',
-    'template',
+    selectedFramework.templateDir,
   )
+
+  if (!fs.existsSync(templateDir)) {
+    throw new Error(
+      `Template directory not found: "${selectedFramework.templateDir}"`,
+    )
+  }
 
   const write = (file: string, content?: string) => {
     const targetPath = path.join(root, renameFiles[file] ?? file)
@@ -141,12 +200,14 @@ async function init() {
   }
 
   const pkg = JSON.parse(
-    fs.readFileSync(path.join(templateDir, `package.json`), 'utf-8'),
+    fs.readFileSync(path.join(templateDir, 'package.json'), 'utf-8'),
   )
 
   pkg.name = packageName || getProjectName()
-  pkg.build.appId = pkg.name
-  pkg.build.productName = pkg.name
+  if (pkg.build) {
+    pkg.build.appId = pkg.name
+    pkg.build.productName = pkg.name
+  }
 
   write('package.json', JSON.stringify(pkg, null, 2) + '\n')
 
@@ -209,8 +270,8 @@ function copyDir(srcDir: string, destDir: string) {
   }
 }
 
-function isEmpty(path: string) {
-  const files = fs.readdirSync(path)
+function isEmpty(dirPath: string) {
+  const files = fs.readdirSync(dirPath)
   return files.length === 0 || (files.length === 1 && files[0] === '.git')
 }
 

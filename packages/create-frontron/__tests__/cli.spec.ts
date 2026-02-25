@@ -26,9 +26,15 @@ const createNonEmptyDir = () => {
   fs.writeFileSync(pkgJson, '{ "foo": "bar" }')
 }
 
-// Vue 3 starter template
-const templateFiles = fs
-  .readdirSync(join(CLI_PATH, 'template-vue'))
+// React starter template
+const reactTemplateFiles = fs
+  .readdirSync(join(CLI_PATH, 'template-react'))
+  // _gitignore is renamed to .gitignore
+  .map((filePath) => (filePath === '_gitignore' ? '.gitignore' : filePath))
+  .sort()
+
+const nextTemplateFiles = fs
+  .readdirSync(join(CLI_PATH, 'template-next'))
   // _gitignore is renamed to .gitignore
   .map((filePath) => (filePath === '_gitignore' ? '.gitignore' : filePath))
   .sort()
@@ -76,26 +82,37 @@ test('asks to overwrite non-empty current directory', () => {
   expect(stdout).toContain(`Current directory is not empty.`)
 })
 
-test('successfully scaffolds a project based on vue starter template', () => {
-  const { stdout } = run([projectName, '--template', 'vue'], {
+test('successfully scaffolds a project based on react starter template', () => {
+  const { stdout } = run([projectName, '--template', 'react'], {
     cwd: __dirname,
   })
   const generatedFiles = fs.readdirSync(genPath).sort()
 
   // Assertions
   expect(stdout).toContain(`Scaffolding project in ${genPath}`)
-  expect(templateFiles).toEqual(generatedFiles)
+  expect(reactTemplateFiles).toEqual(generatedFiles)
+})
+
+test('successfully scaffolds a project based on next starter template', () => {
+  const { stdout } = run([projectName, '--template', 'next'], {
+    cwd: __dirname,
+  })
+  const generatedFiles = fs.readdirSync(genPath).sort()
+
+  // Assertions
+  expect(stdout).toContain(`Scaffolding project in ${genPath}`)
+  expect(nextTemplateFiles).toEqual(generatedFiles)
 })
 
 test('works with the -t alias', () => {
-  const { stdout } = run([projectName, '-t', 'vue'], {
+  const { stdout } = run([projectName, '-t', 'react'], {
     cwd: __dirname,
   })
   const generatedFiles = fs.readdirSync(genPath).sort()
 
   // Assertions
   expect(stdout).toContain(`Scaffolding project in ${genPath}`)
-  expect(templateFiles).toEqual(generatedFiles)
+  expect(reactTemplateFiles).toEqual(generatedFiles)
 })
 
 test('accepts command line override for --overwrite', () => {

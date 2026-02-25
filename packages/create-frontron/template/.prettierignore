@@ -1,6 +1,0 @@
-build
-dist
-node_modules
-src/components/ui/*
-src/hooks/*
-src/lib/*

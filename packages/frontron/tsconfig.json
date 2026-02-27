@@ -1,0 +1,15 @@
+{
+  "include": ["build.config.ts", "src", "__tests__"],
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "sourceMap": false,
+    "noUnusedLocals": true,
+    "esModuleInterop": true,
+    "types": ["node", "vitest/globals"]
+  }
+}

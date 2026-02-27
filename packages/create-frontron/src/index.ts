@@ -3,33 +3,10 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import minimist from 'minimist'
 import prompts from 'prompts'
-import { cyan, red, reset, white } from 'kolorist'
+import { red, reset, yellow } from 'kolorist'
 
-type ColorFn = (str: string | number) => string
-
-type Framework = {
-  name: string
-  display: string
-  color: ColorFn
-  templateDir: string
-}
-
-const FRAMEWORKS: Framework[] = [
-  {
-    name: 'react',
-    display: 'React',
-    color: cyan,
-    templateDir: 'template-react',
-  },
-  {
-    name: 'next',
-    display: 'Next.js',
-    color: white,
-    templateDir: 'template-next',
-  },
-]
-
-const TEMPLATE_NAMES = new Set(FRAMEWORKS.map((framework) => framework.name))
+const SUPPORTED_TEMPLATE = 'react'
+const TEMPLATE_DIR = 'template-react'
 
 // Avoids autoconversion to number of the project name by defining that the args
 // non associated with an option ( _ ) needs to be parsed as a string. See #4606
@@ -57,13 +34,17 @@ async function init() {
   const argTargetDir = formatTargetDir(argv._[0])
   const argTemplate = parseTemplateArg(argv.template ?? argv.t)
 
+  if (argTemplate && argTemplate !== SUPPORTED_TEMPLATE) {
+    console.log(
+      `${yellow('!')} "${argTemplate}" template is not available yet. Falling back to "${SUPPORTED_TEMPLATE}".`,
+    )
+  }
+
   let targetDir = argTargetDir || defaultTargetDir
   const getProjectName = () =>
     targetDir === '.' ? path.basename(path.resolve()) : targetDir
 
-  let result: prompts.Answers<
-    'projectName' | 'overwrite' | 'packageName' | 'framework'
-  >
+  let result: prompts.Answers<'projectName' | 'overwrite' | 'packageName'>
 
   prompts.override({
     overwrite: argv.overwrite,
@@ -123,21 +104,6 @@ async function init() {
           validate: (dir) =>
             isValidPackageName(dir) || 'Invalid package.json name',
         },
-        {
-          type: argTemplate && TEMPLATE_NAMES.has(argTemplate) ? null : 'select',
-          name: 'framework',
-          message:
-            typeof argTemplate === 'string' && !TEMPLATE_NAMES.has(argTemplate)
-              ? reset(
-                  `"${argTemplate}" isn't a valid template. Please choose from below:`,
-                )
-              : reset('Select a framework:'),
-          initial: 0,
-          choices: FRAMEWORKS.map((framework) => ({
-            title: framework.color(framework.display),
-            value: framework.name,
-          })),
-        },
       ],
       {
         onCancel: () => {
@@ -150,16 +116,7 @@ async function init() {
     return
   }
 
-  // user choice associated with prompts
-  const { framework, overwrite, packageName } = result
-
-  const selectedTemplate =
-    framework ||
-    (argTemplate && TEMPLATE_NAMES.has(argTemplate) ? argTemplate : undefined) ||
-    FRAMEWORKS[0].name
-  const selectedFramework =
-    FRAMEWORKS.find((item) => item.name === selectedTemplate) || FRAMEWORKS[0]
-
+  const { overwrite, packageName } = result
   const root = path.join(cwd, targetDir)
 
   if (overwrite === 'yes') {
@@ -173,16 +130,10 @@ async function init() {
 
   console.log(`\nScaffolding project in ${root}...`)
 
-  const templateDir = path.resolve(
-    fileURLToPath(import.meta.url),
-    '../..',
-    selectedFramework.templateDir,
-  )
+  const templateDir = path.resolve(fileURLToPath(import.meta.url), '../..', TEMPLATE_DIR)
 
   if (!fs.existsSync(templateDir)) {
-    throw new Error(
-      `Template directory not found: "${selectedFramework.templateDir}"`,
-    )
+    throw new Error(`Template directory not found: "${TEMPLATE_DIR}"`)
   }
 
   const write = (file: string, content?: string) => {

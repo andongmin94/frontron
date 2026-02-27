@@ -1,5 +1,5 @@
 import minimist from 'minimist';
-import { m as migrateProject } from '../shared/frontron.DzblyIWR.mjs';
+import { m as migrateProject } from '../shared/frontron.B5OBfSq3.mjs';
 import 'node:fs';
 import 'node:path';
 import 'node:url';
@@ -36,6 +36,7 @@ async function run() {
   });
   console.log(`[frontron] project: ${result.projectDir}`);
   console.log(`[frontron] dry-run: ${result.dryRun ? "yes" : "no"}`);
+  console.log(`[frontron] template: ${result.template}`);
   if (result.backupDir) {
     console.log(`[frontron] backup: ${result.backupDir}`);
   }

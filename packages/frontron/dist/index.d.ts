@@ -5,5 +5,5 @@ export { FrontronStore, StoreMigration, StoreOptions, StoreValidator, createStor
 export { TrayController, TrayOptions, createTrayController } from './tray/index.js';
 export { AutoUpdaterLike, FrontronUpdaterController, SetupAutoUpdaterOptions, UpdaterEventName, UpdaterLogger, loadElectronAutoUpdater, setupAutoUpdater } from './updater/index.js';
 export { createMainWindow, registerWindowControlIpcHandlers } from './window/index.js';
-export { C as CreateMainWindowOptions, R as RegisterWindowIpcHandlersOptions, W as WindowIpcChannels, a as WindowStatePayload } from './shared/frontron.C2m6cApQ.js';
+export { C as CreateMainWindowOptions, R as RegisterWindowIpcHandlersOptions, W as WindowIpcChannels, a as WindowLoadTarget, b as WindowStatePayload } from './shared/frontron.BNEkugTn.js';
 import 'electron';

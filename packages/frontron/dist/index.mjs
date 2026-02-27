@@ -1,11 +1,11 @@
-export { c as closeSplashWindow, a as createSplashWindow, g as getPortFromViteConfig, s as startFrontronApp, w as waitForPortReady } from './shared/frontron.1U3HJIuF.mjs';
+export { c as closeSplashWindow, a as createSplashWindow, g as getPortFromViteConfig, s as startFrontronApp, w as waitForPortReady } from './shared/frontron.Cl31QmHo.mjs';
 export { D as DEFAULT_INVOKE_CHANNELS, a as DEFAULT_ON_CHANNELS, b as DEFAULT_SEND_CHANNELS, L as LEGACY_WINDOW_CHANNELS, W as WINDOW_CHANNELS } from './shared/frontron.CDRXnvFQ.mjs';
 export { c as createFrontronBridge, e as exposeFrontronBridge } from './shared/frontron.C0Rit8EG.mjs';
-export { m as migrateProject } from './shared/frontron.DzblyIWR.mjs';
+export { m as migrateProject } from './shared/frontron.B5OBfSq3.mjs';
 export { c as createStore } from './shared/frontron.CaPkbfoF.mjs';
 export { c as createTrayController } from './shared/frontron.BnuOy2Eo.mjs';
 export { loadElectronAutoUpdater, setupAutoUpdater } from './updater/index.mjs';
-export { c as createMainWindow, r as registerWindowControlIpcHandlers } from './shared/frontron.DMGoGMve.mjs';
+export { c as createMainWindow, r as registerWindowControlIpcHandlers } from './shared/frontron.CisTJd5f.mjs';
 import 'node:path';
 import 'electron';
 import 'node:fs';

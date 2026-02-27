@@ -7,6 +7,7 @@ import type {
   CreateMainWindowOptions,
   RegisterWindowIpcHandlersOptions,
   WindowIpcChannels,
+  WindowLoadTarget,
   WindowStatePayload,
 } from "./types";
 
@@ -32,6 +33,7 @@ export function createMainWindow(options: CreateMainWindowOptions): BrowserWindo
     resizableInDev = true,
     disableContextMenu = true,
     hideOnCloseForMac = true,
+    loadTarget,
     onDidFinishLoad,
   } = options;
 
@@ -49,11 +51,27 @@ export function createMainWindow(options: CreateMainWindowOptions): BrowserWindo
     },
   });
 
-  if (isDev) {
-    void mainWindow.loadURL(`http://${devServerHost}:${devServerPort}`);
+  const resolvedLoadTarget: WindowLoadTarget =
+    loadTarget ??
+    (isDev
+      ? {
+          kind: "url",
+          value: `http://${devServerHost}:${devServerPort}`,
+        }
+      : {
+          kind: "file",
+          value: path.join(rendererDistPath ?? "", "index.html"),
+        });
+
+  if (resolvedLoadTarget.kind === "url") {
+    void mainWindow.loadURL(resolvedLoadTarget.value);
   } else {
-    const entryHtml = path.join(rendererDistPath, "index.html");
-    void mainWindow.loadFile(entryHtml);
+    if (!rendererDistPath && !loadTarget) {
+      throw new Error(
+        "rendererDistPath is required for file load target when loadTarget is not provided.",
+      );
+    }
+    void mainWindow.loadFile(resolvedLoadTarget.value);
   }
 
   mainWindow.webContents.on("did-finish-load", () => {

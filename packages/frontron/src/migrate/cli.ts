@@ -40,6 +40,7 @@ async function run() {
 
   console.log(`[frontron] project: ${result.projectDir}`);
   console.log(`[frontron] dry-run: ${result.dryRun ? "yes" : "no"}`);
+  console.log(`[frontron] template: ${result.template}`);
   if (result.backupDir) {
     console.log(`[frontron] backup: ${result.backupDir}`);
   }

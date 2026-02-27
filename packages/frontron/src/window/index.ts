@@ -3,5 +3,6 @@ export type {
   CreateMainWindowOptions,
   RegisterWindowIpcHandlersOptions,
   WindowIpcChannels,
+  WindowLoadTarget,
   WindowStatePayload,
 } from "./types";

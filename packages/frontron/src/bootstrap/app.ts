@@ -28,6 +28,7 @@ export async function startFrontronApp(
   const isDev = options.isDev ?? process.env.NODE_ENV === "development";
   const includeLegacyWindowChannels = options.includeLegacyWindowChannels ?? true;
   const devServerHost = options.devServerHost ?? "127.0.0.1";
+  const waitForDevServer = options.waitForDevServer ?? true;
 
   if (!app.requestSingleInstanceLock()) {
     app.quit();
@@ -63,12 +64,28 @@ export async function startFrontronApp(
 
     let resolvedDevPort: number | null = null;
     if (isDev) {
-      resolvedDevPort =
-        options.devServerPort ??
-        (options.viteConfigPath ? getPortFromViteConfig(options.viteConfigPath) : null) ??
-        3000;
-      await waitForPortReady(resolvedDevPort, { host: devServerHost });
+      if (options.resolveDevServerPort) {
+        resolvedDevPort = await options.resolveDevServerPort({ app, isDev });
+      } else {
+        resolvedDevPort =
+          options.devServerPort ??
+          (options.viteConfigPath ? getPortFromViteConfig(options.viteConfigPath) : null) ??
+          3000;
+      }
+      if (waitForDevServer) {
+        await waitForPortReady(resolvedDevPort, { host: devServerHost });
+      }
     }
+
+    const resolvedLoadTarget = options.resolveRendererLoadTarget
+      ? await options.resolveRendererLoadTarget({
+          app,
+          isDev,
+          devServerPort: resolvedDevPort,
+          devServerHost,
+          rendererDistPath: options.rendererDistPath,
+        })
+      : undefined;
 
     const windowInstance = createMainWindow({
       isDev,
@@ -77,6 +94,7 @@ export async function startFrontronApp(
       rendererDistPath: options.rendererDistPath,
       devServerHost,
       devServerPort: resolvedDevPort ?? 3000,
+      loadTarget: resolvedLoadTarget,
       ...options.window,
       onDidFinishLoad(window) {
         closeSplashWindow(splashWindow);

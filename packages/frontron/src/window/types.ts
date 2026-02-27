@@ -1,10 +1,20 @@
 import type { BrowserWindow, IpcMain } from "electron";
 
+export type WindowLoadTarget =
+  | {
+      kind: "url";
+      value: string;
+    }
+  | {
+      kind: "file";
+      value: string;
+    };
+
 export interface CreateMainWindowOptions {
   isDev: boolean;
   preloadPath: string;
   iconPath?: string;
-  rendererDistPath: string;
+  rendererDistPath?: string;
   devServerHost?: string;
   devServerPort?: number;
   width?: number;
@@ -14,6 +24,7 @@ export interface CreateMainWindowOptions {
   resizableInDev?: boolean;
   disableContextMenu?: boolean;
   hideOnCloseForMac?: boolean;
+  loadTarget?: WindowLoadTarget;
   onDidFinishLoad?: (window: BrowserWindow) => void;
 }
 

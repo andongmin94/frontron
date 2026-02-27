@@ -1,5 +1,5 @@
 import { App, BrowserWindow } from 'electron';
-import { C as CreateMainWindowOptions } from '../shared/frontron.C2m6cApQ.js';
+import { a as WindowLoadTarget, C as CreateMainWindowOptions } from '../shared/frontron.BNEkugTn.js';
 
 declare function getPortFromViteConfig(viteConfigPath: string): number | null;
 declare function waitForPortReady(port: number, options?: {
@@ -34,6 +34,15 @@ interface StartFrontronAppOptions {
     viteConfigPath?: string;
     devServerPort?: number;
     devServerHost?: string;
+    waitForDevServer?: boolean;
+    resolveDevServerPort?: (context: Pick<FrontronAppContext, "app" | "isDev">) => number | Promise<number>;
+    resolveRendererLoadTarget?: (context: {
+        app: App;
+        isDev: boolean;
+        devServerPort: number | null;
+        devServerHost: string;
+        rendererDistPath: string;
+    }) => WindowLoadTarget | Promise<WindowLoadTarget>;
     includeLegacyWindowChannels?: boolean;
     splash?: false | SplashOptions;
     tray?: false | TrayRuntimeOptions;

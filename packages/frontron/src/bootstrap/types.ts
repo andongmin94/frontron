@@ -1,6 +1,7 @@
 import type { App, BrowserWindow } from "electron";
 
 import type { CreateMainWindowOptions } from "../window";
+import type { WindowLoadTarget } from "../window";
 
 export interface SplashOptions {
   width?: number;
@@ -29,6 +30,19 @@ export interface StartFrontronAppOptions {
   viteConfigPath?: string;
   devServerPort?: number;
   devServerHost?: string;
+  waitForDevServer?: boolean;
+  resolveDevServerPort?: (
+    context: Pick<FrontronAppContext, "app" | "isDev">,
+  ) => number | Promise<number>;
+  resolveRendererLoadTarget?: (
+    context: {
+      app: App;
+      isDev: boolean;
+      devServerPort: number | null;
+      devServerHost: string;
+      rendererDistPath: string;
+    },
+  ) => WindowLoadTarget | Promise<WindowLoadTarget>;
   includeLegacyWindowChannels?: boolean;
   splash?: false | SplashOptions;
   tray?: false | TrayRuntimeOptions;

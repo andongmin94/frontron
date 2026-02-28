@@ -1,15 +1,15 @@
-﻿{
+{
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "outDir": "./.electron",
-    "rootDir": "./electron",
+    "target": "ES2020", // Electron이 지원하는 Node.js 버전에 맞춰 조정
+    "module": "ESNext", // ES 모듈 사용
+    "moduleResolution": "Node",
+    "outDir": "./.electron", // 컴파일된 JS 출력 경로
+    "rootDir": "./electron", // Electron 소스 루트 경로
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["electron/**/*.ts", "electron/**/*.mts"],
+  "include": ["electron/**/*.ts", "electron/**/*.mts"], // 컴파일 대상 파일
   "exclude": ["node_modules"]
 }

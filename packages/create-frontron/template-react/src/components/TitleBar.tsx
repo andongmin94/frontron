@@ -1,6 +1,6 @@
 import * as React from "react";
-import { useEffect, useState } from "react";
-import { Slot } from "radix-ui";
+import { useState, useEffect } from "react";
+import { Slot } from "radix-ui"
 import { cva, type VariantProps } from "class-variance-authority";
 import { Copy, Minus, Square, X } from "lucide-react";
 
@@ -56,66 +56,62 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   },
 );
 
-Button.displayName = "Button";
-
 export default function TitleBar() {
-  const bridge = typeof window !== "undefined" ? window.electron : undefined;
   const [isMaximized, setIsMaximized] = useState(false);
 
+  // 메인 프로세스와 상태 동기화
   useEffect(() => {
-    if (!bridge) {
-      return;
-    }
+    if (typeof electron === "undefined") return;
 
-    bridge
-      .invoke<{ isMaximized: boolean }>("window:state")
-      .then((state) => setIsMaximized(state.isMaximized))
-      .catch(() => {
-        // ignore boot race in early renderer lifecycle
-      });
+    // 초기 상태 요청
+    electron
+      .invoke?.("get-window-state")
+      .then((s: { isMaximized: boolean }) => setIsMaximized(s.isMaximized))
+      .catch(() => {});
 
-    const off = bridge.on("window:maximized-changed", (value) => {
-      setIsMaximized(Boolean(value));
-    });
+    // 이벤트 구독
+    const off = electron.on?.(
+      "window-maximized-changed",
+      (_e: unknown, val: boolean) => setIsMaximized(val),
+    );
 
     return () => {
-      off();
+      if (typeof off === "function") off();
     };
-  }, [bridge]);
+  }, []);
 
-  if (!bridge) {
-    return null;
-  }
+  const minimize = () => electron.send("minimize");
+  const toggleMaximize = () => electron.send("toggle-maximize");
+  const hidden = () => electron.send("hidden");
 
   return (
     <>
-      <div
-        className="fixed top-0 left-0 right-0 flex w-full justify-between bg-neutral-800"
-        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-      >
-        <div className="flex items-center pl-2 select-none">
-          <img src={frontronLogo} alt="frontron" className="size-6" />
-          <span className="ml-2 text-lg text-white">Frontron</span>
-        </div>
+      {typeof electron !== "undefined" && (
         <div
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-          className="flex items-center"
+          className="fixed top-0 left-0 right-0 flex w-full justify-between bg-neutral-800"
+          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         >
-          <Button onClick={() => bridge.send("window:minimize")} size="icon">
-            <Minus className="size-5" />
-          </Button>
-          <Button onClick={() => bridge.send("window:toggle-maximize")} size="icon">
-            {isMaximized ? (
-              <Copy className="size-5" />
-            ) : (
-              <Square className="size-5" />
-            )}
-          </Button>
-          <Button onClick={() => bridge.send("window:hide")} size="icon">
-            <X className="size-5" />
-          </Button>
+          <div className="flex items-center pl-2 select-none">
+            <img src={frontronLogo} alt="mini-cast" className="size-6" />
+            <span className="ml-2 text-lg text-white">프론트론</span>
+          </div>
+          <div
+            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+            className="flex items-center"
+          >
+            <Button onClick={minimize} size="icon">
+              <Minus className="size-5" />
+            </Button>
+            <Button onClick={toggleMaximize} size="icon">
+              {isMaximized ? <Copy className="size-5" /> : <Square className="size-5" />}
+            </Button>
+            <Button onClick={hidden} size="icon">
+              <X className="size-5" />
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
+      {/* 실제 콘텐츠가 타이틀바 뒤에 가리지 않도록 spacer */}
       <div className="h-[40px]" />
     </>
   );

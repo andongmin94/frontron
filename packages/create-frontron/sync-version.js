@@ -1,24 +1,10 @@
-import fs from "node:fs";
+import fs from "fs";
 
-const createPkg = JSON.parse(fs.readFileSync("./package.json", "utf8"));
-const frontronPkgPath = "../frontron/package.json";
-const templatePackagePaths = [
-  "./template-react/package.json",
-  "./template-next/package.json",
-];
+const createPkg = JSON.parse(fs.readFileSync("./package.json", "utf-8"));
+const frontronPkgPath = "../frontron/package.json"; // frontron 위치에 따라 수정
 
-const frontronPkg = JSON.parse(fs.readFileSync(frontronPkgPath, "utf8"));
-frontronPkg.version = createPkg.version;
-fs.writeFileSync(frontronPkgPath, `${JSON.stringify(frontronPkg, null, 2)}\n`);
+const frontronPkg = JSON.parse(fs.readFileSync(frontronPkgPath, "utf-8"));
+frontronPkg.version = createPkg.version; // 버전 동기화
 
-for (const templatePkgPath of templatePackagePaths) {
-  const templatePkg = JSON.parse(fs.readFileSync(templatePkgPath, "utf8"));
-  templatePkg.dependencies = templatePkg.dependencies ?? {};
-  templatePkg.dependencies.frontron = `^${createPkg.version}`;
-  fs.writeFileSync(templatePkgPath, `${JSON.stringify(templatePkg, null, 2)}\n`);
-}
-
-console.log(`Synced frontron version to ${createPkg.version}`);
-console.log(
-  `Synced template dependencies to frontron@^${createPkg.version} (${templatePackagePaths.length} templates)`,
-);
+fs.writeFileSync(frontronPkgPath, JSON.stringify(frontronPkg, null, 2) + "\n");
+console.log(`🔄 frontron 버전을 ${createPkg.version}로 동기화 완료!`);

@@ -8,13 +8,20 @@ import "./App.css";
 
 function App() {
   const [count, setCount] = useState(0);
-  const [runtimeInfo, setRuntimeInfo] = useState("Detecting runtime...");
+  const [nodeInfo, setNodeInfo] = useState("테스트 중...");
 
   useEffect(() => {
-    if (typeof window !== "undefined" && window.electron) {
-      setRuntimeInfo("Frontron preload bridge is connected.");
-    } else {
-      setRuntimeInfo("Running as a pure web renderer (no preload bridge).");
+    // Node.js API 접근 테스트
+    try {
+      // process 객체는 Node.js API의 일부입니다
+      const nodeVersion = process?.versions?.node;
+      const platform = process?.platform;
+
+      setNodeInfo(
+        `Node.js ${nodeVersion}가 사용 가능합니다! (플랫폼: ${platform})`,
+      );
+    } catch (error: any) {
+      setNodeInfo(`Node.js API를 사용할 수 없습니다: ${error.message}`);
     }
   }, []);
 
@@ -27,16 +34,16 @@ function App() {
       </div>
       <h1>Frontron</h1>
       <div className="card">
-        <button onClick={() => setCount((previous) => previous + 1)}>
+        <button onClick={() => setCount((count) => count + 1)}>
           count is {count}
         </button>
         <p>
-          Edit <code>src/App.tsx</code> and save to test HMR.
+          Edit <code>src/App.tsx</code> and save to test HMR
         </p>
       </div>
       <div>
-        <h3>Runtime Check:</h3>
-        <p>{runtimeInfo}</p>
+        <h3>Node.js API 테스트 결과:</h3>
+        <p>{nodeInfo}</p>
       </div>
     </div>
   );

@@ -2,14 +2,9 @@ name: frontron-release
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - ".github/release-0134-trigger"
 
 permissions:
   contents: read
-  issues: write
   id-token: write
 
 concurrency:
@@ -53,30 +48,7 @@ jobs:
         run: npm install --global npm@11.18.0
 
       - name: Verify and publish both packages
-        id: release
-        continue-on-error: true
         run: node release.mjs publish
         env:
           FRONTRON_TRUSTED_PUBLISHING: "1"
           FRONTRON_TEST_ELECTRON_RUNTIME: "1"
-
-      - name: Record release result
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          OUTCOME: ${{ steps.release.outcome }}
-        shell: bash
-        run: |
-          run_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          create_version="$(npm view create-frontron version 2>/dev/null || printf unavailable)"
-          frontron_version="$(npm view frontron version 2>/dev/null || printf unavailable)"
-          gh issue comment 104 --body "Release outcome: ${OUTCOME}\n\nRun: ${run_url}\n\nRegistry versions:\n- create-frontron: ${create_version}\n- frontron: ${frontron_version}"
-          if [ "$OUTCOME" = "success" ] && [ "$create_version" = "0.13.4" ] && [ "$frontron_version" = "0.13.4" ]; then
-            gh issue close 104 --reason completed
-          else
-            gh issue close 104 --reason "not planned"
-          fi
-
-      - name: Preserve release failure status
-        if: steps.release.outcome != 'success'
-        run: exit 1

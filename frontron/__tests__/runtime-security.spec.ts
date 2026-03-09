@@ -192,16 +192,6 @@ export async function waitForUrlReady(url) { return url }
   writeFileSync(join(electronDir, 'dev.js'), 'export function setupDevMenu() {}\n', 'utf8')
   writeFileSync(join(electronDir, 'ipc.js'), 'export function setupIpcHandlers() {}\n', 'utf8')
   writeFileSync(
-    join(electronDir, 'splash.js'),
-    'export function closeSplash() {}\nexport function createSplash() {}\n',
-    'utf8',
-  )
-  writeFileSync(
-    join(electronDir, 'tray.js'),
-    'export function createTray() {}\nexport function destroyTray() {}\n',
-    'utf8',
-  )
-  writeFileSync(
     mainPath,
     transpileRuntimeSource(renderCreateFrontronElectronFile('main.ts'), 'main.ts'),
     'utf8',
@@ -222,11 +212,9 @@ async function importWindowRuntime() {
     join(electronDir, 'main.js'),
     `export const __dirname = ${JSON.stringify(electronDir)}
 export const isDev = false
-export const isQuitting = false
 `,
     'utf8',
   )
-  writeFileSync(join(electronDir, 'splash.js'), 'export function closeSplash() {}\n', 'utf8')
   writeFileSync(
     windowPath,
     transpileRuntimeSource(renderCreateFrontronElectronFile('window.ts'), 'window.ts'),

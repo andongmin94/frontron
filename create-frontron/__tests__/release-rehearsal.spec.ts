@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -60,6 +60,78 @@ function packPackageForReal(packageRoot: string, tempPrefix: string) {
   }
 
   return join(outputDir, filename)
+}
+
+function installRendererProbe(generatedAppRoot: string) {
+  const mainPath = join(generatedAppRoot, 'src', 'electron', 'main.ts')
+  let source = readFileSync(mainPath, 'utf8')
+  const pathImport = 'import path from "node:path"\n'
+  const openWindowSource = `function openMainWindow() {
+  if (!rendererUrl) return
+  createWindow(rendererUrl, setupIpcHandlers)
+}
+`
+
+  if (!source.includes(pathImport) || !source.includes(openWindowSource)) {
+    throw new Error('Generated Electron main source no longer matches the renderer probe contract.')
+  }
+
+  source = source.replace(pathImport, `import fs from "node:fs"\n${pathImport}`)
+  source = source.replace(
+    openWindowSource,
+    `function runRendererProbe() {
+  const outputPath = process.env.FRONTRON_RENDERER_PROBE_PATH?.trim()
+  if (!outputPath || !mainWindow) return
+
+  const capture = async () => {
+    try {
+      const result = await mainWindow?.webContents.executeJavaScript(
+        \`(async () => ({
+          protocol: window.location.protocol,
+          origin: window.location.origin,
+          title: document.title,
+          bodyText: document.body?.innerText ?? "",
+          bridgeType: typeof window.electron,
+          appInfo: typeof window.electron?.getAppInfo === "function"
+            ? await window.electron.getAppInfo()
+            : null,
+        }))()\`,
+        true
+      )
+      fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+      fs.writeFileSync(
+        outputPath,
+        \`\${JSON.stringify({ ok: true, ...result }, null, 2)}\\n\`,
+        "utf8"
+      )
+      app.exit(0)
+    } catch (error) {
+      fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+      fs.writeFileSync(
+        outputPath,
+        \`\${JSON.stringify({ ok: false, error: String(error) }, null, 2)}\\n\`,
+        "utf8"
+      )
+      app.exit(1)
+    }
+  }
+
+  if (mainWindow.webContents.isLoading()) {
+    mainWindow.webContents.once("did-finish-load", () => void capture())
+  } else {
+    void capture()
+  }
+}
+
+function openMainWindow() {
+  if (!rendererUrl) return
+  createWindow(rendererUrl, setupIpcHandlers)
+  runRendererProbe()
+}
+`,
+  )
+
+  writeFileSync(mainPath, source, 'utf8')
 }
 
 function readRendererProbe(probePath: string) {
@@ -154,6 +226,7 @@ test('packed create-frontron generates a buildable template-owned Electron start
   expect(existsSync(join(generatedAppRoot, 'dist'))).toBe(false)
   expect(existsSync(join(generatedAppRoot, '.npmignore'))).toBe(false)
 
+  installRendererProbe(generatedAppRoot)
   runNpm(['install'], generatedAppRoot)
   runNpm(['audit', '--audit-level=moderate'], generatedAppRoot)
   runNpm(['run', 'typecheck'], generatedAppRoot)
@@ -172,19 +245,15 @@ test('packed create-frontron generates a buildable template-owned Electron start
       generatedAppName,
     )
     const probePath = join(rehearsalRoot, 'packaged-renderer-probe.json')
-    const result = spawnSync(
-      'xvfb-run',
-      ['-a', executablePath, '--no-sandbox'],
-      {
-        cwd: generatedAppRoot,
-        encoding: 'utf8',
-        timeout: 60_000,
-        env: {
-          ...process.env,
-          FRONTRON_RENDERER_PROBE_PATH: probePath,
-        },
+    const result = spawnSync('xvfb-run', ['-a', executablePath, '--no-sandbox'], {
+      cwd: generatedAppRoot,
+      encoding: 'utf8',
+      timeout: 60_000,
+      env: {
+        ...process.env,
+        FRONTRON_RENDERER_PROBE_PATH: probePath,
       },
-    )
+    })
 
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0)
     expectHealthyRendererProbe(probePath, 'frontron:')

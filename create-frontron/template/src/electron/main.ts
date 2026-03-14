@@ -1,16 +1,10 @@
-import fs from "fs"
-import path from "path"
-import { fileURLToPath } from "url"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
 import { app, Menu, net, protocol } from "electron"
 
 import { setupDevMenu } from "./dev.js"
 import { setupIpcHandlers } from "./ipc.js"
-import {
-  inferDevUrl,
-  startRendererServer,
-  stopRendererServer,
-  waitForUrlReady,
-} from "./serve.js"
+import { startRendererServer, stopRendererServer } from "./serve.js"
 import { createWindow, mainWindow } from "./window.js"
 
 export const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -85,7 +79,10 @@ function rewriteRendererRequestHeaders(request: Request, targetOrigin: string) {
   if (referer) {
     try {
       const refererUrl = new URL(referer)
-      if (refererUrl.protocol === `${rendererScheme}:` && refererUrl.host === "app") {
+      if (
+        refererUrl.protocol === `${rendererScheme}:` &&
+        refererUrl.host === "app"
+      ) {
         headers.set(
           "referer",
           `${targetOrigin}${refererUrl.pathname}${refererUrl.search}${refererUrl.hash}`
@@ -132,63 +129,22 @@ export async function registerRendererProtocol(rendererTargetUrl: string) {
   })
 }
 
-function runRendererProbe() {
-  const outputPath = process.env.FRONTRON_RENDERER_PROBE_PATH?.trim()
-  if (!outputPath || !mainWindow) return
-
-  const capture = async () => {
-    try {
-      const result = await mainWindow?.webContents.executeJavaScript(
-        `(async () => ({
-          protocol: window.location.protocol,
-          origin: window.location.origin,
-          title: document.title,
-          bodyText: document.body?.innerText ?? "",
-          bridgeType: typeof window.electron,
-          appInfo: typeof window.electron?.getAppInfo === "function"
-            ? await window.electron.getAppInfo()
-            : null,
-        }))()`,
-        true
-      )
-      fs.mkdirSync(path.dirname(outputPath), { recursive: true })
-      fs.writeFileSync(
-        outputPath,
-        `${JSON.stringify({ ok: true, ...result }, null, 2)}\n`,
-        "utf8"
-      )
-      app.exit(0)
-    } catch (error) {
-      fs.mkdirSync(path.dirname(outputPath), { recursive: true })
-      fs.writeFileSync(
-        outputPath,
-        `${JSON.stringify({ ok: false, error: String(error) }, null, 2)}\n`,
-        "utf8"
-      )
-      app.exit(1)
-    }
-  }
-
-  if (mainWindow.webContents.isLoading()) {
-    mainWindow.webContents.once("did-finish-load", () => void capture())
-  } else {
-    void capture()
-  }
-}
-
 function openMainWindow() {
   if (!rendererUrl) return
   createWindow(rendererUrl, setupIpcHandlers)
-  runRendererProbe()
 }
 
 async function initializeApp() {
   await app.whenReady()
 
   if (isDev) {
-    rendererUrl =
-      process.env.ELECTRON_RENDERER_URL?.trim() || (await inferDevUrl())
-    rendererUrl = await waitForUrlReady(rendererUrl)
+    const developmentUrl = process.env.ELECTRON_RENDERER_URL?.trim()
+    if (!developmentUrl) {
+      throw new Error(
+        "ELECTRON_RENDERER_URL is required in development. Start the app with the generated app script."
+      )
+    }
+    rendererUrl = developmentUrl
   } else {
     const rendererTargetUrl = await startRendererServer()
     await registerRendererProtocol(rendererTargetUrl)

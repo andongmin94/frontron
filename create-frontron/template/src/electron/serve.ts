@@ -1,12 +1,13 @@
 import { spawn, type ChildProcess } from "node:child_process"
-import fs from "fs"
-import { request as httpRequest } from "node:http"
-import { request as httpsRequest } from "node:https"
+import fs from "node:fs"
 import { createRequire } from "node:module"
-import path from "path"
-import { fileURLToPath } from "url"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
 
-import { startStaticRendererServer, stopStaticRendererServer } from "./static-server.js"
+import {
+  startStaticRendererServer,
+  stopStaticRendererServer,
+} from "./static-server.js"
 
 const runtimeDir = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(runtimeDir, "../..")
@@ -14,37 +15,23 @@ const require = createRequire(import.meta.url)
 const electronExecutablePath = require("electron") as string
 const { ELECTRON_RUN_AS_NODE: _ignoredElectronRunAsNode, ...childEnv } =
   process.env
+
 let viteDevServer: import("vite").ViteDevServer | null = null
 let electronProcess: ChildProcess | null = null
-let devShutdownPromise: Promise<void> | null = null
 let closeElectronWatcher: (() => void) | null = null
-let closeLauncherWatcher: (() => void) | null = null
-let electronHasExited = false
-let electronRestartPromise: Promise<void> | null = null
-let electronRestartQueued = false
-let hasStartedElectronOnce = false
-let isIntentionallyStoppingElectron = false
-let isRestartingLauncher = false
-let isLauncherRestartScheduled = false
-let launcherRestartTimeout: ReturnType<typeof setTimeout> | null = null
-type PackageJson = {
-  scripts?: Record<string, string>
-}
-type ViteDevServerOptions = {
-  host: string | null
-  port: number | null
-}
+let shutdownPromise: Promise<void> | null = null
+let restartPromise: Promise<void> = Promise.resolve()
+let restartQueued = false
+let stoppingElectron = false
+let shuttingDown = false
 
 function resolveDevRendererUrl(server: import("vite").ViteDevServer) {
   const localUrl =
     server.resolvedUrls?.local[0] ?? server.resolvedUrls?.network?.[0]
 
-  if (localUrl) {
-    return localUrl
-  }
+  if (localUrl) return localUrl
 
   const address = server.httpServer?.address()
-
   if (typeof address === "object" && address !== null) {
     return `http://localhost:${address.port}`
   }
@@ -53,35 +40,43 @@ function resolveDevRendererUrl(server: import("vite").ViteDevServer) {
 }
 
 async function stopElectronProcess() {
-  if (!electronProcess || electronHasExited) {
-    electronProcess = null
-    return
-  }
-
   const child = electronProcess
-  isIntentionallyStoppingElectron = true
+  electronProcess = null
+
+  if (!child || child.exitCode !== null || child.signalCode !== null) return
+
+  stoppingElectron = true
 
   await new Promise<void>((resolve) => {
+    let settled = false
+    const finish = () => {
+      if (settled) return
+      settled = true
+      clearTimeout(forceKillTimer)
+      clearTimeout(abandonTimer)
+      resolve()
+    }
     const forceKillTimer = setTimeout(() => {
       child.kill("SIGKILL")
     }, 5_000)
+    const abandonTimer = setTimeout(finish, 7_000)
 
-    child.once("exit", () => {
-      clearTimeout(forceKillTimer)
-      resolve()
-    })
+    child.once("exit", finish)
 
-    child.kill("SIGTERM")
+    try {
+      if (!child.kill("SIGTERM")) finish()
+    } catch {
+      finish()
+    }
   })
 
-  electronProcess = null
-  electronHasExited = true
-  isIntentionallyStoppingElectron = false
+  stoppingElectron = false
 }
 
 function spawnElectronProcess(rendererUrl: string) {
-  electronHasExited = false
-  electronProcess = spawn(electronExecutablePath, ["."], {
+  if (shuttingDown) return
+
+  const child = spawn(electronExecutablePath, ["."], {
     cwd: rootDir,
     stdio: "inherit",
     env: {
@@ -90,78 +85,53 @@ function spawnElectronProcess(rendererUrl: string) {
       ELECTRON_RENDERER_URL: rendererUrl,
     },
   })
+  electronProcess = child
 
-  electronProcess.once("error", async (error) => {
+  child.once("error", (error) => {
     console.error("[template] Failed to start Electron.", error)
-    await shutdownDevLauncher(1)
+    void shutdownDevLauncher(1)
   })
 
-  electronProcess.once("exit", async (code, signal) => {
-    electronHasExited = true
-
-    if (isIntentionallyStoppingElectron) {
-      return
-    }
-
-    electronProcess = null
+  child.once("exit", (code, signal) => {
+    if (electronProcess === child) electronProcess = null
+    if (stoppingElectron || shuttingDown) return
 
     if (signal) {
-      await shutdownDevLauncher(1)
+      console.error(`[template] Electron exited after ${signal}.`)
+      void shutdownDevLauncher(1)
       return
     }
 
-    await shutdownDevLauncher(code ?? 0)
+    void shutdownDevLauncher(code ?? 0)
   })
 }
 
-async function restartElectronProcess(rendererUrl: string) {
-  if (isRestartingLauncher || isLauncherRestartScheduled) {
-    return Promise.resolve()
-  }
+function queueElectronRestart(rendererUrl: string) {
+  if (shuttingDown || restartQueued) return
+  restartQueued = true
 
-  if (electronRestartPromise) {
-    electronRestartQueued = true
-    return electronRestartPromise
-  }
-
-  electronRestartPromise = (async () => {
-    do {
-      electronRestartQueued = false
-
-      if (hasStartedElectronOnce) {
-        console.log("[template] Electron sources changed. Restarting app...")
-        await stopElectronProcess()
-      }
-
-      spawnElectronProcess(rendererUrl)
-      hasStartedElectronOnce = true
-    } while (electronRestartQueued)
-  })().finally(() => {
-    electronRestartPromise = null
-  })
-
-  return electronRestartPromise
-}
-
-async function shutdownDevLauncher(exitCode = 0, shouldKillElectron = false) {
-  if (devShutdownPromise) {
-    return devShutdownPromise
-  }
-
-  devShutdownPromise = (async () => {
-    if (closeLauncherWatcher) {
-      closeLauncherWatcher()
-      closeLauncherWatcher = null
-    }
-
-    if (closeElectronWatcher) {
-      closeElectronWatcher()
-      closeElectronWatcher = null
-    }
-
-    if (shouldKillElectron) {
+  restartPromise = restartPromise
+    .then(async () => {
+      restartQueued = false
+      if (shuttingDown) return
       await stopElectronProcess()
-    }
+      spawnElectronProcess(rendererUrl)
+    })
+    .catch((error) => {
+      restartQueued = false
+      console.error("[template] Failed to restart Electron.", error)
+      void shutdownDevLauncher(1)
+    })
+}
+
+async function shutdownDevLauncher(exitCode = 0) {
+  if (shutdownPromise) return shutdownPromise
+
+  shuttingDown = true
+  shutdownPromise = (async () => {
+    closeElectronWatcher?.()
+    closeElectronWatcher = null
+    await stopElectronProcess()
 
     if (viteDevServer) {
       await viteDevServer.close().catch((error) => {
@@ -173,393 +143,14 @@ async function shutdownDevLauncher(exitCode = 0, shouldKillElectron = false) {
     process.exit(exitCode)
   })()
 
-  return devShutdownPromise
-}
-
-async function restartDevLauncher(reason: string) {
-  if (isRestartingLauncher) {
-    return
-  }
-
-  isRestartingLauncher = true
-  console.log(`[template] ${reason}. Restarting dev launcher...`)
-
-  if (closeLauncherWatcher) {
-    closeLauncherWatcher()
-    closeLauncherWatcher = null
-  }
-
-  if (closeElectronWatcher) {
-    closeElectronWatcher()
-    closeElectronWatcher = null
-  }
-
-  await stopElectronProcess()
-
-  if (viteDevServer) {
-    await viteDevServer.close().catch((error) => {
-      console.error("[template] Failed to close the Vite dev server.", error)
-    })
-    viteDevServer = null
-  }
-
-  const launcherProcess = spawn(process.execPath, process.argv.slice(1), {
-    cwd: rootDir,
-    stdio: "inherit",
-    env: childEnv,
-  })
-
-  launcherProcess.once("error", (error) => {
-    console.error("[template] Failed to restart the dev launcher.", error)
-    process.exit(1)
-  })
-
-  process.exit(0)
-}
-
-function parseJsonFile<T>(filePath: string) {
-  try {
-    return JSON.parse(fs.readFileSync(filePath, "utf-8")) as T
-  } catch {
-    return null
-  }
-}
-
-function normalizeQuotedValue(value: string) {
-  return value
-    .replace(/^(["'`])/, "")
-    .replace(/(["'`])$/, "")
-    .trim()
-}
-
-function normalizeClientHost(host: string | null | undefined) {
-  const normalizedHost = normalizeQuotedValue(host ?? "").replace(
-    /^\[|\]$/g,
-    ""
-  )
-
-  if (
-    !normalizedHost ||
-    normalizedHost === "0.0.0.0" ||
-    normalizedHost === "::" ||
-    normalizedHost === "::0" ||
-    normalizedHost.toLowerCase() === "true"
-  ) {
-    return "localhost"
-  }
-
-  return normalizedHost
-}
-
-function formatUrlHost(host: string) {
-  return host.includes(":") ? `[${host}]` : host
-}
-
-function inferEnvHost() {
-  return process.env.HOST ? normalizeClientHost(process.env.HOST) : null
-}
-
-function parsePortValue(value: string | null | undefined) {
-  if (!value) return null
-
-  const port = Number.parseInt(value, 10)
-  return Number.isInteger(port) && port > 0 && port <= 65_535 ? port : null
-}
-
-function getPackageScripts(packageJsonPath: string) {
-  const packageJson = parseJsonFile<PackageJson>(packageJsonPath)
-  const scripts = packageJson?.scripts ?? {}
-  const commands: string[] = []
-
-  if (typeof scripts.app === "string") commands.push(scripts.app)
-  if (typeof scripts.dev === "string") commands.push(scripts.dev)
-
-  return commands
-}
-
-function inferCommandPort(command: string) {
-  const patterns = [
-    /(?:^|[\s"'`])PORT=(\d{1,5})(?=$|[\s"'`&])/i,
-    /(?:^|[\s"'`])set\s+PORT=(\d{1,5})(?=$|[\s"'`&])/i,
-    /(?:^|[\s"'`])--port(?:\s+|=)(\d{1,5})(?=$|[\s"'`&])/i,
-    /(?:^|[\s"'`])-p(?:\s+|=)?(\d{1,5})(?=$|[\s"'`&])/i,
-  ]
-
-  for (const pattern of patterns) {
-    const match = command.match(pattern)
-    const port = parsePortValue(match?.[1])
-
-    if (port !== null) {
-      return port
-    }
-  }
-
-  return null
-}
-
-function inferCommandHost(command: string) {
-  const patterns = [
-    /(?:^|[\s"'`])HOST=([^\s"'`&]+)/i,
-    /(?:^|[\s"'`])set\s+HOST=([^\s"'`&]+)/i,
-    /(?:^|[\s"'`])--hostname(?:\s+|=)([^\s"'`&]+)/i,
-    /(?:^|[\s"'`])--host(?:\s+|=)([^\s"'`&]+)/i,
-  ]
-
-  for (const pattern of patterns) {
-    const match = command.match(pattern)
-    const host = match?.[1]
-
-    if (host) {
-      return normalizeClientHost(host)
-    }
-  }
-
-  return null
-}
-
-function getViteServerBlock(configPath: string) {
-  try {
-    if (!fs.existsSync(configPath)) {
-      return null
-    }
-
-    const configContent = fs.readFileSync(configPath, "utf-8")
-    return configContent.match(/server\s*:\s*\{([\s\S]*?)\}/)?.[1] ?? null
-  } catch {
-    return null
-  }
-}
-
-function inferVitePort(configPath: string) {
-  const serverBlock = getViteServerBlock(configPath)
-  return parsePortValue(serverBlock?.match(/port\s*:\s*(\d{1,5})/)?.[1])
-}
-
-function inferViteHost(configPath: string) {
-  const serverBlock = getViteServerBlock(configPath)
-  const match = serverBlock?.match(
-    /host\s*:\s*(?:"([^"]+)"|'([^']+)'|`([^`]+)`|([A-Za-z0-9_.:-]+))/
-  )
-  const host = match?.slice(1).find(Boolean)
-
-  return host ? normalizeClientHost(host) : null
-}
-
-function normalizeResolvedViteHost(host: boolean | string | undefined) {
-  if (typeof host === "string") {
-    return normalizeClientHost(host)
-  }
-
-  if (host === true) {
-    return "localhost"
-  }
-
-  return null
-}
-
-async function resolveViteDevServerOptions(
-  configPath: string,
-  portOverride: number | null,
-  hostOverride: string | null
-) {
-  try {
-    const { resolveConfig } = await import("vite")
-    const resolvedConfig = await resolveConfig(
-      {
-        configFile: configPath,
-        mode: "development",
-        server: {
-          host: hostOverride ?? undefined,
-          port: portOverride ?? undefined,
-        },
-      },
-      "serve"
-    )
-
-    return {
-      host: normalizeResolvedViteHost(resolvedConfig.server.host),
-      port: resolvedConfig.server.port ?? null,
-    } satisfies ViteDevServerOptions
-  } catch {
-    return null
-  }
-}
-
-function isUrlReady(urlString: string, timeoutMs = 1000) {
-  return new Promise<boolean>((resolve) => {
-    const url = new URL(urlString)
-    const request = (url.protocol === "https:" ? httpsRequest : httpRequest)(
-      url,
-      {
-        method: "GET",
-        timeout: timeoutMs,
-        headers: {
-          Accept: "text/html",
-        },
-      },
-      (response) => {
-        response.resume()
-        const statusCode = response.statusCode ?? 0
-        resolve(statusCode >= 200 && statusCode < 400)
-      }
-    )
-
-    request.once("timeout", () => {
-      request.destroy()
-      resolve(false)
-    })
-
-    request.once("error", () => {
-      resolve(false)
-    })
-
-    request.end()
-  })
-}
-
-function createLoopbackUrlCandidates(urlString: string) {
-  try {
-    const url = new URL(urlString)
-    const candidates = [urlString]
-
-    if (url.hostname === "127.0.0.1") {
-      url.hostname = "localhost"
-      candidates.push(url.toString())
-    } else if (url.hostname === "localhost") {
-      url.hostname = "127.0.0.1"
-      candidates.push(url.toString())
-    }
-
-    return [...new Set(candidates)]
-  } catch {
-    return [urlString]
-  }
-}
-
-export async function waitForUrlReady(
-  urlString: string,
-  timeoutMs = 30_000,
-  intervalMs = 250
-) {
-  const startedAt = Date.now()
-  const candidates = createLoopbackUrlCandidates(urlString)
-
-  while (Date.now() - startedAt < timeoutMs) {
-    for (const candidate of candidates) {
-      if (await isUrlReady(candidate)) return candidate
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, intervalMs))
-  }
-
-  throw new Error(
-    `Timed out waiting for dev server on ${candidates.join(" or ")}`
-  )
-}
-
-export async function inferDevUrl() {
-  const explicitUrl = process.env.ELECTRON_RENDERER_URL?.trim()
-
-  if (explicitUrl) {
-    return explicitUrl
-  }
-
-  const packageJsonPath = path.join(runtimeDir, "../../package.json")
-  const viteConfigPath = path.join(runtimeDir, "../../vite.config.ts")
-  const commands = getPackageScripts(packageJsonPath)
-  const commandPort =
-    parsePortValue(process.env.PORT) ??
-    commands.map(inferCommandPort).find((value) => value !== null) ??
-    null
-  const commandHost =
-    inferEnvHost() ??
-    commands.map(inferCommandHost).find((value) => value !== null) ??
-    null
-  const viteServerOptions = await resolveViteDevServerOptions(
-    viteConfigPath,
-    commandPort,
-    commandHost
-  )
-  const port =
-    commandPort ??
-    viteServerOptions?.port ??
-    inferVitePort(viteConfigPath) ??
-    5173
-  const host =
-    commandHost ??
-    viteServerOptions?.host ??
-    inferViteHost(viteConfigPath) ??
-    "localhost"
-
-  return `http://${formatUrlHost(host)}:${port}`
-}
-
-function watchLauncherSources() {
-  const runtimeFiles = new Set(["serve.ts"])
-  const rootFiles = new Set([
-    "package.json",
-    "tsconfig.electron.json",
-    "vite.config.ts",
-  ])
-
-  const scheduleRestart = (reason: string) => {
-    if (isRestartingLauncher || isLauncherRestartScheduled) {
-      return
-    }
-
-    isLauncherRestartScheduled = true
-
-    if (launcherRestartTimeout) {
-      clearTimeout(launcherRestartTimeout)
-    }
-
-    launcherRestartTimeout = setTimeout(() => {
-      launcherRestartTimeout = null
-      isLauncherRestartScheduled = false
-      void restartDevLauncher(reason)
-    }, 100)
-  }
-
-  const runtimeWatcher = fs.watch(runtimeDir, (_eventType, fileName) => {
-    const normalizedFileName = fileName?.toString()
-
-    if (!normalizedFileName || !runtimeFiles.has(normalizedFileName)) {
-      return
-    }
-
-    scheduleRestart(
-      `Detected launcher change in src/electron/${normalizedFileName}`
-    )
-  })
-
-  const rootWatcher = fs.watch(rootDir, (_eventType, fileName) => {
-    const normalizedFileName = fileName?.toString()
-
-    if (!normalizedFileName || !rootFiles.has(normalizedFileName)) {
-      return
-    }
-
-    scheduleRestart(
-      `Detected launcher dependency change in ${normalizedFileName}`
-    )
-  })
-
-  closeLauncherWatcher = () => {
-    if (launcherRestartTimeout) {
-      clearTimeout(launcherRestartTimeout)
-      launcherRestartTimeout = null
-    }
-
-    runtimeWatcher.close()
-    rootWatcher.close()
-  }
+  return shutdownPromise
 }
 
 async function watchElectronSources(rendererUrl: string) {
   const ts = await import("typescript")
   const configPath = path.join(rootDir, "tsconfig.electron.json")
-  const formatHost = {
-    getCanonicalFileName: (fileName: string) => fileName,
+  const formatHost: import("typescript").FormatDiagnosticsHost = {
+    getCanonicalFileName: (fileName) => fileName,
     getCurrentDirectory: () => ts.sys.getCurrentDirectory(),
     getNewLine: () => ts.sys.newLine,
   }
@@ -574,13 +165,10 @@ async function watchElectronSources(rendererUrl: string) {
       ts.sys.newLine
     )
 
-    if (message.includes("Found 0 errors")) {
-      return
+    if (!message.includes("Found 0 errors")) {
+      console.log(`[template] ${message}`)
     }
-
-    console.log(`[template] ${message}`)
   }
-
   const host = ts.createWatchCompilerHost(
     configPath,
     {},
@@ -589,18 +177,14 @@ async function watchElectronSources(rendererUrl: string) {
     reportDiagnostic,
     reportWatchStatusChanged
   )
-  const originalAfterProgramCreate = host.afterProgramCreate
+  const afterProgramCreate = host.afterProgramCreate
 
   host.afterProgramCreate = (builderProgram) => {
-    originalAfterProgramCreate?.(builderProgram)
+    afterProgramCreate?.(builderProgram)
 
-    const diagnostics = ts.getPreEmitDiagnostics(builderProgram.getProgram())
-
-    if (diagnostics.length > 0) {
-      return
+    if (ts.getPreEmitDiagnostics(builderProgram.getProgram()).length === 0) {
+      queueElectronRestart(rendererUrl)
     }
-
-    void restartElectronProcess(rendererUrl)
   }
 
   const watcher = ts.createWatchProgram(host)
@@ -609,24 +193,19 @@ async function watchElectronSources(rendererUrl: string) {
 
 export async function runDevApp() {
   if (!fs.existsSync(electronExecutablePath)) {
-    throw new Error(
-      `Electron executable not found at ${electronExecutablePath}.`
-    )
+    throw new Error(`Electron executable not found at ${electronExecutablePath}.`)
   }
 
-  const { createServer: createViteServer } = await import("vite")
-
-  viteDevServer = await createViteServer({
+  const { createServer } = await import("vite")
+  viteDevServer = await createServer({
     root: rootDir,
     configFile: path.join(rootDir, "vite.config.ts"),
     clearScreen: false,
   })
-
   await viteDevServer.listen()
   viteDevServer.printUrls()
 
   const rendererUrl = resolveDevRendererUrl(viteDevServer)
-  watchLauncherSources()
   await watchElectronSources(rendererUrl)
 }
 
@@ -640,13 +219,13 @@ export async function stopRendererServer() {
 
 if (process.argv.includes("--dev-app")) {
   for (const signal of ["SIGINT", "SIGTERM"]) {
-    process.once(signal, async () => {
-      await shutdownDevLauncher(0, true)
+    process.once(signal, () => {
+      void shutdownDevLauncher(0)
     })
   }
 
-  void runDevApp().catch(async (error) => {
+  void runDevApp().catch((error) => {
     console.error("[template] Failed to start the development app.", error)
-    await shutdownDevLauncher(1, true)
+    void shutdownDevLauncher(1)
   })
 }

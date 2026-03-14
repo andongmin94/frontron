@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs"
-import path from "path"
+import path from "node:path"
 import { BrowserWindow, shell } from "electron"
 
 import { __dirname, isDev } from "./main.js"
@@ -66,10 +66,13 @@ export function createWindow(rendererUrl: string, beforeLoad?: () => void) {
   })
 
   beforeLoad?.()
-  void mainWindow.loadURL(rendererUrl)
+  void mainWindow.loadURL(rendererUrl).catch((error) => {
+    console.error(`Failed to load renderer at ${rendererUrl}:`, error)
+    mainWindow?.show()
+  })
 
   mainWindow.webContents.on("did-finish-load", () => {
-    if (!process.env.FRONTRON_RENDERER_PROBE_PATH) mainWindow?.show()
+    mainWindow?.show()
 
     if (isDev) {
       void mainWindow?.webContents

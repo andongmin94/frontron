@@ -24,11 +24,21 @@ import {
 } from '../src/transaction-journal'
 
 const tempDirs: string[] = []
+const deadProcessId = 2_147_483_647
 
 function createProject(label: string) {
   const root = mkdtempSync(join(tmpdir(), `frontron-transaction-${label}-`))
   tempDirs.push(root)
   return root
+}
+
+function markJournalOwnerDead(root: string) {
+  const journalPath = join(root, TRANSACTION_JOURNAL_PATH)
+  const lines = readFileSync(journalPath, 'utf8').split(/\r?\n/)
+  const header = JSON.parse(lines[0] ?? '') as { processId: number }
+  header.processId = deadProcessId
+  lines[0] = JSON.stringify(header)
+  writeFileSync(journalPath, lines.join('\n'), 'utf8')
 }
 
 afterEach(() => {
@@ -81,8 +91,39 @@ test('commit keeps applied changes and removes the journal', () => {
   expect(existsSync(join(root, TRANSACTION_JOURNAL_PATH))).toBe(false)
 })
 
-test('a later command restores an interrupted transaction', () => {
+test('a later command restores only files mutated by an interrupted transaction', () => {
   const root = createProject('recovery')
+  const changedPath = join(root, 'package.json')
+  const untouchedPath = join(root, 'tsconfig.json')
+  writeFileSync(changedPath, 'before\n')
+  writeFileSync(untouchedPath, 'planned\n')
+
+  const transaction = beginTransaction(root, 'clean', [
+    {
+      path: changedPath,
+      safetyRoot: root,
+      expectedHash: createTransactionSourceHash('before\n'),
+    },
+    {
+      path: untouchedPath,
+      safetyRoot: root,
+      expectedHash: createTransactionSourceHash('planned\n'),
+    },
+  ])
+  writeTransactionFile(transaction, changedPath, 'partial\n', root)
+  writeFileSync(untouchedPath, 'user edit after crash\n')
+  markJournalOwnerDead(root)
+
+  const result = recoverPendingTransaction(root)
+
+  expect(result).toEqual({ recovered: true, operation: 'clean' })
+  expect(readFileSync(changedPath, 'utf8')).toBe('before\n')
+  expect(readFileSync(untouchedPath, 'utf8')).toBe('user edit after crash\n')
+  expect(existsSync(join(root, TRANSACTION_JOURNAL_PATH))).toBe(false)
+})
+
+test('recovery refuses to interfere with a transaction owned by a live process', () => {
+  const root = createProject('active')
   const filePath = join(root, 'package.json')
   writeFileSync(filePath, 'before\n')
 
@@ -95,11 +136,9 @@ test('a later command restores an interrupted transaction', () => {
   ])
   writeTransactionFile(transaction, filePath, 'partial\n', root)
 
-  const result = recoverPendingTransaction(root)
-
-  expect(result).toEqual({ recovered: true, operation: 'clean' })
-  expect(readFileSync(filePath, 'utf8')).toBe('before\n')
-  expect(existsSync(join(root, TRANSACTION_JOURNAL_PATH))).toBe(false)
+  expect(() => recoverPendingTransaction(root)).toThrow('still active')
+  expect(readFileSync(filePath, 'utf8')).toBe('partial\n')
+  rollbackTransaction(transaction)
 })
 
 test('begin rejects a source that changed after planning', () => {
@@ -120,7 +159,7 @@ test('begin rejects a source that changed after planning', () => {
   expect(existsSync(join(root, TRANSACTION_JOURNAL_PATH))).toBe(false)
 })
 
-test('mutation rejects an external edit and rollback restores the snapshot', () => {
+test('mutation rejects an external edit and rollback preserves the unmutated edit', () => {
   const root = createProject('external-edit')
   const filePath = join(root, 'package.json')
   writeFileSync(filePath, 'before\n')
@@ -139,7 +178,7 @@ test('mutation rejects an external edit and rollback restores the snapshot', () 
   )
 
   rollbackTransaction(transaction)
-  expect(readFileSync(filePath, 'utf8')).toBe('before\n')
+  expect(readFileSync(filePath, 'utf8')).toBe('external\n')
 })
 
 test('rollback recreates an empty directory removed by clean', () => {

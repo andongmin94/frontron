@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import {
+  appendFileSync,
   chmodSync,
   existsSync,
   lstatSync,
@@ -35,11 +36,16 @@ type TransactionSnapshot = {
   mode: number | null
 }
 
-type TransactionJournal = {
-  schemaVersion: 1
+type TransactionJournalHeader = {
+  schemaVersion: 2
   transactionId: string
+  processId: number
   operation: TransactionOperation
   snapshots: TransactionSnapshot[]
+}
+
+type TransactionJournal = TransactionJournalHeader & {
+  mutatedPaths: Set<string>
 }
 
 export type TransactionHandle = {
@@ -127,7 +133,6 @@ function snapshotTarget(projectRoot: string, target: TransactionTarget): Transac
       if (!stats.isFile()) {
         throw new Error(`Transaction target is not a regular file: ${path}`)
       }
-
       if (stats.nlink !== 1) {
         throw new Error(`Transaction target must have exactly one hard link: ${path}`)
       }
@@ -211,17 +216,15 @@ function validateSnapshot(projectRoot: string, value: unknown): TransactionSnaps
   }
 }
 
-function readJournal(projectRoot: string): TransactionJournal | null {
-  const journalPath = resolve(projectRoot, TRANSACTION_JOURNAL_PATH)
-  if (!existsSync(journalPath)) return null
-  assertProjectPathSafe(projectRoot, journalPath, 'Transaction journal')
-
-  const value = JSON.parse(readFileSync(journalPath, 'utf8')) as unknown
+function parseJournalHeader(projectRoot: string, line: string): TransactionJournalHeader {
+  const value = JSON.parse(line) as unknown
 
   if (
     !isRecord(value) ||
-    value.schemaVersion !== 1 ||
+    value.schemaVersion !== 2 ||
     typeof value.transactionId !== 'string' ||
+    !Number.isInteger(value.processId) ||
+    Number(value.processId) <= 0 ||
     (value.operation !== 'init' && value.operation !== 'clean') ||
     !Array.isArray(value.snapshots)
   ) {
@@ -236,11 +239,55 @@ function readJournal(projectRoot: string): TransactionJournal | null {
   }
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     transactionId: value.transactionId,
+    processId: Number(value.processId),
     operation: value.operation,
     snapshots,
   }
+}
+
+function readJournal(projectRoot: string): TransactionJournal | null {
+  const journalPath = resolve(projectRoot, TRANSACTION_JOURNAL_PATH)
+  if (!existsSync(journalPath)) return null
+  assertProjectPathSafe(projectRoot, journalPath, 'Transaction journal')
+
+  const lines = readFileSync(journalPath, 'utf8').split(/\r?\n/)
+  const headerLine = lines[0]
+  if (!headerLine) throw new Error('The transaction journal is empty.')
+
+  const header = parseJournalHeader(projectRoot, headerLine)
+  const snapshotPaths = new Set(header.snapshots.map((snapshot) => snapshot.path))
+  const mutatedPaths = new Set<string>()
+  let lastContentLine = lines.length - 1
+  while (lastContentLine > 0 && !lines[lastContentLine]?.trim()) {
+    lastContentLine -= 1
+  }
+
+  for (let index = 1; index <= lastContentLine; index += 1) {
+    const line = lines[index]?.trim()
+    if (!line) continue
+
+    let value: unknown
+    try {
+      value = JSON.parse(line) as unknown
+    } catch {
+      if (index === lastContentLine) break
+      throw new Error('The transaction journal contains an invalid mutation record.')
+    }
+
+    if (!isRecord(value) || typeof value.mutatedPath !== 'string') {
+      throw new Error('The transaction journal contains an invalid mutation record.')
+    }
+
+    const path = resolve(value.mutatedPath)
+    if (!snapshotPaths.has(path)) {
+      throw new Error(`The transaction journal records an unplanned mutation: ${path}`)
+    }
+    mutatedPaths.add(path)
+  }
+
+  return { ...header, mutatedPaths }
 }
 
 function getHandleSnapshot(
@@ -268,15 +315,10 @@ function assertCurrentMatchesSnapshot(snapshot: TransactionSnapshot, label: stri
     return
   }
 
-  if (!exists) {
-    throw new Error(`${label} disappeared after the transaction started.`)
-  }
+  if (!exists) throw new Error(`${label} disappeared after the transaction started.`)
 
   const stats = lstatSync(snapshot.path)
-
-  if (stats.isSymbolicLink()) {
-    throw new Error(`${label} became a symbolic link.`)
-  }
+  if (stats.isSymbolicLink()) throw new Error(`${label} became a symbolic link.`)
 
   if (snapshot.kind === 'directory') {
     if (!stats.isDirectory()) throw new Error(`${label} is no longer a directory.`)
@@ -303,12 +345,10 @@ function restoreFileSnapshot(projectRoot: string, snapshot: TransactionSnapshot)
 
   if (!snapshot.existed) {
     if (!existsSync(snapshot.path)) return
-
     const stats = lstatSync(snapshot.path)
     if (!stats.isFile() || stats.isSymbolicLink()) {
       throw new Error(`Cannot remove unexpected recovery target: ${snapshot.path}`)
     }
-
     unlinkSync(snapshot.path)
     return
   }
@@ -349,22 +389,32 @@ function restoreDirectorySnapshot(projectRoot: string, snapshot: TransactionSnap
       }
       return
     }
-
     mkdirSync(snapshot.path, { recursive: true })
     return
   }
 
   if (!existsSync(snapshot.path)) return
   const stats = lstatSync(snapshot.path)
-
   if (!stats.isDirectory() || stats.isSymbolicLink()) {
     throw new Error(`Cannot remove unexpected recovery directory: ${snapshot.path}`)
   }
-
   rmdirSync(snapshot.path)
 }
 
-function restoreSnapshots(projectRoot: string, snapshots: TransactionSnapshot[]) {
+function snapshotsToRestore(journal: TransactionJournal) {
+  const mutatedPaths = [...journal.mutatedPaths]
+
+  return journal.snapshots.filter(
+    (snapshot) =>
+      journal.mutatedPaths.has(snapshot.path) ||
+      (snapshot.kind === 'directory' &&
+        mutatedPaths.some((mutatedPath) => isInsideDirectory(snapshot.path, mutatedPath))),
+  )
+}
+
+function restoreJournal(projectRoot: string, journal: TransactionJournal) {
+  const snapshots = snapshotsToRestore(journal)
+
   for (const snapshot of snapshots.filter((entry) => entry.kind === 'file')) {
     restoreFileSnapshot(projectRoot, snapshot)
   }
@@ -380,12 +430,38 @@ function restoreSnapshots(projectRoot: string, snapshots: TransactionSnapshot[])
 
 function removeJournal(projectRoot: string, transactionId: string) {
   const journal = readJournal(projectRoot)
-
   if (!journal || journal.transactionId !== transactionId) {
     throw new Error('The active transaction journal changed unexpectedly.')
   }
-
   unlinkSync(resolve(projectRoot, TRANSACTION_JOURNAL_PATH))
+}
+
+function markMutation(handle: TransactionHandle, snapshot: TransactionSnapshot) {
+  if (handle.mutatedTargets.has(snapshot.path)) return
+
+  const journal = readJournal(handle.projectRoot)
+  if (!journal || journal.transactionId !== handle.transactionId) {
+    throw new Error('The active transaction journal changed unexpectedly.')
+  }
+
+  appendFileSync(
+    handle.journalPath,
+    `${JSON.stringify({ mutatedPath: snapshot.path })}\n`,
+    'utf8',
+  )
+  handle.mutatedTargets.add(snapshot.path)
+}
+
+function isProcessRunning(processId: number) {
+  if (processId === process.pid) return true
+
+  try {
+    process.kill(processId, 0)
+    return true
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    return code === 'EPERM'
+  }
 }
 
 export function beginTransaction(
@@ -436,14 +512,15 @@ export function beginTransaction(
   const transactionId = randomUUID()
   const journalPath = resolve(projectRoot, TRANSACTION_JOURNAL_PATH)
   assertProjectPathSafe(projectRoot, journalPath, 'Transaction journal')
-  const journal: TransactionJournal = {
-    schemaVersion: 1,
+  const header: TransactionJournalHeader = {
+    schemaVersion: 2,
     transactionId,
+    processId: process.pid,
     operation,
     snapshots: [...snapshots.values()],
   }
 
-  writeFileSync(journalPath, `${JSON.stringify(journal, null, 2)}\n`, {
+  writeFileSync(journalPath, `${JSON.stringify(header)}\n`, {
     encoding: 'utf8',
     flag: 'wx',
     mode: 0o600,
@@ -465,11 +542,13 @@ export function writeTransactionFile(
   safetyRootValue: string,
 ) {
   const snapshot = getHandleSnapshot(handle, targetPathValue, safetyRootValue)
-  if (snapshot.kind !== 'file')
+  if (snapshot.kind !== 'file') {
     throw new Error(`Transaction target is not a file: ${snapshot.path}`)
+  }
 
   if (!handle.mutatedTargets.has(snapshot.path)) {
     assertCurrentMatchesSnapshot(snapshot, 'Transaction write target')
+    markMutation(handle, snapshot)
   }
 
   mkdirSync(dirname(snapshot.path), { recursive: true })
@@ -484,7 +563,6 @@ export function writeTransactionFile(
     content,
     snapshot.mode === null ? undefined : { mode: snapshot.mode },
   )
-  handle.mutatedTargets.add(snapshot.path)
 }
 
 export function removeTransactionFile(
@@ -493,17 +571,19 @@ export function removeTransactionFile(
   safetyRootValue: string,
 ) {
   const snapshot = getHandleSnapshot(handle, targetPathValue, safetyRootValue)
-  if (snapshot.kind !== 'file')
+  if (snapshot.kind !== 'file') {
     throw new Error(`Transaction target is not a file: ${snapshot.path}`)
-  if (!snapshot.existed)
+  }
+  if (!snapshot.existed) {
     throw new Error(`Transaction delete target did not exist: ${snapshot.path}`)
+  }
 
   if (!handle.mutatedTargets.has(snapshot.path)) {
     assertCurrentMatchesSnapshot(snapshot, 'Transaction delete target')
+    markMutation(handle, snapshot)
   }
 
   unlinkSync(snapshot.path)
-  handle.mutatedTargets.add(snapshot.path)
 }
 
 export function assertTransactionTargetUnchanged(
@@ -526,12 +606,11 @@ export function commitTransaction(handle: TransactionHandle) {
 
 export function rollbackTransaction(handle: TransactionHandle) {
   const journal = readJournal(handle.projectRoot)
-
   if (!journal || journal.transactionId !== handle.transactionId) {
     throw new Error('The active transaction journal does not belong to this transaction.')
   }
 
-  restoreSnapshots(handle.projectRoot, journal.snapshots)
+  restoreJournal(handle.projectRoot, journal)
   removeJournal(handle.projectRoot, handle.transactionId)
 }
 
@@ -540,11 +619,15 @@ export function recoverPendingTransaction(projectRootValue: string): Transaction
   assertRegularDirectory(projectRoot, 'Project root')
   const journal = readJournal(projectRoot)
 
-  if (!journal) {
-    return { recovered: false, operation: null }
+  if (!journal) return { recovered: false, operation: null }
+
+  if (isProcessRunning(journal.processId)) {
+    throw new Error(
+      `A ${journal.operation} transaction is still active in process ${journal.processId}.`,
+    )
   }
 
-  restoreSnapshots(projectRoot, journal.snapshots)
+  restoreJournal(projectRoot, journal)
   removeJournal(projectRoot, journal.transactionId)
 
   return {

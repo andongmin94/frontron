@@ -6,11 +6,9 @@
   "description": "Electron 개발 템플릿",
   "scripts": {
     "dev": "next dev",
-    "lint": "eslint",
     "app": "concurrently \"npm run dev\" \"tsc -p tsconfig.electron.json && cross-env NODE_ENV=development electron .\"",
-    "clean:next": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\"",
-    "clean:build": "node -e \"require('fs').rmSync('.build', { recursive: true, force: true })\"",
-    "build": "npm run clean:next && npm run clean:build && next build && tsc -p tsconfig.electron.json && electron-builder"
+    "build": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\" && npm run clean:next && npm run clean:build && next build && tsc -p tsconfig.electron.json && electron-builder",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",

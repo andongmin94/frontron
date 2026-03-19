@@ -42,8 +42,6 @@ After reading the docs, the user can produce a packaged output from a newly crea
 - The sample `App.tsx` currently emphasizes direct `process` access, which conflicts with the docs' security explanation and is not the best beginner mental model.
 - The template `vite.config.ts` contains rough syntax that should be stabilized before docs encourage users to build and package the template confidently.
 
-## Scope
-
 ## In scope
 
 - Rewrite the docs around a tutorial-first path for beginners.
@@ -145,6 +143,8 @@ The docs should explicitly optimize for reader care.
 - Explanations should connect UI-visible results to source files.
 - Packaging sections should explain what `dist/`, `dist/electron/`, and `output/` mean.
 - Customization sections should explain why `public/icon.ico`, `build.productName`, and `build.appId` matter separately.
+- App naming sections should distinguish between packaging metadata and visible UI text, including the template title bar text where relevant.
+- Packaging sections should explain that generated outputs can differ by operating system and build target.
 
 ## Template Consistency Fixes
 
@@ -163,6 +163,8 @@ The public contract must be simple enough to document once and reuse across tuto
 ### TitleBar
 
 Update `TitleBar` so it uses the actual preload contract and remains a correct example of window control wiring.
+
+The beginner docs for renaming the app should treat `TitleBar.tsx` as part of visible UI customization when appropriate, instead of implying that `package.json` metadata alone changes all visible names.
 
 ### App sample
 
@@ -204,6 +206,7 @@ Do not call the work complete unless all of the following are checked:
 3. A project can be generated from the CLI locally.
 4. The generated project can run its build successfully.
 5. The documented packaging/output paths match the actual generated output.
+6. The docs correctly describe platform-specific packaging expectations for the environment used during verification.
 
 ## Risks And Mitigations
 
@@ -238,4 +241,3 @@ The design is satisfied when:
 - the template APIs shown in docs match the generated code,
 - the sample app reinforces the documented mental model,
 - verification proves the documented beginner path works end to end.
-

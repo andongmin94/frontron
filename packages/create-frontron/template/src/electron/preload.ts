@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("electron", {
   send: (channel: string, data?: unknown) => ipcRenderer.send(channel, data),

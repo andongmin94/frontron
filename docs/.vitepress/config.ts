@@ -66,12 +66,50 @@ export default defineConfig({
     sidebar: {
       "/guide/": [
         {
-          text: "프론트론 가이드",
+          text: "빠른 시작",
           items: [
             {
-              text: "시작하기",
+              text: "한 번에 따라하기",
               link: "/guide/",
             },
+          ],
+        },
+        {
+          text: "단계별 튜토리얼",
+          items: [
+            {
+              text: "프로젝트 만들기",
+              link: "/guide/create-project",
+            },
+            {
+              text: "개발 모드로 실행하기",
+              link: "/guide/run-development",
+            },
+            {
+              text: "앱 이름과 아이콘 바꾸기",
+              link: "/guide/customize-app",
+            },
+            {
+              text: "생성된 구조 이해하기",
+              link: "/guide/understand-template",
+            },
+            {
+              text: "빌드와 패키징",
+              link: "/guide/build-and-package",
+            },
+            {
+              text: "빌드 결과물 이해하기",
+              link: "/guide/output-files",
+            },
+            {
+              text: "문제 해결",
+              link: "/guide/troubleshooting",
+            },
+          ],
+        },
+        {
+          text: "레퍼런스",
+          items: [
             {
               text: "기능",
               link: "/guide/features",

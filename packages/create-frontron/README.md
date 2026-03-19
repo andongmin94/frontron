@@ -16,30 +16,24 @@ Electron 앱 스캐폴딩 CLI입니다.
 
 ## 사용법
 
-대화형 생성:
+프로젝트 생성:
 
 ```bash
 npm create frontron@latest
+npx create-frontron@latest my-app
 ```
 
-템플릿 지정 생성:
-
-```bash
-npx create-frontron@latest my-app --template react
-npx create-frontron@latest my-app --template next
-```
+기본 템플릿은 React이며, 별도 선택 없이 바로 생성됩니다.
 
 옵션:
 
-- `--template <react|next>` (`-t` 별칭)
 - `--overwrite <yes|no|ignore>`
 
-## 템플릿 목록
+## 기본 템플릿
 
-| 템플릿 | 식별자 | 렌더러 |
-| ---- | ---- | ---- |
-| React | `react` | Vite + React |
-| Next.js | `next` | Next.js App Router |
+| 템플릿 | 렌더러 |
+| ---- | ---- |
+| React | Vite + React |
 
 ## 생성 후 기본 명령어
 

@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import path from "path";
 import { app, BrowserWindow } from "electron";
 
@@ -7,6 +8,13 @@ import { closeSplash } from "./splash.js";
 export let mainWindow: any;
 
 export function createWindow(port: number) {
+  const preloadPath = path.join(__dirname, "preload.js");
+  if (!existsSync(preloadPath)) {
+    console.error(
+      `[Frontron] Preload script not found at ${preloadPath}. The custom title bar requires window.electron.`,
+    );
+  }
+
   mainWindow = new BrowserWindow({
     show: false,
     width: 800,
@@ -17,13 +25,26 @@ export function createWindow(port: number) {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, "preload.js"), // preload 사용 시 주석 해제
+      preload: preloadPath, // preload 사용 시 주석 해제
     },
   });
 
   mainWindow.loadURL(`http://localhost:${port}`);
 
   mainWindow.webContents.on("did-finish-load", () => {
+    void mainWindow.webContents
+      .executeJavaScript("Boolean(window.electron)")
+      .then((hasBridge) => {
+        if (!hasBridge) {
+          console.error(
+            `[Frontron] window.electron is unavailable in the renderer. Check the preload build output and BrowserWindow preload path: ${preloadPath}`,
+          );
+        }
+      })
+      .catch((error: unknown) => {
+        console.error("[Frontron] Failed to verify the preload bridge.", error);
+      });
+
     closeSplash(); // 스플래시 닫기
     mainWindow.show();
   });

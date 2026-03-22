@@ -1,6 +1,6 @@
 {
   "name": "create-frontron",
-  "version": "0.8.5",
+  "version": "0.8.8",
   "type": "module",
   "license": "MIT",
   "author": "안동민",
@@ -17,8 +17,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build",
-    "version": "node sync-version.js && npm publish && cd ../frontron && npm publish"
-
+    "version": "node sync-version.js",
+    "release": "cd ../frontron && npm publish && cd ../create-frontron && npm publish"
   },
   "engines": {
     "node": ">=22.0.0"

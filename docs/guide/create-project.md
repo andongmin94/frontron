@@ -2,7 +2,7 @@
 
 이 페이지는 Frontron으로 첫 프로젝트를 만드는 과정을 천천히 설명합니다.
 
-처음에는 모든 파일을 이해할 필요가 없습니다. 지금 단계의 목표는 "새 프로젝트가 어떤 명령으로 만들어지고, 어디에 어떤 뼈대가 생기는지"를 익히는 것입니다.
+처음에는 모든 파일을 이해할 필요가 없습니다. 지금 단계의 목표는 "새 프로젝트가 어떤 명령으로 만들어지고, 어디에 어떤 공식 구조가 생기는지"를 익히는 것입니다.
 
 ## 1. 준비할 것
 
@@ -21,9 +21,11 @@ npx create-frontron@latest my-app
 
 CLI가 대신 해 주는 일은 대략 아래와 같습니다.
 
-- 기본 React + Electron 템플릿 복사
+- 기본 React + Vite 웹 템플릿 복사
 - 프로젝트 이름을 기준으로 `package.json` 이름 설정
-- 바로 실행 가능한 기본 파일 구조 준비
+- root `frontron.config.ts` 생성
+- `frontron/` app-layer 기본 구조 준비
+- `app:dev`, `app:build` 스크립트 연결
 
 ## 3. 이름을 아직 못 정했다면
 
@@ -43,17 +45,20 @@ npm create frontron@latest
 my-app/
   public/
   src/
-    electron/
-    components/
-    hooks/
-    lib/
+  frontron.config.ts
+  frontron/
+    config.ts
+    bridge/
+    windows/
   package.json
+  vite.config.ts
 ```
 
 - `public/`: 아이콘 같은 정적 파일
-- `src/electron/`: Electron 메인 프로세스와 preload 코드
-- `src/components/`: 화면에 보이는 컴포넌트
-- `package.json`: 실행 명령과 빌드 설정
+- `src/`: 기존 웹 프론트엔드 코드
+- `frontron.config.ts`: 공식 config entrypoint
+- `frontron/`: app-layer 확장 공간
+- `package.json`: `app:dev`, `app:build` 같은 실행 명령
 
 ## 5. 여기서 가장 중요한 감각
 
@@ -62,9 +67,10 @@ my-app/
 그래서 초보자 입장에서는 처음부터 구조를 전부 외우기보다:
 
 1. 생성하기
-2. 실행해 보기
-3. 눈에 보이는 것 바꿔 보기
-4. 빌드해 보기
+2. `npm install` 하기
+3. `npm run app:dev`로 실행해 보기
+4. 눈에 보이는 것 바꿔 보기
+5. `npm run app:build`로 빌드해 보기
 
 이 순서로 가는 편이 훨씬 쉽습니다.
 

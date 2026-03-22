@@ -127,14 +127,15 @@ async function init() {
 
   const pkgInfo = pkgFromUserAgent(process.env.npm_config_user_agent)
   const pkgManager = pkgInfo ? pkgInfo.name : 'npm'
+  const createPackage = JSON.parse(
+    fs.readFileSync(path.join(templateDirRoot(), 'package.json'), 'utf-8'),
+  ) as {
+    version: string
+  }
 
   console.log(`\nScaffolding project in ${root}...`)
 
-  const templateDir = path.resolve(
-    fileURLToPath(import.meta.url),
-    '../..',
-    TEMPLATE_DIR,
-  )
+  const templateDir = path.join(templateDirRoot(), TEMPLATE_DIR)
 
   if (!fs.existsSync(templateDir)) {
     throw new Error(`Template directory not found: "${TEMPLATE_DIR}"`)
@@ -159,12 +160,34 @@ async function init() {
   )
 
   pkg.name = packageName || getProjectName()
-  if (pkg.build) {
-    pkg.build.appId = pkg.name
-    pkg.build.productName = pkg.name
+  if (pkg.dependencies?.frontron) {
+    pkg.dependencies.frontron = `^${createPackage.version}`
   }
 
   write('package.json', JSON.stringify(pkg, null, 2) + '\n')
+
+  const appConfigPath = path.join(root, 'frontron', 'config.ts')
+  if (fs.existsSync(appConfigPath)) {
+    const projectDisplayName = getProjectName()
+    const projectAppId = packageName || getProjectName()
+    const appConfig = fs.readFileSync(appConfigPath, 'utf-8')
+    fs.writeFileSync(
+      appConfigPath,
+      appConfig
+        .replace(/__FRONTRON_APP_NAME__/g, projectDisplayName)
+        .replace(/__FRONTRON_APP_ID__/g, projectAppId),
+    )
+  }
+
+  const rustCargoTomlPath = path.join(root, 'frontron', 'rust', 'Cargo.toml')
+  if (fs.existsSync(rustCargoTomlPath)) {
+    const rustCargoToml = fs.readFileSync(rustCargoTomlPath, 'utf-8')
+    const rustPackageName = `${toValidRustPackageName(packageName || getProjectName())}_native`
+    fs.writeFileSync(
+      rustCargoTomlPath,
+      rustCargoToml.replace(/__FRONTRON_APP_SLUG__/g, rustPackageName),
+    )
+  }
 
   const cdProjectName = path.relative(cwd, root)
   console.log(`\nDone. Now run:\n`)
@@ -178,14 +201,18 @@ async function init() {
   switch (pkgManager) {
     case 'yarn':
       console.log('  yarn')
-      console.log('  yarn app')
+      console.log('  yarn app:dev')
       break
     default:
       console.log(`  ${pkgManager} install`)
-      console.log(`  ${pkgManager} run app`)
+      console.log(`  ${pkgManager} run app:dev`)
       break
   }
   console.log()
+}
+
+function templateDirRoot() {
+  return path.resolve(fileURLToPath(import.meta.url), '../..')
 }
 
 function formatTargetDir(targetDir: string | undefined) {
@@ -216,9 +243,25 @@ function toValidPackageName(projectName: string) {
     .replace(/[^a-z\d\-~]+/g, '-')
 }
 
+function toValidRustPackageName(projectName: string) {
+  return projectName
+    .trim()
+    .toLowerCase()
+    .replace(/^@[^/]+\//, '')
+    .replace(/[^a-z\d]+/g, '_')
+    .replace(/^_+/, '')
+    .replace(/_+$/, '') || 'frontron'
+}
+
 function copyDir(srcDir: string, destDir: string) {
+  const files = fs.readdirSync(srcDir)
+
+  if (files.length === 0) {
+    return
+  }
+
   fs.mkdirSync(destDir, { recursive: true })
-  for (const file of fs.readdirSync(srcDir)) {
+  for (const file of files) {
     const srcFile = path.resolve(srcDir, file)
     const destFile = path.resolve(destDir, file)
     copy(srcFile, destFile)

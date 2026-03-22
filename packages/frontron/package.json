@@ -10,7 +10,8 @@
   },
   "files": [
     "index.js",
-    "dist"
+    "dist",
+    "assets"
   ],
   "exports": {
     ".": {

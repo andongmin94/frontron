@@ -1,82 +1,82 @@
-# 개발 모드로 실행하기
+# Run in Development
 
-프로젝트를 만들었다면, 이제 실제로 앱이 뜨는지 확인해 보겠습니다.
+Once the project is created, the next step is to make sure the app actually opens.
 
-이 단계의 목표는 "코드를 아직 잘 몰라도 앱이 어떻게 실행되는지 감을 잡는 것"입니다.
+At this stage, the goal is simple: learn which command starts the desktop app and how to tell desktop mode from web-only preview mode.
 
-## 1. 프로젝트 폴더로 이동하기
+## 1. Move into the project folder
 
 ```bash
 cd my-app
 ```
 
-## 2. 의존성 설치하기
+## 2. Install dependencies
 
 ```bash
 npm install
 ```
 
-이 과정은 프로젝트가 사용하는 라이브러리를 내려받는 단계입니다.
+This installs the packages used by the project.
 
-처음 설치라면 몇 초에서 몇 분 정도 걸릴 수 있습니다.
-
-## 3. 개발 모드 실행하기
+## 3. Start development mode
 
 ```bash
 npm run app:dev
 ```
 
-이 명령은 `frontron dev`를 실행합니다.
+This runs `frontron dev`.
 
-실제로는 아래 두 가지가 연결됩니다.
+It connects:
 
-- `frontron.config.ts`에 적힌 web dev command
-- framework-owned Electron 데스크톱 앱
+- the web dev command from `frontron.config.ts`
+- the Electron desktop app from Frontron
 
-브라우저만 열리는 것이 아니라 데스크톱 창이 뜨는 것이 정상입니다.
+You should see a desktop window, not only a browser tab.
 
-반대로 `npm run dev`는 web preview 전용이라서 데스크톱 bridge가 붙지 않습니다.
+By contrast, `npm run dev` is web preview only. It does not attach the desktop bridge.
 
-## 4. 실행되면 무엇을 보면 되나요?
+## 4. What should you look for?
 
-처음 실행하면 아래 같은 것들을 확인해 보세요.
+On the first run, check these things:
 
-- 데스크톱 창이 실제로 열리는지
-- 상단 커스텀 타이틀바가 보이는지
-- 기본 예제 화면이 보이는지
+- the desktop window opens
+- the custom title bar is visible
+- the starter screen renders
 
-지금 단계에서는 예쁘게 보이는지가 아니라 "앱이 뜨고 반응하는지"가 더 중요합니다.
+## 5. Normal edit loop
 
-## 5. 개발 모드에서 자주 하는 일
+In development, the usual loop is:
 
-개발 모드에서는 보통 아래 흐름을 반복합니다.
+1. Change a file
+2. Save it
+3. Check the result in the app window
 
-1. 파일 수정
-2. 저장
-3. 창에서 바뀐 결과 확인
+React updates are usually fast. Runtime-side changes may require a restart, depending on what changed.
 
-React 쪽 변경은 빠르게 반영되고, Electron 쪽은 변경 내용에 따라 다시 실행이 필요할 수 있습니다.
+If the app opens but the desktop bridge still feels abstract, read [Understand the Bridge Flow](/guide/understand-bridge-flow) first.
 
-## 6. 잘 안 될 때 먼저 볼 것
+Then read [Use the Desktop Bridge](/guide/use-bridge).
 
-### 창이 뜨지 않는 경우
+## 6. First things to check when it fails
 
-- 설치가 정상적으로 끝났는지
-- 터미널에 에러가 없는지
-- 이미 같은 포트를 쓰는 다른 개발 서버가 없는지
+### If the window does not open
 
-### 흰 화면이 뜨는 경우
+- Make sure `npm install` finished successfully
+- Check the terminal for runtime errors
+- Check that no other process is already using the same port
 
-가장 먼저 `vite.config.ts`의 `server.port`와 `frontron/config.ts`의 `web.dev.url`이 맞는지 확인해 보세요.
+### If you get a blank page
 
-### 브리지 오류가 뜨는 경우
+Start by checking that `vite.config.ts` and `frontron/config.ts` use the same development port and URL.
 
-`Frontron bridge missing` 같은 문구가 보이면 아래를 먼저 확인해 보세요.
+### If bridge-related UI looks wrong
 
-- `npm run dev`가 아니라 `npm run app:dev`로 실행했는지
-- 렌더러 코드가 `frontron/client`를 쓰고 있는지
-- 터미널에 runtime 관련 에러가 없는지
+If you see `Web preview` in the title bar, or a message such as `Desktop bridge unavailable`, check:
+
+- that you ran `npm run app:dev`, not `npm run dev`
+- that your renderer code imports `frontron/client`
+- that the terminal does not show runtime or preload errors
 
 ::: tip
-앱이 한 번 뜨는 경험을 만든 뒤에 커스터마이징으로 넘어가는 것이 좋습니다.
+It is better to get the app opening once before you start heavy customization.
 :::

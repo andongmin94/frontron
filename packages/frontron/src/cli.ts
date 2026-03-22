@@ -18,6 +18,7 @@ import { getRustTask } from './rust'
 import type { RuntimeManifest } from './runtime/manifest'
 
 type CommandName = 'dev' | 'build'
+type CliCommand = CommandName | 'init'
 
 interface ParsedCliArgs {
   command: string | null
@@ -33,6 +34,20 @@ interface CliOutput {
 }
 
 type LoadedConfig = Awaited<ReturnType<typeof loadConfig>>
+type InferenceSource =
+  | 'config'
+  | 'package-script'
+  | 'vite-default'
+  | 'react-scripts-default'
+  | 'framework-default'
+
+interface ConfiguredCommand {
+  mode: 'dev' | 'build'
+  target: string
+  command: string
+  commandSource: InferenceSource
+  targetSource: InferenceSource
+}
 
 const defaultOutput: CliOutput = {
   info(message) {
@@ -44,6 +59,14 @@ const defaultOutput: CliOutput = {
 }
 
 const require = createRequire(import.meta.url)
+const VITE_CONFIG_FILES = [
+  'vite.config.ts',
+  'vite.config.mts',
+  'vite.config.cts',
+  'vite.config.js',
+  'vite.config.mjs',
+  'vite.config.cjs',
+]
 
 function parseArgs(argv: string[]): ParsedCliArgs {
   const parsed: ParsedCliArgs = {
@@ -89,20 +112,21 @@ function parseArgs(argv: string[]): ParsedCliArgs {
 }
 
 function printHelp(output: CliOutput) {
-  output.info('Usage: frontron <dev|build> [--cwd <path>] [--config <path>] [--check]')
+  output.info('Usage: frontron <init|dev|build> [--cwd <path>] [--config <path>] [--check]')
   output.info('')
   output.info('Commands:')
+  output.info('  init    Add a basic frontron.config.ts and app:dev/app:build scripts to the current project.')
   output.info('  dev     Run the configured web dev command and launch the framework-owned Electron runtime.')
   output.info('  build   Run the configured web build command and package the framework-owned Electron runtime.')
 }
 
-function ensureCommand(command: string | null): CommandName {
-  if (command === 'dev' || command === 'build') {
+function ensureCommand(command: string | null): CliCommand {
+  if (command === 'dev' || command === 'build' || command === 'init') {
     return command
   }
 
   throw new Error(
-    `[Frontron] Unknown command "${command ?? ''}". Expected "dev" or "build".`,
+    `[Frontron] Unknown command "${command ?? ''}". Expected "init", "dev", or "build".`,
   )
 }
 
@@ -169,6 +193,460 @@ function readPackageJsonVersion(rootDir: string) {
   }
 }
 
+function readProjectPackageJson(rootDir: string) {
+  const packageJsonPath = join(rootDir, 'package.json')
+
+  if (!existsSync(packageJsonPath)) {
+    return null
+  }
+
+  try {
+    return JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      name?: string
+      version?: string
+      scripts?: Record<string, string>
+      dependencies?: Record<string, string>
+      devDependencies?: Record<string, string>
+    }
+  } catch {
+    return null
+  }
+}
+
+function writeProjectPackageJson(
+  rootDir: string,
+  packageJson: Record<string, unknown>,
+) {
+  writeFileSync(join(rootDir, 'package.json'), `${JSON.stringify(packageJson, null, 2)}\n`)
+}
+
+function resolveDefaultAppIconPath() {
+  const candidate = resolvePackageFile('../assets/default-icon.ico')
+  return existsSync(candidate) ? candidate : undefined
+}
+
+function stripPackageScope(packageName: string | undefined) {
+  if (!packageName) {
+    return undefined
+  }
+
+  const slashIndex = packageName.lastIndexOf('/')
+  return slashIndex >= 0 ? packageName.slice(slashIndex + 1) : packageName
+}
+
+function createSuggestedAppName(packageName: string | undefined) {
+  const baseName = stripPackageScope(packageName)
+
+  if (!baseName) {
+    return 'My App'
+  }
+
+  const words = baseName
+    .split(/[^a-zA-Z\d]+/)
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+
+  return words.length > 0 ? words.join(' ') : 'My App'
+}
+
+function createSuggestedAppId(packageName: string | undefined) {
+  const baseName = sanitizePackageName(stripPackageScope(packageName) ?? 'my-app')
+    .replace(/\./g, '-')
+
+  return `com.example.${baseName || 'my-app'}`
+}
+
+function createInitConfigSource(packageName: string | undefined) {
+  const appName = createSuggestedAppName(packageName)
+  const appId = createSuggestedAppId(packageName)
+
+  return [
+    "import { defineConfig } from 'frontron'",
+    '',
+    'export default defineConfig({',
+    '  app: {',
+    `    name: '${appName.replace(/'/g, "\\'")}',`,
+    `    id: '${appId.replace(/'/g, "\\'")}',`,
+    '  },',
+    '})',
+    '',
+  ].join('\n')
+}
+
+function detectPackageManager(rootDir: string) {
+  const userAgent = process.env.npm_config_user_agent ?? ''
+
+  if (userAgent.startsWith('pnpm/')) {
+    return 'pnpm'
+  }
+
+  if (userAgent.startsWith('yarn/')) {
+    return 'yarn'
+  }
+
+  if (userAgent.startsWith('bun/')) {
+    return 'bun'
+  }
+
+  if (existsSync(join(rootDir, 'pnpm-lock.yaml'))) {
+    return 'pnpm'
+  }
+
+  if (existsSync(join(rootDir, 'yarn.lock'))) {
+    return 'yarn'
+  }
+
+  if (existsSync(join(rootDir, 'bun.lock')) || existsSync(join(rootDir, 'bun.lockb'))) {
+    return 'bun'
+  }
+
+  return 'npm'
+}
+
+function createRunScriptCommand(rootDir: string, scriptName: string) {
+  const packageManager = detectPackageManager(rootDir)
+
+  if (packageManager === 'yarn') {
+    return `yarn ${scriptName}`
+  }
+
+  if (packageManager === 'pnpm') {
+    return `pnpm run ${scriptName}`
+  }
+
+  if (packageManager === 'bun') {
+    return `bun run ${scriptName}`
+  }
+
+  return `npm run ${scriptName}`
+}
+
+function isRecursiveFrontronScript(commandText: string, commandName: CommandName) {
+  const normalized = commandText.toLowerCase()
+
+  return (
+    normalized.includes(`frontron ${commandName}`) ||
+    normalized.includes(`run app:${commandName}`) ||
+    normalized.includes(` app:${commandName}`)
+  )
+}
+
+function readScriptCandidates(rootDir: string, commandName: CommandName) {
+  const packageJson = readProjectPackageJson(rootDir)
+  const scripts = packageJson?.scripts ?? {}
+
+  if (commandName === 'dev') {
+    return [
+      ['web:dev', scripts['web:dev']],
+      ['dev', scripts.dev],
+    ] as const
+  }
+
+  return [
+    ['web:build', scripts['web:build']],
+    ['build', scripts.build],
+  ] as const
+}
+
+function inferScriptCommand(rootDir: string, commandName: CommandName) {
+  for (const [scriptName, scriptBody] of readScriptCandidates(rootDir, commandName)) {
+    if (!scriptBody || isRecursiveFrontronScript(scriptBody, commandName)) {
+      continue
+    }
+
+    return {
+      command: createRunScriptCommand(rootDir, scriptName),
+      scriptName,
+      scriptBody,
+    }
+  }
+
+  return null
+}
+
+function parseNumericFlag(commandText: string, flagNames: string[]) {
+  for (const flagName of flagNames) {
+    const equalsMatch = commandText.match(new RegExp(`${flagName}=([0-9]+)`))
+
+    if (equalsMatch?.[1]) {
+      return Number(equalsMatch[1])
+    }
+
+    const spacedMatch = commandText.match(new RegExp(`${flagName}\\s+([0-9]+)`))
+
+    if (spacedMatch?.[1]) {
+      return Number(spacedMatch[1])
+    }
+  }
+
+  return undefined
+}
+
+function parseStringFlag(commandText: string, flagNames: string[]) {
+  for (const flagName of flagNames) {
+    const equalsMatch = commandText.match(new RegExp(`${flagName}=([^\\s'"]+)`))
+
+    if (equalsMatch?.[1]) {
+      return equalsMatch[1]
+    }
+
+    const quotedMatch = commandText.match(new RegExp(`${flagName}\\s+['"]([^'"]+)['"]`))
+
+    if (quotedMatch?.[1]) {
+      return quotedMatch[1]
+    }
+
+    const spacedMatch = commandText.match(new RegExp(`${flagName}\\s+([^\\s'"]+)`))
+
+    if (spacedMatch?.[1]) {
+      return spacedMatch[1]
+    }
+  }
+
+  return undefined
+}
+
+function stripWrappingQuotes(value: string) {
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1)
+  }
+
+  return value
+}
+
+function parseEnvAssignment(commandText: string, envNames: string[]) {
+  for (const envName of envNames) {
+    const directMatch = commandText.match(new RegExp(`(?:^|\\s|&&|;)${envName}=([^\\s;&]+)`, 'i'))
+
+    if (directMatch?.[1]) {
+      return stripWrappingQuotes(directMatch[1])
+    }
+
+    const setMatch = commandText.match(
+      new RegExp(`(?:^|\\s|&&|;)set\\s+${envName}=([^\\s;&]+)`, 'i'),
+    )
+
+    if (setMatch?.[1]) {
+      return stripWrappingQuotes(setMatch[1])
+    }
+
+    const powershellMatch = commandText.match(
+      new RegExp(`\\$env:${envName}\\s*=\\s*['"]?([^'";\\s]+)`, 'i'),
+    )
+
+    if (powershellMatch?.[1]) {
+      return stripWrappingQuotes(powershellMatch[1])
+    }
+  }
+
+  return undefined
+}
+
+function readViteConfigSource(rootDir: string) {
+  for (const candidate of VITE_CONFIG_FILES) {
+    const configPath = join(rootDir, candidate)
+
+    if (existsSync(configPath)) {
+      return readFileSync(configPath, 'utf8')
+    }
+  }
+
+  return null
+}
+
+function inferVitePort(rootDir: string, commandText?: string) {
+  const commandPort = inferCommandPort(commandText)
+
+  if (commandPort) {
+    return commandPort
+  }
+
+  const viteConfigSource = readViteConfigSource(rootDir)
+  const viteConfigPort = viteConfigSource?.match(/server\s*:\s*{[\s\S]*?\bport\s*:\s*(\d+)/)?.[1]
+
+  if (viteConfigPort) {
+    return Number(viteConfigPort)
+  }
+
+  return 5173
+}
+
+function inferViteOutDir(rootDir: string, commandText?: string) {
+  const commandOutDir = commandText
+    ? parseStringFlag(commandText, ['--outDir'])
+    : undefined
+
+  if (commandOutDir) {
+    return commandOutDir
+  }
+
+  const viteConfigSource = readViteConfigSource(rootDir)
+  const viteOutDir = viteConfigSource?.match(/build\s*:\s*{[\s\S]*?\boutDir\s*:\s*['"]([^'"]+)['"]/)?.[1]
+
+  return viteOutDir ?? 'dist'
+}
+
+function hasPackageDependency(rootDir: string, dependencyName: string) {
+  const packageJson = readProjectPackageJson(rootDir)
+
+  return Boolean(
+    packageJson?.dependencies?.[dependencyName] ?? packageJson?.devDependencies?.[dependencyName],
+  )
+}
+
+function looksLikeViteProject(rootDir: string, commandText?: string) {
+  return Boolean(
+    commandText?.includes('vite') ||
+      readViteConfigSource(rootDir) ||
+      hasPackageDependency(rootDir, 'vite'),
+  )
+}
+
+function looksLikeReactScriptsProject(commandText?: string) {
+  return Boolean(commandText?.includes('react-scripts'))
+}
+
+function looksLikeNextProject(rootDir: string, commandText?: string) {
+  return Boolean(commandText?.includes('next dev') || hasPackageDependency(rootDir, 'next'))
+}
+
+function looksLikeNuxtProject(rootDir: string, commandText?: string) {
+  return Boolean(
+    commandText?.includes('nuxi dev') ||
+      commandText?.includes('nuxt dev') ||
+      hasPackageDependency(rootDir, 'nuxt'),
+  )
+}
+
+function looksLikeAstroProject(rootDir: string, commandText?: string) {
+  return Boolean(commandText?.includes('astro dev') || hasPackageDependency(rootDir, 'astro'))
+}
+
+function looksLikeAngularProject(rootDir: string, commandText?: string) {
+  return Boolean(
+    commandText?.includes('ng serve') || hasPackageDependency(rootDir, '@angular/cli'),
+  )
+}
+
+function looksLikeVueCliProject(rootDir: string, commandText?: string) {
+  return Boolean(
+    commandText?.includes('vue-cli-service serve') ||
+      hasPackageDependency(rootDir, '@vue/cli-service'),
+  )
+}
+
+function normalizeDevHost(hostValue: string | undefined) {
+  if (!hostValue || hostValue === '0.0.0.0' || hostValue === '::' || hostValue === '[::]') {
+    return 'localhost'
+  }
+
+  return hostValue
+}
+
+function inferCommandPort(commandText?: string) {
+  if (!commandText) {
+    return undefined
+  }
+
+  const flagPort = parseNumericFlag(commandText, ['--port', '-p'])
+
+  if (flagPort) {
+    return flagPort
+  }
+
+  const envPort = Number.parseInt(parseEnvAssignment(commandText, ['PORT']) ?? '', 10)
+
+  return Number.isFinite(envPort) ? envPort : undefined
+}
+
+function inferCommandHost(commandText?: string) {
+  if (!commandText) {
+    return undefined
+  }
+
+  return (
+    parseStringFlag(commandText, ['--host', '--hostname', '-H']) ??
+    parseEnvAssignment(commandText, ['HOST', 'HOSTNAME'])
+  )
+}
+
+function inferDevUrl(rootDir: string, commandText?: string) {
+  const commandPort = inferCommandPort(commandText)
+  const commandHost = normalizeDevHost(inferCommandHost(commandText))
+
+  if (commandPort) {
+    return {
+      url: `http://${commandHost}:${commandPort}`,
+      source: 'package-script' as const,
+    }
+  }
+
+  if (looksLikeViteProject(rootDir, commandText)) {
+    return {
+      url: `http://${commandHost}:${inferVitePort(rootDir, commandText)}`,
+      source: 'vite-default' as const,
+    }
+  }
+
+  if (looksLikeReactScriptsProject(commandText)) {
+    return {
+      url: `http://${commandHost}:3000`,
+      source: 'react-scripts-default' as const,
+    }
+  }
+
+  if (looksLikeNextProject(rootDir, commandText) || looksLikeNuxtProject(rootDir, commandText)) {
+    return {
+      url: `http://${commandHost}:3000`,
+      source: 'framework-default' as const,
+    }
+  }
+
+  if (looksLikeAstroProject(rootDir, commandText)) {
+    return {
+      url: `http://${commandHost}:4321`,
+      source: 'framework-default' as const,
+    }
+  }
+
+  if (looksLikeAngularProject(rootDir, commandText)) {
+    return {
+      url: `http://${commandHost}:4200`,
+      source: 'framework-default' as const,
+    }
+  }
+
+  if (looksLikeVueCliProject(rootDir, commandText)) {
+    return {
+      url: `http://${commandHost}:8080`,
+      source: 'framework-default' as const,
+    }
+  }
+
+  return null
+}
+
+function inferBuildOutDir(rootDir: string, commandText?: string) {
+  if (looksLikeViteProject(rootDir, commandText)) {
+    return {
+      outDir: inferViteOutDir(rootDir, commandText),
+      source: 'vite-default' as const,
+    }
+  }
+
+  if (looksLikeReactScriptsProject(commandText)) {
+    return {
+      outDir: 'build',
+      source: 'react-scripts-default' as const,
+    }
+  }
+
+  return null
+}
+
 function resolveInstalledPackageVersion(packageName: string) {
   const packageJsonPath = require.resolve(`${packageName}/package.json`)
   const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
@@ -191,12 +669,60 @@ function sanitizePackageName(value: string) {
     .replace(/-+$/, '') || 'frontron-app'
 }
 
+function initializeProject(rootDir: string, output: CliOutput) {
+  const packageJson = readProjectPackageJson(rootDir)
+
+  if (!packageJson) {
+    throw new Error('[Frontron] "init" requires a project package.json in the working directory.')
+  }
+
+  const nextPackageJson = {
+    ...packageJson,
+    scripts: {
+      ...(packageJson.scripts ?? {}),
+    },
+  } as typeof packageJson & {
+    scripts: Record<string, string>
+  }
+  const addedScripts: string[] = []
+
+  if (!nextPackageJson.scripts['app:dev']) {
+    nextPackageJson.scripts['app:dev'] = 'frontron dev'
+    addedScripts.push('app:dev')
+  }
+
+  if (!nextPackageJson.scripts['app:build']) {
+    nextPackageJson.scripts['app:build'] = 'frontron build'
+    addedScripts.push('app:build')
+  }
+
+  if (addedScripts.length > 0) {
+    writeProjectPackageJson(rootDir, nextPackageJson as Record<string, unknown>)
+    output.info(`[Frontron] Added package scripts: ${addedScripts.join(', ')}`)
+  } else {
+    output.info('[Frontron] Package scripts already include app:dev and app:build.')
+  }
+
+  const configPath = join(rootDir, 'frontron.config.ts')
+
+  if (!existsSync(configPath)) {
+    writeFileSync(configPath, createInitConfigSource(packageJson.name))
+    output.info(`[Frontron] Created config: ${configPath}`)
+  } else {
+    output.info(`[Frontron] Config already exists: ${configPath}`)
+  }
+
+  output.info('[Frontron] Next step: run `npm run app:dev`.')
+}
+
 function createRuntimeManifest(
   loadedConfig: Awaited<ReturnType<typeof loadConfig>>,
   mode: RuntimeManifest['mode'],
+  configuredCommand?: ConfiguredCommand,
 ) {
   const projectPackage = readPackageJsonVersion(loadedConfig.rootDir)
   const configFile = relative(loadedConfig.rootDir, loadedConfig.configPath).replace(/\\/g, '/')
+  const appIcon = loadedConfig.config.app.icon ?? resolveDefaultAppIconPath()
 
   return {
     rootDir: loadedConfig.rootDir,
@@ -206,11 +732,17 @@ function createRuntimeManifest(
       name: loadedConfig.config.app.name,
       id: loadedConfig.config.app.id,
       version: projectPackage.version,
-      icon: loadedConfig.config.app.icon,
+      icon: appIcon,
     },
     web: {
-      devUrl: loadedConfig.config.web?.dev?.url,
-      outDir: loadedConfig.config.web?.build?.outDir,
+      devUrl:
+        configuredCommand?.mode === 'dev'
+          ? configuredCommand.target
+          : loadedConfig.config.web?.dev?.url,
+      outDir:
+        configuredCommand?.mode === 'build'
+          ? configuredCommand.target
+          : loadedConfig.config.web?.build?.outDir,
     },
     windows: loadedConfig.config.windows ?? {
       main: {
@@ -442,32 +974,79 @@ async function runShellCommand(command: string, cwd: string) {
 
 function getConfiguredCommand(
   command: CommandName,
-  config: LoadedConfig['config'],
-) {
+  loadedConfig: LoadedConfig,
+): ConfiguredCommand {
+  const config = loadedConfig.config
+
   if (command === 'dev') {
     const devConfig = config.web?.dev
+    const explicitCommand = devConfig?.command
+    const explicitUrl = devConfig?.url
+    const inferredCommand = explicitCommand
+      ? null
+      : inferScriptCommand(loadedConfig.rootDir, 'dev')
+    const commandValue = explicitCommand ?? inferredCommand?.command
+    const commandSource = explicitCommand ? 'config' : inferredCommand ? 'package-script' : null
+    const inferredUrl = explicitUrl
+      ? null
+      : inferDevUrl(loadedConfig.rootDir, inferredCommand?.scriptBody ?? commandValue)
+    const urlValue = explicitUrl ?? inferredUrl?.url
+    const targetSource = explicitUrl ? 'config' : inferredUrl?.source ?? null
 
-    if (!devConfig?.command || !devConfig.url) {
-      throw new Error('[Frontron] "dev" requires "web.dev.command" and "web.dev.url".')
+    if (!commandValue || !commandSource) {
+      throw new Error(
+        '[Frontron] "dev" requires "web.dev.command" or a runnable package script such as "web:dev" or "dev".',
+      )
+    }
+
+    if (!urlValue || !targetSource) {
+      throw new Error(
+        '[Frontron] "dev" requires "web.dev.url" or an inferable frontend dev server such as a standard Vite setup.',
+      )
     }
 
     return {
       mode: 'dev',
-      target: devConfig.url,
-      command: devConfig.command,
+      target: urlValue,
+      command: commandValue,
+      commandSource,
+      targetSource,
     }
   }
 
   const buildConfig = config.web?.build
+  const explicitCommand = buildConfig?.command
+  const explicitOutDir = buildConfig?.outDir
+  const inferredCommand = explicitCommand
+    ? null
+    : inferScriptCommand(loadedConfig.rootDir, 'build')
+  const commandValue = explicitCommand ?? inferredCommand?.command
+  const commandSource = explicitCommand ? 'config' : inferredCommand ? 'package-script' : null
+  const inferredOutDir = explicitOutDir
+    ? null
+    : inferBuildOutDir(loadedConfig.rootDir, inferredCommand?.scriptBody ?? commandValue)
+  const outDirValue = explicitOutDir ??
+    (inferredOutDir ? resolve(loadedConfig.rootDir, inferredOutDir.outDir) : undefined)
+  const targetSource = explicitOutDir ? 'config' : inferredOutDir?.source ?? null
 
-  if (!buildConfig?.command || !buildConfig.outDir) {
-    throw new Error('[Frontron] "build" requires "web.build.command" and "web.build.outDir".')
+  if (!commandValue || !commandSource) {
+    throw new Error(
+      '[Frontron] "build" requires "web.build.command" or a runnable package script such as "web:build" or "build".',
+    )
+  }
+
+  if (!outDirValue || !targetSource) {
+    throw new Error(
+      '[Frontron] "build" requires "web.build.outDir" or an inferable frontend build output such as a standard Vite setup.',
+    )
   }
 
   return {
     mode: 'build',
-    target: buildConfig.outDir,
-    command: buildConfig.command,
+    target: outDirValue,
+    command: commandValue,
+    commandSource,
+    targetSource,
   }
 }
 
@@ -511,8 +1090,8 @@ async function runDevRuntime(
     return rustExitCode
   }
 
-  const configuredCommand = getConfiguredCommand('dev', loadedConfig.config)
-  const manifest = createRuntimeManifest(loadedConfig, 'development')
+  const configuredCommand = getConfiguredCommand('dev', loadedConfig)
+  const manifest = createRuntimeManifest(loadedConfig, 'development', configuredCommand)
   const runtimeDir = ensureDotFrontronDir(loadedConfig.rootDir, 'runtime', 'dev')
   const manifestPath = writeRuntimeManifest(loadedConfig.rootDir, manifest, runtimeDir)
   const electronBinary = resolveElectronBinary()
@@ -555,10 +1134,11 @@ async function runDevRuntime(
 }
 
 export function stageBuildApp(loadedConfig: Awaited<ReturnType<typeof loadConfig>>) {
-  const manifest = createRuntimeManifest(loadedConfig, 'production')
+  const configuredCommand = getConfiguredCommand('build', loadedConfig)
+  const manifest = createRuntimeManifest(loadedConfig, 'production', configuredCommand)
   const stageDir = ensureDotFrontronDir(loadedConfig.rootDir, 'runtime', 'build')
   const packagedAppDir = join(stageDir, 'app')
-  const webOutDir = loadedConfig.config.web?.build?.outDir
+  const webOutDir = configuredCommand.target
   const runtimeMainEntry = resolveRuntimeEntry('main')
   const runtimePreloadEntry = resolveRuntimeEntry('preload')
   const runtimeSharedDir = resolveRuntimeSharedDir()
@@ -677,7 +1257,7 @@ async function runBuildRuntime(
     return rustExitCode
   }
 
-  const configuredCommand = getConfiguredCommand('build', loadedConfig.config)
+  const configuredCommand = getConfiguredCommand('build', loadedConfig)
   const webBuildExitCode = await runShellCommand(configuredCommand.command, loadedConfig.rootDir)
 
   if (webBuildExitCode !== 0) {
@@ -738,18 +1318,41 @@ export async function runCli(argv = process.argv.slice(2), output: CliOutput = d
 
     const command = ensureCommand(parsed.command)
     const cwd = resolve(parsed.cwd ?? process.cwd())
+
+    if (command === 'init') {
+      if (parsed.check) {
+        throw new Error('[Frontron] "--check" is not supported with "init".')
+      }
+
+      initializeProject(cwd, output)
+      return 0
+    }
+
     const loadedConfig = await loadConfig({
       cwd,
       configFile: parsed.configFile,
     })
     const generatedBridgeTypesPath = writeBridgeTypes(loadedConfig)
-    const configuredCommand = getConfiguredCommand(command, loadedConfig.config)
+    const configuredCommand = getConfiguredCommand(command, loadedConfig)
 
     output.info(`[Frontron] Loaded config: ${loadedConfig.configPath}`)
     output.info(`[Frontron] Generated bridge types: ${generatedBridgeTypesPath}`)
     output.info(
       `[Frontron] App: ${loadedConfig.config.app.name} (${loadedConfig.config.app.id})`,
     )
+    if (!loadedConfig.config.app.icon) {
+      output.info('[Frontron] App icon: using the default Frontron icon.')
+    }
+    if (configuredCommand.commandSource !== 'config') {
+      output.info(
+        `[Frontron] Inferred web ${configuredCommand.mode} command: ${configuredCommand.command}`,
+      )
+    }
+    if (configuredCommand.targetSource !== 'config') {
+      output.info(
+        `[Frontron] Inferred web ${configuredCommand.mode} target: ${configuredCommand.target}`,
+      )
+    }
     output.info(`[Frontron] Web ${configuredCommand.mode} target: ${configuredCommand.target}`)
 
     if (loadedConfig.config.rust) {

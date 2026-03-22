@@ -4,11 +4,15 @@ import { Slot } from "radix-ui";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Copy, Minus, Square, X } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import { bridge } from "frontron/client";
+
+import { cn, hasDesktopBridgeRuntime } from "@/lib/utils";
 
 import frontronLogo from "/logo.svg";
 
-const BRIDGE_ERROR_TEXT = "Preload bridge missing";
+const WEB_PREVIEW_TEXT = "Web preview";
+const BRIDGE_CHECKING_TEXT = "Connecting desktop bridge...";
+const BRIDGE_ERROR_TEXT = "Desktop bridge unavailable";
 
 const buttonVariants = cva(
   "inline-flex items-center hover:cursor-pointer justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
@@ -59,42 +63,85 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 );
 
 export default function TitleBar() {
-  const electronApi =
-    typeof window === "undefined" ? undefined : window.electron;
+  const hasDesktopBridge = hasDesktopBridgeRuntime();
+  const [bridgeMode, setBridgeMode] = useState<"checking" | "desktop" | "preview" | "error">(
+    hasDesktopBridge ? "checking" : "preview",
+  );
   const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
-    if (!electronApi) {
-      console.error(
-        "[Frontron] window.electron is unavailable. Check the preload build output and BrowserWindow preload path.",
-      );
-      return;
+    if (!hasDesktopBridge) {
+      return undefined;
     }
 
-    electronApi
-      .invoke?.("get-window-state")
-      .then((s: { isMaximized: boolean }) => setIsMaximized(s.isMaximized))
-      .catch(() => {});
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
 
-    const off = electronApi.on?.("window-maximized-changed", (val: unknown) =>
-      setIsMaximized(Boolean(val)),
-    );
+    async function connectWindowBridge() {
+      try {
+        unsubscribe = bridge.window.onMaximizedChanged((value: unknown) => {
+          if (cancelled) {
+            return;
+          }
+
+          setBridgeMode("desktop");
+          setIsMaximized(Boolean(value));
+        }) as (() => void) | undefined;
+
+        const state = await bridge.window.getState();
+        const nextState = state as { isMaximized?: boolean };
+
+        if (cancelled) {
+          return;
+        }
+
+        setBridgeMode("desktop");
+        setIsMaximized(Boolean(nextState.isMaximized));
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        console.error("[Frontron] Failed to connect the desktop bridge.", error);
+        setBridgeMode("error");
+      }
+    }
+
+    void connectWindowBridge();
 
     return () => {
-      if (typeof off === "function") off();
+      cancelled = true;
+      if (typeof unsubscribe === "function") {
+        unsubscribe();
+      }
     };
-  }, [electronApi]);
+  }, [hasDesktopBridge]);
 
-  const minimize = () => electronApi?.send("minimize");
-  const toggleMaximize = () => electronApi?.send("toggle-maximize");
-  const hidden = () => electronApi?.send("hidden");
+  const runWindowAction = (label: string, action: () => Promise<unknown>) => {
+    void action().catch((error: unknown) => {
+      console.error(`[Frontron] Failed to ${label}.`, error);
+      setBridgeMode("error");
+    });
+  };
+
+  const minimize = () => {
+    runWindowAction("minimize the window", () => bridge.window.minimize());
+  };
+
+  const toggleMaximize = () => {
+    runWindowAction("toggle maximize", () => bridge.window.toggleMaximize());
+  };
+
+  const hideWindow = () => {
+    runWindowAction("hide the window", () => bridge.window.hide());
+  };
 
   return (
     <>
       <div
         className={cn(
           "fixed top-0 left-0 right-0 flex w-full justify-between",
-          electronApi ? "bg-neutral-800" : "bg-red-700",
+          bridgeMode === "error" ? "bg-red-700" : "bg-neutral-800",
         )}
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       >
@@ -106,7 +153,7 @@ export default function TitleBar() {
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
           className="flex items-center"
         >
-          {electronApi ? (
+          {bridgeMode === "desktop" ? (
             <>
               <Button onClick={minimize} size="icon">
                 <Minus className="size-5" />
@@ -118,13 +165,17 @@ export default function TitleBar() {
                   <Square className="size-5" />
                 )}
               </Button>
-              <Button onClick={hidden} size="icon">
+              <Button onClick={hideWindow} size="icon">
                 <X className="size-5" />
               </Button>
             </>
           ) : (
             <span className="px-3 text-xs font-medium text-white">
-              {BRIDGE_ERROR_TEXT}
+              {bridgeMode === "preview"
+                ? WEB_PREVIEW_TEXT
+                : bridgeMode === "checking"
+                  ? BRIDGE_CHECKING_TEXT
+                  : BRIDGE_ERROR_TEXT}
             </span>
           )}
         </div>

@@ -23,15 +23,19 @@ npm install
 ## 3. 개발 모드 실행하기
 
 ```bash
-npm run app
+npm run app:dev
 ```
 
-이 명령은 사실 두 가지를 같이 실행합니다.
+이 명령은 `frontron dev`를 실행합니다.
 
-- React 화면을 위한 Vite 개발 서버
-- Electron 데스크톱 앱
+실제로는 아래 두 가지가 연결됩니다.
+
+- `frontron.config.ts`에 적힌 web dev command
+- framework-owned Electron 데스크톱 앱
 
 브라우저만 열리는 것이 아니라 데스크톱 창이 뜨는 것이 정상입니다.
+
+반대로 `npm run dev`는 web preview 전용이라서 데스크톱 bridge가 붙지 않습니다.
 
 ## 4. 실행되면 무엇을 보면 되나요?
 
@@ -63,7 +67,15 @@ React 쪽 변경은 빠르게 반영되고, Electron 쪽은 변경 내용에 따
 
 ### 흰 화면이 뜨는 경우
 
-가장 먼저 `vite.config.ts`의 `server.port`와 Electron이 읽는 개발 서버 포트가 맞는지 확인해 보세요.
+가장 먼저 `vite.config.ts`의 `server.port`와 `frontron/config.ts`의 `web.dev.url`이 맞는지 확인해 보세요.
+
+### 브리지 오류가 뜨는 경우
+
+`Frontron bridge missing` 같은 문구가 보이면 아래를 먼저 확인해 보세요.
+
+- `npm run dev`가 아니라 `npm run app:dev`로 실행했는지
+- 렌더러 코드가 `frontron/client`를 쓰고 있는지
+- 터미널에 runtime 관련 에러가 없는지
 
 ::: tip
 앱이 한 번 뜨는 경험을 만든 뒤에 커스터마이징으로 넘어가는 것이 좋습니다.

@@ -10,6 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 output
+.frontron
 *.local
 
 # Editor directories and files

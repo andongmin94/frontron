@@ -1,13 +1,13 @@
 import { defineConfig } from "vitepress";
 
 const ogTitle = "Frontron";
-const ogDescription = "Desktop App Template";
+const ogDescription = "Framework-first desktop app layer for existing web projects";
 const ogUrl = "https://frontron.andongmin.com";
 const ogImage = "https://frontron.andongmin.com/logo.png";
 
 export default defineConfig({
   title: "Frontron",
-  description: "Desktop App Template",
+  description: "Framework-first desktop app layer for existing web projects",
 
   head: [
     ["link", { rel: "icon", type: "image/png", href: "/logo.png" }],
@@ -66,16 +66,20 @@ export default defineConfig({
     sidebar: {
       "/guide/": [
         {
-          text: "빠른 시작",
+          text: "Framework-First",
           items: [
             {
-              text: "한 번에 따라하기",
+              text: "전환 개요",
               link: "/guide/",
+            },
+            {
+              text: "공식 구조와 계약",
+              link: "/guide/framework-first",
             },
           ],
         },
         {
-          text: "단계별 튜토리얼",
+          text: "Legacy Starter Guides",
           items: [
             {
               text: "프로젝트 만들기",

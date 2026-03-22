@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { spawn, execSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { createServer } from 'node:net'
@@ -16,6 +16,28 @@ const smokeEnvKeys = ['FRONTRON_SMOKE_TEST', 'FRONTRON_SMOKE_RESULT_PATH'] as co
 const previousSmokeEnv = new Map<string, string | undefined>()
 const require = createRequire(import.meta.url)
 const packageRoot = dirname(fileURLToPath(new URL('../package.json', import.meta.url)))
+const buildLockPath = join(packageRoot, '.test-build.lock')
+
+function sleepSync(timeoutMs: number) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, timeoutMs)
+}
+
+function withBuildLock<T>(run: () => T) {
+  while (true) {
+    try {
+      writeFileSync(buildLockPath, String(process.pid), { flag: 'wx' })
+      break
+    } catch {
+      sleepSync(50)
+    }
+  }
+
+  try {
+    return run()
+  } finally {
+    rmSync(buildLockPath, { force: true })
+  }
+}
 
 function isProcessRunning(pid: number) {
   try {
@@ -136,9 +158,15 @@ function waitForExit(child: ReturnType<typeof spawn>, timeoutMs = 30_000) {
 }
 
 function ensureBuiltRuntime() {
-  execSync('npm run build', {
-    cwd: packageRoot,
-    stdio: 'ignore',
+  withBuildLock(() => {
+    if (existsSync(join(packageRoot, 'dist', 'index.mjs'))) {
+      return
+    }
+
+    execSync('npm run build', {
+      cwd: packageRoot,
+      stdio: 'ignore',
+    })
   })
 }
 
@@ -226,6 +254,167 @@ function writeDevServerFixture(rootDir: string, port: number) {
       `    dev: { command: 'node ./dev-server.mjs ${port} ${serverPidPath.replace(/\\/g, '/')}', url: 'http://127.0.0.1:${port}' },`,
       "    build: { command: 'node -e \"process.stdout.write(\\'build-ok\\')\"', outDir: 'dist' },",
       '  },',
+      '  windows,',
+      '  bridge,',
+      '  menu,',
+      '  tray,',
+      '  hooks,',
+      '  rust: {',
+      '    enabled: false,',
+      '  },',
+      '}',
+      '',
+    ].join('\n'),
+  )
+}
+
+function writeInferredDevServerFixture(rootDir: string, port: number) {
+  const serverPidPath = join(rootDir, '.dev-server.pid')
+
+  writeFileSync(
+    join(rootDir, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'fixture-app',
+        private: true,
+        type: 'module',
+        scripts: {
+          dev: `node ./dev-server.mjs ${port} ${serverPidPath.replace(/\\/g, '/')}`,
+          build: 'vite build',
+        },
+      },
+      null,
+      2,
+    ),
+  )
+
+  writeFileSync(
+    join(rootDir, 'vite.config.ts'),
+    [
+      "import { defineConfig } from 'vite'",
+      '',
+      'export default defineConfig({',
+      '  server: {',
+      `    port: ${port},`,
+      '  },',
+      '})',
+      '',
+    ].join('\n'),
+  )
+
+  writeFileSync(
+    join(rootDir, 'dev-server.mjs'),
+    [
+      "import { writeFileSync } from 'node:fs'",
+      "import { createServer } from 'node:http'",
+      '',
+      'const port = Number(process.argv[2])',
+      'const pidPath = process.argv[3]',
+      '',
+      'const server = createServer((_request, response) => {',
+      "  response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })",
+      "  response.end('<!doctype html><html><body>inferred dev smoke</body></html>')",
+      '})',
+      '',
+      "server.listen(port, '127.0.0.1', () => {",
+      '  writeFileSync(pidPath, String(process.pid))',
+      '})',
+      '',
+      'const shutdown = () => {',
+      '  server.close(() => process.exit(0))',
+      '}',
+      '',
+      "process.on('SIGTERM', shutdown)",
+      "process.on('SIGINT', shutdown)",
+      '',
+    ].join('\n'),
+  )
+
+  writeFileSync(
+    join(rootDir, 'frontron', 'config.ts'),
+    [
+      "import bridge from './bridge'",
+      "import hooks from './hooks'",
+      "import menu from './menu'",
+      "import tray from './tray'",
+      "import windows from './windows'",
+      '',
+      'export default {',
+      "  app: { name: 'Fixture App', id: 'com.example.fixture' },",
+      '  windows,',
+      '  bridge,',
+      '  menu,',
+      '  tray,',
+      '  hooks,',
+      '  rust: {',
+      '    enabled: false,',
+      '  },',
+      '}',
+      '',
+    ].join('\n'),
+  )
+}
+
+function writePortFlagInferredDevServerFixture(rootDir: string, port: number) {
+  const serverPidPath = join(rootDir, '.dev-server.pid')
+
+  writeFileSync(
+    join(rootDir, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'fixture-app',
+        private: true,
+        type: 'module',
+        scripts: {
+          dev: `node ./dev-server.mjs --host 127.0.0.1 --port ${port} --pid ${serverPidPath.replace(/\\/g, '/')}`,
+          build: 'vite build',
+        },
+      },
+      null,
+      2,
+    ),
+  )
+
+  writeFileSync(
+    join(rootDir, 'dev-server.mjs'),
+    [
+      "import { writeFileSync } from 'node:fs'",
+      "import { createServer } from 'node:http'",
+      '',
+      'const port = Number(process.argv[process.argv.indexOf(\'--port\') + 1])',
+      "const host = process.argv[process.argv.indexOf('--host') + 1]",
+      "const pidPath = process.argv[process.argv.indexOf('--pid') + 1]",
+      '',
+      'const server = createServer((_request, response) => {',
+      "  response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })",
+      "  response.end('<!doctype html><html><body>generic inferred dev smoke</body></html>')",
+      '})',
+      '',
+      'server.listen(port, host, () => {',
+      '  writeFileSync(pidPath, String(process.pid))',
+      '})',
+      '',
+      'const shutdown = () => {',
+      '  server.close(() => process.exit(0))',
+      '}',
+      '',
+      "process.on('SIGTERM', shutdown)",
+      "process.on('SIGINT', shutdown)",
+      '',
+    ].join('\n'),
+  )
+
+  writeFileSync(
+    join(rootDir, 'frontron', 'config.ts'),
+    [
+      "import bridge from './bridge'",
+      "import hooks from './hooks'",
+      "import menu from './menu'",
+      "import tray from './tray'",
+      "import windows from './windows'",
+      '',
+      'export default {',
+      "  app: { name: 'Fixture App', id: 'com.example.fixture' },",
       '  windows,',
       '  bridge,',
       '  menu,',
@@ -355,6 +544,115 @@ test.sequential('runCli boots the development app flow in Electron smoke mode', 
   expect(smokePayload.bridgeNamespaces).toContain('app')
   expect(smokePayload.hasMenu).toBe(true)
   expect(smokePayload.hasTray).toBe(true)
+  expect(smokePayload.nativeStatus).toEqual({
+    enabled: false,
+    loaded: false,
+    ready: false,
+  })
+  expect(smokePayload.windowRoute).toBe('/')
+}, 30_000)
+
+test.sequential('runCli infers the development app flow for a standard Vite-shaped project', async () => {
+  ensureBuiltRuntime()
+
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+  const port = await getAvailablePort()
+  const smokeResultPath = join(fixtureDir, '.frontron-dev-inferred-smoke-result.json')
+  const info: string[] = []
+  const error: string[] = []
+
+  writeInferredDevServerFixture(fixtureDir, port)
+
+  for (const key of smokeEnvKeys) {
+    previousSmokeEnv.set(key, process.env[key])
+  }
+
+  process.env.FRONTRON_SMOKE_TEST = '1'
+  process.env.FRONTRON_SMOKE_RESULT_PATH = smokeResultPath
+
+  const exitCode = await runCli(['dev', '--cwd', fixtureDir], {
+    info(message) {
+      info.push(message)
+    },
+    error(message) {
+      error.push(message)
+    },
+  })
+
+  expect(exitCode).toBe(0)
+  expect(error).toEqual([])
+  expect(info.some((message) => message.includes('Inferred web dev command:'))).toBe(true)
+  expect(info.some((message) => message.includes(`http://localhost:${port}`))).toBe(true)
+  expect(info.some((message) => message.includes('App icon: using the default Frontron icon.'))).toBe(
+    true,
+  )
+  await waitForFile(smokeResultPath)
+
+  const smokePayload = JSON.parse(readFileSync(smokeResultPath, 'utf8')) as {
+    mode: string
+    nativeStatus: {
+      enabled: boolean
+      loaded: boolean
+      ready: boolean
+    }
+    windowRoute: string
+  }
+
+  expect(smokePayload.mode).toBe('development')
+  expect(smokePayload.nativeStatus).toEqual({
+    enabled: false,
+    loaded: false,
+    ready: false,
+  })
+  expect(smokePayload.windowRoute).toBe('/')
+}, 30_000)
+
+test.sequential('runCli infers the development app flow from a generic script port flag', async () => {
+  ensureBuiltRuntime()
+
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+  const port = await getAvailablePort()
+  const smokeResultPath = join(fixtureDir, '.frontron-dev-generic-port-smoke-result.json')
+  const info: string[] = []
+  const error: string[] = []
+
+  writePortFlagInferredDevServerFixture(fixtureDir, port)
+
+  for (const key of smokeEnvKeys) {
+    previousSmokeEnv.set(key, process.env[key])
+  }
+
+  process.env.FRONTRON_SMOKE_TEST = '1'
+  process.env.FRONTRON_SMOKE_RESULT_PATH = smokeResultPath
+
+  const exitCode = await runCli(['dev', '--cwd', fixtureDir], {
+    info(message) {
+      info.push(message)
+    },
+    error(message) {
+      error.push(message)
+    },
+  })
+
+  expect(exitCode).toBe(0)
+  expect(error).toEqual([])
+  expect(info.some((message) => message.includes('Inferred web dev command:'))).toBe(true)
+  expect(info.some((message) => message.includes(`http://127.0.0.1:${port}`))).toBe(true)
+  await waitForFile(smokeResultPath)
+
+  const smokePayload = JSON.parse(readFileSync(smokeResultPath, 'utf8')) as {
+    mode: string
+    nativeStatus: {
+      enabled: boolean
+      loaded: boolean
+      ready: boolean
+    }
+    windowRoute: string
+  }
+
+  expect(smokePayload.mode).toBe('development')
   expect(smokePayload.nativeStatus).toEqual({
     enabled: false,
     loaded: false,

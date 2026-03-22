@@ -1,65 +1,68 @@
-# 빌드와 패키징
+# Build and Package
 
-개발 모드에서 앱이 잘 뜬다면, 이제 배포용 결과물을 만들어 볼 차례입니다.
+If development mode works, the next step is to create distributable output.
 
-이 단계의 목표는 `npm run build`가 무엇을 하는지 이해하고, 결과물이 어디에 생기는지 보는 것입니다.
+The goal of this page is to explain what `npm run build` does and where the results appear.
 
-## 1. 실행 명령
+## 1. Command
 
 ```bash
 npm run build
 ```
 
-이 명령은 한 번에 세 단계를 진행합니다.
+In the starter, that command forwards to:
 
-1. 렌더러(React 화면) 빌드
-2. Electron 코드 컴파일
-3. 패키징 결과물 생성
+```bash
+npm run app:build
+```
 
-## 2. 왜 한 번에 여러 단계를 하나요?
+That runs `frontron build`.
 
-Electron 앱은 단순한 웹 앱이 아니기 때문입니다.
+## 2. What happens during the build?
 
-- 화면 코드만 빌드해서는 부족하고
-- Electron 메인/프리로드 코드도 준비되어야 하며
-- 배포 가능한 파일 형태까지 만들어야 합니다
+The build flow is:
 
-그래서 Frontron 기본 템플릿은 이 과정을 한 명령으로 묶어 둡니다.
+1. build the renderer output
+2. stage runtime files under `.frontron/`
+3. package the desktop app
 
-## 3. 빌드 전에 확인하면 좋은 것
+The runtime and packaging logic are owned by `frontron`, not by copied template files.
 
-- 개발 모드에서 앱이 한 번이라도 정상 실행되었는지
-- 아이콘과 이름 변경을 했다면 관련 파일을 저장했는지
-- 터미널에 남아 있는 에러가 없는지
+## 3. Good checks before you build
 
-## 4. Windows에서 기대할 수 있는 결과
+- confirm that `npm run app:dev` worked at least once
+- save any changes to the icon or app metadata
+- make sure the terminal does not already show a runtime error
 
-Windows 기본 설정에서는 `output/` 아래에 아래 같은 결과물이 생깁니다.
+## 4. What outputs should you expect on Windows?
+
+With the current default setup, the main outputs are usually created under `output/`.
+
+Typical Windows output includes:
 
 - `win-unpacked/`
-- 설치 파일(`.msi`)
-- 휴대용 실행 파일(`.exe`)
+- an installer `.exe`
 
-`win-unpacked/`은 패키징된 앱 폴더이고, `.msi`와 `.exe`는 실제로 전달하거나 배포할 때 보게 되는 결과물입니다.
+The exact file names can change with the app name and version.
 
-파일 이름은 앱 이름과 버전에 따라 달라질 수 있습니다. 처음에는 정확한 파일명보다 "어떤 종류의 결과물이 생겼는지"를 먼저 확인하세요.
+## 5. What should you inspect after the build?
 
-## 5. 빌드가 끝난 뒤 바로 볼 것
+Start with these folders:
 
 ```text
 dist/
-dist/electron/
+.frontron/
 output/
 ```
 
-이 세 폴더를 보면 빌드가 어느 단계까지 성공했는지 감을 잡기 쉽습니다.
+- `dist/`: the built web frontend
+- `.frontron/`: Frontron staging and generated files
+- `output/`: packaged desktop output
 
 ::: tip
-빌드가 성공했더라도 결과물을 해석하는 법이 익숙하지 않을 수 있습니다. 그럴 때는 다음 페이지에서 `dist/`, `dist/electron/`, `output/`의 역할을 차근차근 확인해 보세요.
+If the build succeeds but the output folders are confusing, read the next page and check each folder one by one.
 :::
 
 ::: warning
-Windows에서 프로젝트 경로가 너무 깊으면 `MSI` 패키징 단계에서 "파일을 찾을 수 없다"는 식의 에러가 날 수 있습니다. 특히 `app.asar.unpacked` 아래 긴 경로를 다루는 단계에서 잘 나타납니다.
-
-이럴 때는 프로젝트를 `C:\dev\my-app`처럼 더 짧은 경로로 옮긴 뒤 다시 빌드해 보세요.
+On Windows, very deep project paths can still break packaging steps. If you see file-not-found errors inside long packaging paths, try building from a shorter path such as `C:\dev\my-app`.
 :::

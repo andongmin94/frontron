@@ -1,83 +1,85 @@
-# 문제 해결
+# Troubleshooting
 
-처음 쓰는 사람은 대부분 비슷한 지점에서 막힙니다.
+Most first-time users get stuck in similar places.
 
-이 페이지는 "어디부터 확인하면 좋은지"를 빠르게 알려 주는 용도로 만들었습니다.
+This page is meant to help you decide where to look first.
 
-## 앱이 실행되지 않는 경우
+## If the app does not start
 
-먼저 아래를 확인해 보세요.
+Check these things first:
 
-- `npm install`이 정상적으로 끝났는지
-- `npm run app:dev` 실행 중 터미널에 에러가 없는지
-- Node.js 버전이 `22+`인지
-- root `frontron.config.ts`가 존재하는지
+- `npm install` finished successfully
+- `npm run app:dev` does not already show a terminal error
+- your Node.js version is `22+`
+- the root `frontron.config.ts` exists
 
-## 흰 화면이 보이는 경우
+## If you see a blank page
 
-흰 화면은 개발 서버 연결 문제일 때가 많습니다.
+A blank page is often a development-server mismatch.
 
-가장 먼저 아래를 확인해 보세요.
+Check:
 
-- `vite.config.ts`의 `server.port`
-- `frontron/config.ts`의 `web.dev.url`
-- 같은 포트를 이미 쓰는 다른 프로세스가 있는지
+- the port in `vite.config.ts`
+- the `web.dev.url` value in `frontron/config.ts`
+- whether another process is already using the same port
 
-## 창 버튼이나 브리지가 반응하지 않는 경우
+## If window buttons or bridge calls do not react
 
-최소화/최대화 같은 버튼은 `frontron/client`와 framework runtime이 연결되어야 동작합니다.
+Window controls and desktop bridge calls only work when `frontron/client` is connected to the framework runtime.
 
-초보자라면 먼저 아래를 확인해 보세요.
+Check these first:
 
-1. `npm run dev`가 아니라 `npm run app:dev`를 실행했는지
-2. 렌더러 코드가 `window.electron`이 아니라 `frontron/client`를 쓰는지
-3. 터미널에 preload/runtime 에러가 없는지
+1. Make sure you ran `npm run app:dev`, not `npm run dev`
+2. Make sure the renderer imports `frontron/client`
+3. Check the terminal for preload or runtime errors
 
-old generated app을 그대로 실행 중이라면 여기서 자주 막힙니다.
+If you only see `Web preview` in the title bar, you are in browser-only preview mode, not desktop mode.
 
-- `window.electron` adapter는 더 이상 지원되지 않습니다.
-- renderer 코드는 `frontron/client`로 옮겨야 합니다.
-- old `src/electron/*` 구조나 template-owned runtime/build model은 다시 공식화하지 않습니다.
+## If you are still running an older generated app
 
-가능하면 가장 먼저 아래를 확인해 보세요.
+Older generated apps often fail here because they still use removed APIs.
 
-1. 렌더러 import가 `frontron/client`인지
-2. `bridge.window.*`와 `bridge.system.*` 호출로 바뀌었는지
-3. 직접 preload global을 읽는 코드가 남아 있지 않은지
+- `window.electron` is no longer supported
+- renderer code must use `frontron/client`
+- the old `src/electron/*` structure is not part of the official contract anymore
 
-## 아이콘이 바뀌지 않는 경우
+The first things to check are:
 
-아래 항목을 순서대로 보세요.
+1. the renderer import comes from `frontron/client`
+2. direct preload-global reads are gone
+3. window and system calls go through `bridge.window.*` and `bridge.system.*`
 
-1. `public/icon.ico`를 정말 교체했는지
-2. 다시 빌드했는지
-3. 이전 패키징 결과가 남아 있지 않은지
+## If the icon does not change
 
-## `output/` 폴더가 비어 있거나 기대한 파일이 없는 경우
+Check these in order:
 
-가장 먼저 빌드가 끝까지 성공했는지 확인하세요.
+1. confirm that `public/icon.ico` was replaced
+2. confirm that `frontron/config.ts` still points to that file
+3. run the build again
+4. make sure you are not looking at an old packaged output
 
-- `dist/`가 생성되었는지
-- `.frontron/`가 생성되었는지
-- `.frontron/runtime/build/app/` 안에 `manifest.json`, `main.mjs`, `preload.mjs`, `web/`가 있는지
-- 터미널 마지막 줄에 에러가 없는지
+## If `output/` is empty or missing expected files
 
-Windows에서는 기본적으로 `output/` 아래에 `win-unpacked/`, 설치 파일(`.msi`), 휴대용 실행 파일(`.exe`)이 생성될 수 있습니다. 파일 이름이 다르더라도 확장자와 역할부터 확인하는 것이 좋습니다.
+First confirm that the build finished all the way through.
 
-## Windows에서 `MSI` 빌드가 "파일을 찾을 수 없다"며 실패하는 경우
+Check:
 
-프로젝트 경로가 너무 깊으면 Windows 경로 길이 제한 때문에 `MSI` 단계에서 실패할 수 있습니다.
+- `dist/` exists
+- `.frontron/` exists
+- `.frontron/runtime/build/app/` contains `manifest.json`, `main.mjs`, `preload.mjs`, and `web/`
+- the last terminal lines do not show an error
 
-특히 아래처럼 `app.asar.unpacked` 안의 긴 경로를 가리키는 에러가 보이면 이 가능성을 먼저 의심해 보세요.
+On Windows, the current default output usually includes `win-unpacked/` and an installer `.exe`.
 
-- `...output\\win-unpacked\\resources\\app.asar.unpacked\\...`
-- `The system cannot find the file ...`
+## If Windows packaging fails with file-not-found errors
 
-이럴 때는 프로젝트를 더 짧은 경로로 옮겨 다시 빌드해 보세요.
+Very deep project paths can still break Windows packaging.
 
-- 예: `C:\dev\my-app`
-- 예: `C:\work\demo`
+If you see long paths inside packaging output, especially under staged app paths, try moving the project to a shorter path and build again.
+
+- example: `C:\dev\my-app`
+- example: `C:\work\demo`
 
 ::: tip
-문제가 생기면 한 번에 모든 파일을 의심하지 말고, "방금 바꾼 파일"부터 보는 것이 가장 빠릅니다.
+When something breaks, start with the file you changed most recently.
 :::

@@ -1,38 +1,29 @@
-# 빠른 시작
+# Quick Start
 
-이 페이지는 Frontron의 공식 목표 계약과 현재 제품 상태를 가장 짧게 설명합니다.
+This page is the fastest way to understand how to start and which guide to read next.
 
-legacy starter guide는 이전 앱 참고용으로만 남아 있고, 공식 방향은 framework-first, config-driven 구조입니다.
+Frontron supports two normal entry paths: install it into an existing web project, or generate a new starter.
 
-## 1. 먼저 준비할 것
+If the desktop bridge feels abstract, read [Understand the Bridge Flow](/guide/understand-bridge-flow) before the API guide.
 
-아래 두 가지만 준비되어 있으면 시작할 수 있습니다.
+## 1. Prerequisites
+
+You only need these two things to get started.
 
 - Node.js `22+`
-- npm / yarn / pnpm / bun 중 하나
+- npm, yarn, pnpm, or bun
 
 ::: tip
-이 문서에서는 명령어를 `npm` 기준으로 적습니다. 다른 패키지 매니저를 써도 흐름은 거의 같습니다.
+This guide uses `npm` in examples, but the same flow works with other package managers.
 :::
 
-## 2. 공식 목표 계약
+## 2. The shortest valid setup
 
-최종적으로 사용자는 아래 흐름으로 시작할 수 있어야 합니다.
+This is the smallest official flow:
 
 ```bash
 npm install frontron
-```
-
-```ts
-// frontron.config.ts
-import { defineConfig } from 'frontron'
-
-export default defineConfig({
-  app: {
-    name: 'My App',
-    id: 'com.example.myapp',
-  },
-})
+npx frontron init
 ```
 
 ```bash
@@ -40,7 +31,7 @@ npm run app:dev
 npm run app:build
 ```
 
-## 3. 공식 구조
+## 3. Official structure
 
 ```text
 my-app/
@@ -52,22 +43,46 @@ my-app/
   frontron/
 ```
 
-이 구조는 manual install 사용자와 starter 사용자 모두가 공유해야 하는 공식 shape입니다.
+This is the official shape for both manual installs and starter users.
 
-## 4. 현재 저장소 상태
+## 4. Pick your next guide
 
-- `frontron`은 이미 `defineConfig`, config discovery, `frontron dev`, `frontron build`, `frontron/client`를 제공합니다.
-- `create-frontron`은 `frontron.config.ts`, `frontron/`, `app:dev`, `app:build`를 생성합니다.
-- `bridge`, `menu`, `tray`, `hooks`는 이미 공식 config surface에서 로드됩니다.
-- 공식 `frontron/rust` 슬롯도 이제 config와 starter 구조에서 고정되었습니다.
-- `app:dev`와 `app:build` smoke check도 이미 정리되었습니다.
-- 핵심 framework-first migration work는 완료되었습니다.
+### If you want the mental model first
 
-## 5. 다음에 볼 문서
+1. [Understand the Bridge Flow](/guide/understand-bridge-flow)
+2. [Use the Desktop Bridge](/guide/use-bridge)
 
-- [공식 구조와 계약](/guide/framework-first)
-- legacy starter flow를 참고해야 한다면 sidebar의 `Legacy Starter Guides`
+### If you already have a web app
+
+1. [Install into an Existing Project](/guide/install-existing-project)
+2. [Understand the Bridge Flow](/guide/understand-bridge-flow)
+3. [Run in Development](/guide/run-development)
+4. [Use the Desktop Bridge](/guide/use-bridge)
+5. [Build and Package](/guide/build-and-package)
+
+### If you want a new project
+
+1. [Create a Project](/guide/create-project)
+2. [Run in Development](/guide/run-development)
+3. [Change App Name and Icon](/guide/customize-app)
+4. [Understand the Generated Structure](/guide/understand-template)
+
+## 5. What Frontron owns
+
+- `frontron` provides `defineConfig`, config discovery, `frontron dev`, `frontron build`, and `frontron/client`.
+- `create-frontron` generates `frontron.config.ts`, `frontron/`, `app:dev`, and `app:build`.
+- `bridge`, `menu`, `tray`, `hooks`, and the runtime/build flow are owned by `frontron`.
+- The official Rust slot is fixed at `frontron/rust`.
+- `app:dev` and `app:build` already have smoke coverage in the repo.
+
+## 6. Most-used manuals
+
+- [Official Contract](/guide/framework-first)
+- [Install into an Existing Project](/guide/install-existing-project)
+- [Understand the Bridge Flow](/guide/understand-bridge-flow)
+- [Use the Desktop Bridge](/guide/use-bridge)
+- [Troubleshooting](/guide/troubleshooting)
 
 ::: tip
-old starter docs는 참고용일 뿐이고, 공식 contract는 항상 `frontron.config.ts` 중심 구조입니다.
+The official contract is always centered on `frontron.config.ts`.
 :::

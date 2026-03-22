@@ -49,7 +49,7 @@
    - Broader Rust bridge examples, stronger native coverage, package smoke coverage, and release hardening have now landed in the repo.
 
 ## Current slice
-- Status: framework-first migration and release hardening are complete. Only manual publish execution remains.
+- Status: framework-first migration and release hardening are complete. Docs localization and docs-site i18n are in place, and docs usability is now the active cleanup slice.
 - Keep `frontron` as the only runtime/build owner.
 - Keep `frontron/client` as the only public renderer API.
 - Keep guard tests so `window.electron` and `src/electron` do not re-enter the framework or starter path.
@@ -61,8 +61,14 @@
 - Both published packages now have `npm pack --dry-run` smoke coverage and real `npm pack` tarball smoke coverage so release checks validate the actual shipped file surface.
 - Release rehearsal now also covers packed `create-frontron` generation plus packed `frontron dev --check`, and the publish script order is hardened to publish `frontron` before `create-frontron`.
 - Implementation roadmap work is complete.
-- Remaining execution work:
-  - manual release execution and final publish-time confirmation
+- Active docs work:
+  - convert the default docs site content to English
+  - add a Korean locale under `/ko/` with the same documentation structure
+  - make the docs landing pages more scannable and less text-heavy
+  - add clearer step-by-step manuals for the highest-traffic user flows
+  - make guide navigation more path-based for first-time users
+  - landed new manuals for existing-project install and desktop bridge usage
+  - smooth manual-install DX by inferring standard Vite web commands and targets, and use the default Frontron icon when `app.icon` is omitted
 
 ## Risks / assumptions
 - Docs and tests are tightly coupled to the old starter-owned structure, so they must move with the runtime migration.

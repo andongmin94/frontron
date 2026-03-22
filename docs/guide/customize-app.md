@@ -1,64 +1,67 @@
-# 앱 이름과 아이콘 바꾸기
+# Change App Name and Icon
 
-처음 쓰는 사람에게 가장 좋은 커스터마이징 연습은 "눈에 바로 보이는 것"을 바꾸는 일입니다.
+The best first customization is something you can see right away.
 
-이 페이지에서는 아이콘과 앱 이름을 바꾸면서, 어떤 값이 어디에 영향을 주는지 같이 설명합니다.
+This page explains how to change the icon and the app name, and where those values live in the framework-first structure.
 
-## 1. 아이콘 바꾸기
+## 1. Change the icon
 
-기본 아이콘 파일은 아래 경로에 있습니다.
+The default icon file is:
 
 ```text
 public/
   icon.ico
 ```
 
-이 파일을 내 아이콘으로 바꾸면, 이후 빌드 결과와 패키징 결과에 반영됩니다.
+The icon is wired through `frontron/config.ts`:
 
-### 왜 이 파일을 바꾸나요?
+```ts
+app: {
+  icon: './public/icon.ico',
+}
+```
 
-Electron 패키징 설정이 기본적으로 이 파일을 참조하기 때문입니다.
+If `app.icon` is omitted, Frontron falls back to its default icon.
 
-즉, 초보자 입장에서는 "아이콘은 여기서 시작한다"라고 기억해 두면 충분합니다.
+If you replace that file with your own icon, the packaged app will use it on the next build.
 
-## 2. 앱 이름은 한 군데만 바꾸는 것이 아닙니다
+## 2. Change the app name and app ID
 
-앱 이름은 역할이 조금 다른 값들로 나뉩니다.
+The main app metadata lives in `frontron/config.ts`.
 
-### `package.json`의 `build.productName`
+The first two values most people change are:
 
-이 값은 설치 파일 이름이나 패키징 결과 쪽에서 주로 체감되는 이름입니다.
+- `app.name`
+- `app.id`
 
-### `package.json`의 `build.appId`
+You can think of them like this:
 
-이 값은 앱의 식별자에 가깝습니다.
+- `app.name`: the product name shown in packaging and app metadata
+- `app.id`: the application identifier used by the desktop app
 
-사용자에게 크게 보이지 않을 수 있지만, 배포와 구분에는 중요합니다.
+## 3. Change visible UI text
 
-### `src/components/TitleBar.tsx`
+If you want to change text that is shown directly in the starter UI, check:
 
-이 파일은 창 상단에 직접 보이는 텍스트를 바꿀 때 확인할 파일입니다.
+- `src/components/TitleBar.tsx`
+- `src/App.tsx`
 
-즉, 초보자 기준으로는 아래처럼 이해하면 쉽습니다.
+The window definition itself lives in `frontron/windows/index.ts`.
 
-- `productName`: 설치 파일과 앱 이름 쪽
-- `appId`: 내부 식별자 쪽
-- `TitleBar.tsx`: 화면에 보이는 제목 쪽
+## 4. Good first change order
 
-## 3. 초보자에게 추천하는 첫 변경 순서
+1. Replace `public/icon.ico`
+2. Update `app.name` in `frontron/config.ts`
+3. Update `app.id` in `frontron/config.ts`
+4. Change visible UI text in `src/components/TitleBar.tsx`
 
-1. `public/icon.ico` 교체
-2. `package.json`의 `build.productName` 확인
-3. `package.json`의 `build.appId` 확인
-4. `src/components/TitleBar.tsx`에서 화면 제목 확인
+This order keeps the first customization simple and visible.
 
-이 순서로 보면 "왜 이름을 한 군데만 바꿨는데 전부 바뀌지 않지?"라는 혼란을 줄일 수 있습니다.
+## 5. What changes after that?
 
-## 4. 파일을 바꾸고 나면 무엇이 달라지나요?
-
-- 개발 실행에서는 제목 텍스트 같은 화면 요소를 바로 확인할 수 있습니다.
-- 빌드 후에는 `output/` 안의 파일 이름이나 아이콘에서 차이를 확인할 수 있습니다.
+- In development, visible UI text changes show up right away
+- After a build, the icon and packaged app metadata change in `output/`
 
 ::: tip
-이 단계에서는 모든 브랜딩 요소를 한 번에 바꾸려고 하지 말고, 아이콘과 눈에 보이는 이름부터 바꾸는 것이 좋습니다.
+Do not try to rebrand everything at once. Start with the icon and visible app name first.
 :::

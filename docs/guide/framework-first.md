@@ -1,28 +1,28 @@
 # Framework-First Contract
 
-이 문서는 Frontron이 수렴해야 하는 공식 구조와 책임 분리를 설명합니다.
+This page describes the official structure and responsibility split that Frontron is built around.
 
-## 목표
+## Goal
 
-Frontron의 본체는 `frontron` 패키지여야 합니다.
+`frontron` must be the real product surface.
 
-- 기존 웹 프로젝트에 `frontron`을 설치할 수 있어야 합니다.
-- root `frontron.config.ts`가 공식 entrypoint여야 합니다.
-- `create-frontron`은 얇은 starter generator만 담당해야 합니다.
+- You must be able to install `frontron` into an existing web project.
+- The root `frontron.config.ts` must be the official entrypoint.
+- `create-frontron` must stay a thin starter generator.
 
-## 공식 시작 흐름
+## Official start flow
 
-최종적으로 사용자는 아래만으로 시작할 수 있어야 합니다.
+The supported start flow is:
 
-1. 기존 웹 프론트엔드 프로젝트 준비
-2. `frontron` 설치
-3. root `frontron.config.ts` 작성
-4. `app:dev` 실행
-5. `app:build` 실행
+1. Prepare an existing web frontend project
+2. Install `frontron`
+3. Add a root `frontron.config.ts`
+4. Run `app:dev`
+5. Run `app:build`
 
-## 공식 구조
+## Official structure
 
-가장 중요한 구조는 아래 shape입니다.
+The important shape is:
 
 ```text
 my-app/
@@ -34,7 +34,7 @@ my-app/
   frontron/
 ```
 
-`frontron/`은 app-layer 전용 확장 공간입니다.
+`frontron/` is the dedicated app-layer area.
 
 - `bridge/`
 - `windows/`
@@ -43,45 +43,45 @@ my-app/
 - `hooks/`
 - `rust/`
 
-## 책임 분리
+## Responsibility split
 
-웹 프로젝트가 소유하는 것:
+The web project owns:
 
-- 페이지
-- 컴포넌트
-- 상태관리
-- 라우팅
-- API 호출
+- pages
+- components
+- state management
+- routing
+- API calls
 
-`frontron`이 소유하는 것:
+`frontron` owns:
 
 - Electron runtime ownership
-- preload/main wiring
-- packaging/build ownership
+- preload and main wiring
+- packaging and build ownership
 - typed bridge runtime
 - native loading
 
-`create-frontron`이 소유하는 것:
+`create-frontron` owns:
 
-- 공식 구조를 빠르게 생성하는 starter scaffolding
+- starter generation for the official shape
 - `frontron` dependency wiring
 - example `frontron.config.ts`
 
-## 현재 상태
+## Current state
 
-현재 저장소는 이 구조를 이미 구현했습니다.
+The repository already implements this structure.
 
-- `frontron`은 이미 config discovery, CLI, framework-owned runtime/build staging을 소유합니다.
-- `create-frontron`은 공식 구조를 생성하는 얇은 starter generator입니다.
-- 공식 migration target은 항상 `frontron/client`입니다.
-- public renderer API는 이제 `frontron/client`만 지원합니다.
+- `frontron` owns config discovery, the CLI, and runtime/build staging.
+- `create-frontron` generates the official starter shape instead of a template-owned runtime.
+- The public renderer API is now only `frontron/client`.
+- The official Rust slot is now `frontron/rust`.
 
-## Legacy Renderer Migration
+## Older apps
 
-old `window.electron` renderer 코드는 더 이상 지원되지 않습니다.
+Older `window.electron` renderer code is no longer supported.
 
-남아 있는 old app은 아래 기준으로 옮겨야 합니다.
+Older apps must move to this rule set:
 
-- renderer API는 `frontron/client`만 사용합니다.
-- preload internals나 `window.electron`에 직접 의존하지 않습니다.
-- old `src/electron/*` 구조를 복원하지 않습니다.
+- use only `frontron/client` in renderer code
+- do not depend on preload globals or internal bridge wiring
+- do not restore the old `src/electron/*` structure

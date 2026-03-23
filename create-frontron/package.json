@@ -9,8 +9,7 @@
     "create-frontron": "index.js"
   },
   "exports": {
-    "./package.json": "./package.json",
-    "./template/*": "./template/*"
+    "./package.json": "./package.json"
   },
   "files": [
     "index.js",

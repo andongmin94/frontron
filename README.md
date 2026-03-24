@@ -1,102 +1,77 @@
 <div align="center">
 
 <a href="https://frontron.andongmin.com">
-<img src="https://frontron.andongmin.com/logo.svg" alt="logo" height="200" />
+<img src="https://frontron.andongmin.com/logo.svg" alt="Frontron logo" height="200" />
 </a>
 
 </div>
 
 # Frontron
 
-기존 웹 프론트엔드 프로젝트를 config-driven 데스크톱 앱으로 확장하는 framework-first 제품 저장소입니다.
+Framework-first desktop app layer for existing web projects.
 
-## 개요
+## Packages
 
-이 저장소의 역할은 아래 두 패키지로 분리됩니다.
+- `frontron`: the real product. It owns config loading, the CLI, runtime/build staging, bridge APIs, and app-layer expansion.
+- `create-frontron`: a thin starter generator. It produces the same official structure as the manual install path.
 
-- `frontron`: 실제 제품. config, CLI, runtime/build ownership, bridge, app-layer 확장 구조를 소유합니다.
-- `create-frontron`: 얇은 starter generator. `frontron`이 연결된 공식 구조만 생성합니다.
+The architecture contract lives in [`specs/framework-first.md`](specs/framework-first.md).
 
-공식 계약은 [specs/framework-first.md](C:/Users/Andongmin/Desktop/repository/frontron/specs/framework-first.md)에 고정됩니다.
+## Quick Start
 
-## 공식 목표 계약
+Use the one-step bootstrap for an existing web project:
 
-최종적으로 사용자는 아래 흐름으로 시작할 수 있어야 합니다.
+```bash
+npx frontron init
+npm run app:dev
+```
+
+If you want manual dependency control:
 
 ```bash
 npm install frontron
+npx frontron init --skip-install
+npm run app:dev
 ```
 
-```ts
-// frontron.config.ts
-import { defineConfig } from 'frontron'
+Create a new starter app with:
 
-export default defineConfig({
-  app: {
-    name: 'My App',
-    id: 'com.example.myapp',
-  },
-  web: {
-    dev: {
-      command: 'npm run web:dev',
-      url: 'http://localhost:5173',
-    },
-    build: {
-      command: 'npm run web:build',
-      outDir: 'dist',
-    },
-  },
-  windows: {
-    main: {
-      route: '/',
-      width: 1280,
-      height: 800,
-    },
-  },
-})
+```bash
+npm create frontron@latest my-app
+cd my-app
+npm install
+npm run app:dev
 ```
 
-```json
-{
-  "scripts": {
-    "app:dev": "frontron dev",
-    "app:build": "frontron build"
-  }
-}
-```
+## Official Shape
 
-## 현재 상태
+- Root `frontron.config.ts` is the official config entrypoint.
+- `frontron/` is the app-layer expansion area for bridge, windows, hooks, menu, tray, and Rust.
+- `create-frontron` should stay thin. Runtime and build ownership belong to `frontron`.
+- Normal product decisions such as app metadata, output folder, artifact naming, and Windows targets are user-configurable in `frontron.config.ts`.
 
-- `packages/frontron`은 `defineConfig`, config discovery, `frontron dev`, `frontron build`, `frontron/client`, framework-owned runtime/build staging을 제공합니다.
-- `packages/create-frontron`은 root `frontron.config.ts`, `frontron/`, `app:dev`, `app:build`를 생성하는 thin starter generator입니다.
-- 문서와 예제는 framework-first 구조를 기준으로 정리되어 있습니다.
+## Requirements
 
-## 요구사항
+- Node.js `22+`
 
-- Node.js `22+` 버전이 필요합니다.
-
-## 저장소 구조
+## Repo Layout
 
 ```text
 frontron/
-  docs/                        # VitePress 문서 사이트
+  docs/                        # VitePress docs site
   specs/                       # architecture contract and fixtures
   packages/
-    create-frontron/           # thin starter generator CLI
-      src/                     # CLI 로직
-      template/                # framework-first starter 템플릿
-    frontron/                  # real product surface 패키지
+    create-frontron/           # thin starter generator
+    frontron/                  # real product package
 ```
 
-## 문서
+## Docs
 
-더 자세한 내용은 공식 문서에서 확인하실 수 있습니다.
+- Docs: [frontron.andongmin.com](https://frontron.andongmin.com)
+- Guide: [frontron.andongmin.com/guide/](https://frontron.andongmin.com/guide/)
+- Spec: [`specs/framework-first.md`](specs/framework-first.md)
+- Issues: [github.com/andongmin94/frontron/issues](https://github.com/andongmin94/frontron/issues)
 
-- 공식 문서: https://frontron.andongmin.com
-- 가이드: https://frontron.andongmin.com/guide/
-- 아키텍처 명세: [specs/framework-first.md](C:/Users/Andongmin/Desktop/repository/frontron/specs/framework-first.md)
-- 이슈: https://github.com/andongmin94/frontron/issues
+## License
 
-## 라이선스
-
-MIT 라이선스를 따릅니다. 자세한 내용은 `LICENSE.md`를 참고해 주세요.
+MIT. See [`LICENSE.md`](LICENSE.md).

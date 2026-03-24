@@ -19,12 +19,15 @@ This guide uses `npm` in examples, but the same flow works with other package ma
 
 ## 2. The shortest valid setup
 
-This is the smallest official flow:
+This is the smallest official flow for an existing project:
 
 ```bash
-npm install frontron
 npx frontron init
 ```
+
+`frontron init` installs `frontron` automatically when it is missing, then adds the basic files and scripts.
+
+If you want to manage the dependency yourself, run `npx frontron init --skip-install` instead.
 
 ```bash
 npm run app:dev

@@ -106,3 +106,107 @@
   - official `frontron/rust` slot contract, starter scaffold, CLI task orchestration, runtime loading, bridge type generation, broader config-driven Rust bridge examples, and release/package smoke coverage
 - Still open:
   - manual release execution and final publish-time confirmation
+
+## Next product slice: Official Config Surface Expansion
+- Status: planned.
+- Goal:
+  - widen `frontron.config.ts` so normal product decisions do not require forking `frontron`
+  - keep Electron runtime/preload/build orchestration framework-owned
+  - expose stable, validated, high-signal options first instead of dumping raw Electron and raw electron-builder config into user space
+
+### Design rules
+- Keep `frontron` as the runtime/build owner.
+- Only expose settings that represent normal app-product decisions.
+- Prefer typed, validated config over free-form pass-through.
+- Add a small escape hatch only after the common product surface is broad enough.
+- Update docs and tests every time the public config surface changes.
+
+### Phase A. Window surface expansion
+- Purpose:
+  - cover the common `BrowserWindow` decisions that users expect to configure directly.
+- Add to `windows.*`:
+  - `minWidth`, `minHeight`, `maxWidth`, `maxHeight`
+  - `show`, `center`, `backgroundColor`
+  - `alwaysOnTop`, `fullscreen`, `fullscreenable`, `maximizable`, `minimizable`, `closable`
+  - `skipTaskbar`, `transparent`, `autoHideMenuBar`
+  - title-bar options with a controlled subset such as `titleBarStyle`
+- Runtime work:
+  - update `packages/frontron/src/types.ts`
+  - validate in `packages/frontron/src/config.ts`
+  - wire the options in `packages/frontron/src/runtime/main.ts`
+- Validation:
+  - add config validation tests
+  - add runtime smoke assertions for at least one advanced window option
+
+### Phase B. Packaging surface expansion
+- Purpose:
+  - let users control installer/output behavior without owning `electron-builder` directly.
+- Add to top-level `build`:
+  - `asar`
+  - `compression`
+  - `extraResources`
+  - `extraFiles`
+  - `files` allowlist support
+  - richer `build.windows` config:
+    - `icon`
+    - `publisherName`
+    - `signAndEditExecutable`
+    - `requestedExecutionLevel`
+    - `artifactName` override at platform level if needed
+  - richer `build.nsis` config:
+    - `oneClick`
+    - `perMachine`
+    - `allowToChangeInstallationDirectory`
+    - `deleteAppDataOnUninstall`
+    - `installerIcon`
+    - `uninstallerIcon`
+- CLI work:
+  - keep building `builder.json` in `packages/frontron/src/cli.ts`
+  - map only the supported subset into the generated electron-builder config
+- Validation:
+  - add `stageBuildApp` assertions for generated builder config
+  - add package smoke coverage for at least one non-default Windows target mix
+
+### Phase C. Cross-platform and release metadata expansion
+- Purpose:
+  - stop treating advanced packaging as Windows-only.
+- Add:
+  - `build.mac.targets`
+  - `build.linux.targets`
+  - platform icons and category metadata
+  - stronger app metadata surface where missing
+  - publish-provider surface beyond the current `publish` mode enum when needed
+- Guardrail:
+  - keep signing/notarization/publish provider support typed and limited to the common fields first
+
+### Phase D. Guarded advanced override
+- Purpose:
+  - support edge cases without collapsing back to template-owned raw Electron.
+- Add a narrow advanced block such as:
+  - `build.advanced.electronBuilder`
+  - `windows.*.advanced`
+- Rules:
+  - document that the advanced block is best-effort and intentionally not fully abstracted
+  - block obviously dangerous or conflicting overrides
+  - treat this as the final layer, not the default user path
+
+### Phase E. DX and migration support
+- Improve CLI failure messages when inference cannot determine the frontend command or output.
+- Show candidate package scripts before telling the user to set `web.dev` or `web.build`.
+- Add docs tables for:
+  - what `frontron.config.ts` currently supports
+  - what still requires the advanced block
+  - common setup recipes for Vite, VitePress, Next, monorepos, and custom scripts
+
+### Suggested implementation order
+1. Phase A window surface expansion
+2. Phase B packaging surface expansion
+3. Phase E DX/error-message improvements
+4. Phase C cross-platform build surface
+5. Phase D guarded advanced override
+
+### Acceptance criteria
+- Users can configure the common app-window and package-output decisions entirely from `frontron.config.ts`.
+- The framework still owns runtime/main/preload/build orchestration.
+- The public config surface is documented, validated, and covered by tests.
+- Users only need an advanced override block for true edge cases, not for normal product decisions.

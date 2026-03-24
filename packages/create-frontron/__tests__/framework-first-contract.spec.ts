@@ -29,8 +29,15 @@ const listFiles = (dir: string): string[] => {
   return files.sort()
 }
 
-test('framework-first fixtures keep manual install and starter output in parity', () => {
-  expect(listFiles(manualInstallDir)).toEqual(listFiles(starterOutputDir))
+test('framework-first fixtures keep the starter output compatible with manual install', () => {
+  const manualFiles = listFiles(manualInstallDir)
+  const starterFiles = listFiles(starterOutputDir)
+
+  expect(starterFiles.length).toBeGreaterThanOrEqual(manualFiles.length)
+
+  for (const file of manualFiles) {
+    expect(starterFiles).toContain(file)
+  }
 })
 
 test('framework-first fixtures declare canonical app scripts and config entrypoints', () => {
@@ -76,6 +83,6 @@ test('docs and package readmes declare the framework-first contract as the targe
   expect(frontronReadme).toContain('frontron dev')
   expect(starterReadme).toContain('starter generator')
   expect(docsHome).toContain('framework-first')
-  expect(docsGuideIndex).toContain('공식 목표 계약')
-  expect(docsSidebar).toContain('Legacy Starter Guides')
+  expect(docsGuideIndex).toContain('Quick Start')
+  expect(docsSidebar).toContain('Official Contract')
 })

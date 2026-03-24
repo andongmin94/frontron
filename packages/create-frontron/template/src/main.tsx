@@ -1,13 +1,16 @@
-import ReactDOM from "react-dom/client";
+import { StrictMode } from "react"
+import { createRoot } from "react-dom/client"
 
-import App from "./App.tsx";
+import "./index.css"
+import App from "./App.tsx"
+import TitleBar from "@/components/TitleBar.tsx"
+import { ThemeProvider } from "@/components/theme-provider.tsx"
 
-import "@/index.css";
-import TitleBar from "@/components/TitleBar";
-
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <>
-    <TitleBar />
-    <App />
-  </>,
-);
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <ThemeProvider defaultTheme="system" storageKey="frontron-theme">
+      <TitleBar />
+      <App />
+    </ThemeProvider>
+  </StrictMode>,
+)

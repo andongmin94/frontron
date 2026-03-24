@@ -1,7 +1,6 @@
 import { existsSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { dirname, isAbsolute, resolve } from 'node:path'
-
-import { Menu, Tray, type MenuItemConstructorOptions } from 'electron'
 
 import type {
   FrontronDesktopContext,
@@ -10,6 +9,12 @@ import type {
   FrontronTrayConfig,
 } from '../types'
 import type { RuntimeManifest } from './manifest'
+
+const require = createRequire(import.meta.url)
+const electron = require('electron') as typeof import('electron')
+const { Menu, Tray } = electron
+
+type ElectronMenuItemConstructorOptions = import('electron').MenuItemConstructorOptions
 
 function resolveManifestPath(manifestPath: string, value: string | undefined) {
   if (!value) {
@@ -26,11 +31,11 @@ function resolveManifestPath(manifestPath: string, value: string | undefined) {
 function createMenuItem(
   item: FrontronMenuItemConfig,
   context: FrontronDesktopContext,
-): MenuItemConstructorOptions {
+): ElectronMenuItemConstructorOptions {
   return {
     type: item.type,
     label: item.label,
-    role: item.role as MenuItemConstructorOptions['role'],
+    role: item.role as ElectronMenuItemConstructorOptions['role'],
     accelerator: item.accelerator,
     enabled: item.enabled,
     checked: item.checked,

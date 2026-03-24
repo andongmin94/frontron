@@ -1,49 +1,38 @@
 # Frontron <a href="https://npmjs.com/package/frontron"><img src="https://img.shields.io/npm/v/frontron" alt="npm package"></a>
 
-`frontron`은 framework-first 방향에서 실제 제품이 되어야 하는 패키지입니다.
+`frontron` is the framework-first desktop app layer for existing web projects.
 
-## 목표 public surface
-
-이 패키지는 최종적으로 아래 surface를 소유해야 합니다.
+## What It Owns
 
 - `defineConfig`
+- `frontron init`
 - `frontron dev`
 - `frontron build`
 - config discovery for root `frontron.config.ts`
 - `frontron/client`
-- Electron runtime/build ownership
+- runtime and build ownership
 - typed bridge registration
 - app-layer expansion under `frontron/`
 - the official `frontron/rust` slot
 
-## 현재 상태
+## Existing Project Bootstrap
 
-이 패키지는 이미 framework-first product surface의 기본 동작을 소유합니다.
+Use the one-step bootstrap:
 
-- `defineConfig`, config discovery, `frontron dev`, `frontron build`, `frontron/client`를 제공합니다.
-- `frontron init`은 기존 웹 프로젝트에 기본 `frontron.config.ts`와 `app:dev` / `app:build` 스크립트를 안전하게 추가할 수 있습니다.
-- `frontron dev`는 configured web dev command를 실행하며, 표준 Vite 프로젝트에서는 `package.json`과 `vite.config.*`에서 웹 명령과 포트를 자동 추론할 수 있고 `--port`나 `PORT=` 같은 스크립트 힌트도 읽을 수 있습니다.
-- `frontron build`는 configured web build command 이후 `.frontron/` 아래에 runtime/build staging을 만들고 desktop packaging을 수행하며, 표준 Vite 프로젝트에서는 build command와 outDir도 자동 추론할 수 있습니다.
-- config-driven custom bridge namespace는 `frontron.config.ts`에서 로드되며, build 시 공식 app-layer 파일과 함께 staging 됩니다.
-- `frontron` CLI는 `.frontron/types/frontron-client.d.ts`를 생성해서 custom bridge namespace와 메서드 시그니처를 TypeScript에 연결합니다.
-- `menu`, `tray`, `hooks`도 같은 config surface에서 로드되며, starter와 manual install이 같은 구조를 공유합니다.
-- `rust: { enabled: true }`는 공식 `frontron/rust` 슬롯을 사용하며, `frontron dev`에서는 `cargo build`, `frontron build`에서는 `cargo build --release`를 먼저 실행합니다.
-- native artifact가 있으면 framework runtime이 이를 직접 로드하고, `bridge.system.getNativeStatus()`와 `bridge.system.isNativeReady()`로 상태를 확인할 수 있습니다.
-- 첫 built-in Rust bridge surface로 `bridge.native.getStatus()`, `bridge.native.isReady()`, `bridge.native.add(left, right)`를 제공합니다.
-- 첫 config-driven Rust bridge 예제로 `rust.bridge.math.add -> bridge.math.add` 흐름도 지원합니다.
-- config-driven Rust bridge는 런타임에서도 인자 개수와 `int` / `double` / `bool` / `string` 타입을 검증합니다.
-- public renderer API는 이제 `frontron/client`만 지원합니다.
-- `app.icon`을 생략하면 Frontron 기본 아이콘이 자동으로 사용됩니다.
+```bash
+npx frontron init
+```
 
-## Migration Note
+When `frontron` is missing, the CLI installs the matching package version, adds `app:dev` and `app:build`, and creates the root `frontron.config.ts`.
 
-이 패키지는 더 이상 `window.electron` compatibility adapter를 제공하지 않습니다.
+If you want manual dependency control:
 
-- old renderer `window.electron` 코드는 `frontron/client`로 옮겨야 합니다.
-- old `src/electron/*` ownership model은 공식 구조가 아닙니다.
-- template-owned build/runtime logic도 다시 지원하지 않습니다.
+```bash
+npm install frontron
+npx frontron init --skip-install
+```
 
-## 목표 사용 방식
+## Minimal Usage
 
 ```ts
 import { defineConfig } from 'frontron'
@@ -52,6 +41,15 @@ export default defineConfig({
   app: {
     name: 'My App',
     id: 'com.example.myapp',
+    description: 'My desktop app',
+    author: 'My Team',
+  },
+  build: {
+    outputDir: 'release',
+    artifactName: '${productName}-${version}-${target}.${ext}',
+    windows: {
+      targets: ['nsis', 'dir'],
+    },
   },
 })
 ```
@@ -65,11 +63,80 @@ export default defineConfig({
 }
 ```
 
-문서: https://frontron.andongmin.com
-명세: [../../specs/framework-first.md](C:/Users/Andongmin/Desktop/repository/frontron/specs/framework-first.md)
+## Common Product Settings
 
-## 라이선스
+Use `app` for normal product metadata, and the top-level `build` block for packaged output policy.
 
-MIT © andongmin
+`web.build` is still the frontend build step.
 
-이슈 / 제안: https://github.com/andongmin94/frontron/issues
+The top-level `build` block is Frontron's desktop package output config.
+
+Packaged production apps load the built frontend through a Frontron-owned local loopback server instead of `file://`.
+
+```ts
+import { defineConfig } from 'frontron'
+
+export default defineConfig({
+  app: {
+    name: 'My App',
+    id: 'com.example.myapp',
+    description: 'Desktop shell for My App',
+    author: 'Example Team',
+    copyright: 'Copyright (c) 2026 Example Team',
+  },
+  build: {
+    outputDir: 'artifacts',
+    artifactName: '${productName}-${version}.${ext}',
+    publish: 'onTag',
+    asar: true,
+    compression: 'maximum',
+    files: ['main.mjs', { from: 'public', to: 'public-files', filter: ['**/*'] }],
+    extraResources: ['resources'],
+    extraFiles: [{ from: 'licenses', to: 'licenses' }],
+    windows: {
+      targets: ['nsis', 'portable', 'dir'],
+      icon: 'public/icon.ico',
+      publisherName: ['Example Team'],
+      signAndEditExecutable: true,
+      requestedExecutionLevel: 'highestAvailable',
+      artifactName: '${productName}-win-${version}.${ext}',
+    },
+    nsis: {
+      oneClick: false,
+      perMachine: true,
+      allowToChangeInstallationDirectory: true,
+      deleteAppDataOnUninstall: true,
+      installerIcon: 'public/installer.ico',
+      uninstallerIcon: 'public/uninstaller.ico',
+    },
+    mac: {
+      targets: ['dmg', 'zip'],
+      icon: 'public/icon.icns',
+      category: 'public.app-category.developer-tools',
+      artifactName: '${productName}-mac-${version}.${ext}',
+    },
+    linux: {
+      targets: ['AppImage', 'deb'],
+      icon: 'public/icons',
+      category: 'Development',
+      packageCategory: 'devel',
+      artifactName: '${productName}-linux-${version}.${ext}',
+    },
+  },
+})
+```
+
+## Notes
+
+- The public renderer API is `frontron/client`.
+- Frontron can infer common existing-project scripts such as Vite `dev` / `build`, VitePress `docs:dev` / `docs:build`, Astro, Angular CLI, Vue CLI, and well-known namespaced scripts like `frontend:dev`, `client:build`, `ui:dev`, and `renderer:build`. For Next.js build output, keep `next.config.*` on `output: 'export'`. For Nuxt build output, keep a static `nuxt generate` or prerender flow. If your project is more custom, set `web.dev` and `web.build` explicitly.
+- Package metadata such as `app.description` and `app.author` is user-owned.
+- Packaging choices such as `build.outputDir`, `build.artifactName`, `build.asar`, `build.compression`, `build.files`, `build.extraResources`, `build.extraFiles`, `build.windows.*`, `build.nsis.*`, `build.mac.*`, and `build.linux.*` are user-owned.
+- `create-frontron` is only a thin starter generator.
+- The architecture contract lives in [`../../specs/framework-first.md`](../../specs/framework-first.md).
+
+Docs: [frontron.andongmin.com](https://frontron.andongmin.com)
+
+## License
+
+MIT. Issues: [github.com/andongmin94/frontron/issues](https://github.com/andongmin94/frontron/issues)

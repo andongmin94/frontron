@@ -1,6 +1,8 @@
 export { defineConfig, findConfigPath, loadConfig } from './config'
 export type {
   FrontronAppConfig,
+  FrontronBuildConfig,
+  FrontronBuildWindowsConfig,
   FrontronBridgeConfig,
   FrontronBridgeHandler,
   FrontronBridgeNamespace,
@@ -13,6 +15,7 @@ export type {
   FrontronMenuHandler,
   FrontronMenuItemConfig,
   FrontronNativeStatus,
+  FrontronPublishMode,
   FrontronRustBindingConfig,
   FrontronRustBridgeConfig,
   FrontronRustBridgeNamespace,
@@ -21,11 +24,14 @@ export type {
   FrontronTrayConfig,
   FrontronWebBuildConfig,
   FrontronWebDevConfig,
+  FrontronWindowsBuildTarget,
   FrontronWindowConfig,
   FrontronWindowState,
   FrontronWindowsConfig,
   LoadConfigOptions,
   LoadedFrontronConfig,
   ResolvedFrontronConfig,
+  ResolvedFrontronBuildConfig,
+  ResolvedFrontronBuildWindowsConfig,
   ResolvedFrontronRustConfig,
 } from './types'

@@ -7,7 +7,7 @@ titleTemplate: Framework-First Desktop Apps
 hero:
   name: Frontron
   text: Run an existing web app as a desktop app with a framework-first contract
-  tagline: "Install `frontron`, add `frontron.config.ts`, then run `app:dev` and `app:build`."
+  tagline: "Run `npx frontron init`, then run `app:dev` and `app:build`."
   image:
     src: /logo.svg
     alt: Frontron

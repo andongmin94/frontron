@@ -1,105 +1,74 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState } from "react"
 
-import { bridge } from "frontron/client";
+import { bridge } from "frontron/client"
 
-import reactLogo from "./assets/react.svg";
-import frontronLogo from "/logo.svg";
-import viteLogo from "/vite.svg";
+import { Button } from "@/components/ui/button"
+import { hasDesktopBridgeRuntime } from "@/lib/utils"
 
-import { hasDesktopBridgeRuntime } from "@/lib/utils";
-
-import "./App.css";
-
-function App() {
-  const [count, setCount] = useState(0);
-  const [runtimeInfo, setRuntimeInfo] = useState("브리지 연결 확인 중...");
-  const [appBridgeInfo, setAppBridgeInfo] = useState("app bridge 확인 중...");
-  const [nativeInfo, setNativeInfo] = useState("native bridge 확인 중...");
+export function App() {
+  const hasDesktopBridge = hasDesktopBridgeRuntime()
+  const minHeightClass = hasDesktopBridge
+    ? "min-h-[calc(100dvh-40px)]"
+    : "min-h-dvh"
+  const [runtimeInfo, setRuntimeInfo] = useState("Connecting desktop bridge...")
 
   useEffect(() => {
-    let cancelled = false;
+    let cancelled = false
 
     async function loadRuntimeInfo() {
-      if (!hasDesktopBridgeRuntime()) {
+      if (!hasDesktopBridge) {
         if (!cancelled) {
           setRuntimeInfo(
             "Web preview mode. Run `npm run app:dev` to start the desktop bridge.",
-          );
-          setAppBridgeInfo("App bridge is available only in desktop mode.");
-          setNativeInfo("Native bridge is available only in desktop mode.");
+          )
         }
-        return;
+        return
       }
 
       try {
-        const version = await bridge.system.getVersion();
-        const platform = await bridge.system.getPlatform();
-        const nativeStatus = await bridge.native.getStatus();
-        const nativeMessage = nativeStatus.ready
-          ? `Native runtime 준비 완료: cpu=${String(await bridge.system.cpuCount())} add=${String(await bridge.math.add(2, 3))} average=${String(await bridge.math.average(2, 3))} health=${String(await bridge.health.isReady())} file=${String(await bridge.file.hasTxtExtension("notes.txt"))}`
-          : `Native runtime 비활성 또는 미준비 상태입니다. enabled=${String(nativeStatus.enabled)} loaded=${String(nativeStatus.loaded)}`;
+        const version = await bridge.system.getVersion()
+        const platform = await bridge.system.getPlatform()
 
         if (!cancelled) {
           setRuntimeInfo(
-            `Frontron runtime ${String(version)}가 연결되었습니다. (플랫폼: ${String(platform)})`,
-          );
-          setNativeInfo(nativeMessage);
-
-          const greeting = await bridge.app.getGreeting();
-          const summary = await bridge.app.getSummary();
-
-          if (!cancelled) {
-            setAppBridgeInfo(
-              `${String(greeting)} mode=${String((summary as { mode?: unknown }).mode)} layer=${String((summary as { layer?: unknown }).layer)}`,
-            );
-          }
+            `Connected to Frontron ${String(version)} on ${String(platform)}.`,
+          )
         }
-      } catch (error: any) {
+      } catch (error) {
         if (!cancelled) {
-          setRuntimeInfo(`Desktop bridge error: ${error.message}`);
-          setAppBridgeInfo(`App bridge error: ${error.message}`);
-          setNativeInfo(`Native bridge error: ${error.message}`);
+          const message = error instanceof Error ? error.message : String(error)
+          setRuntimeInfo(`Desktop bridge error: ${message}`)
         }
       }
     }
 
-    void loadRuntimeInfo();
+    void loadRuntimeInfo()
 
     return () => {
-      cancelled = true;
-    };
-  }, []);
+      cancelled = true
+    }
+  }, [hasDesktopBridge])
 
   return (
-    <div className="app">
-      <div>
-        <img src={frontronLogo} className="logo frontron" alt="Frontron logo" />
-        <img src={reactLogo} className="logo react" alt="React logo" />
-        <img src={viteLogo} className="logo" alt="Vite logo" />
-      </div>
-      <h1>Frontron</h1>
-      <div className="card">
-        <button onClick={() => setCount((current) => current + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <div>
-        <h3>Runtime bridge 상태:</h3>
-        <p>{runtimeInfo}</p>
-      </div>
-      <div>
-        <h3>App bridge 상태:</h3>
-        <p>{appBridgeInfo}</p>
-      </div>
-      <div>
-        <h3>Native bridge 상태:</h3>
-        <p>{nativeInfo}</p>
+    <div className={`flex ${minHeightClass} overflow-hidden p-6`}>
+      <div className="flex max-w-md min-w-0 flex-col gap-4 text-sm leading-loose">
+        <div>
+          <h1 className="font-medium">Project ready!</h1>
+          <p>You may now add components and start building.</p>
+          <p>The component base and desktop shell are already wired.</p>
+          <Button className="mt-2">Button</Button>
+        </div>
+        <div className="rounded-lg border border-border/70 bg-card p-4 text-card-foreground shadow-sm">
+          <div className="font-medium">Desktop status</div>
+          <p className="mt-2 text-muted-foreground">{runtimeInfo}</p>
+        </div>
+        <div className="font-mono text-xs text-muted-foreground">
+          Use <code>npm run dev</code> for web preview and{" "}
+          <code>npm run app:dev</code> for desktop mode.
+        </div>
       </div>
     </div>
-  );
+  )
 }
 
-export default App;
+export default App

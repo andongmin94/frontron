@@ -18,8 +18,11 @@ export function createFixtureProject() {
     JSON.stringify(
       {
         name: 'fixture-app',
+        version: '1.2.3',
         private: true,
         type: 'module',
+        description: 'Fixture package description',
+        author: 'Fixture Package Author',
       },
       null,
       2,
@@ -48,6 +51,9 @@ export function createFixtureProject() {
       '  name: string',
       '  id: string',
       '  icon?: string',
+      '  description?: string',
+      '  author?: string',
+      '  copyright?: string',
       '}',
       '',
     ].join('\n'),

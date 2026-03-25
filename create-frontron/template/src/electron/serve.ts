@@ -22,7 +22,6 @@ let closeElectronWatcher: (() => void) | null = null
 let shutdownPromise: Promise<void> | null = null
 let restartPromise: Promise<void> = Promise.resolve()
 let restartQueued = false
-let stoppingElectron = false
 let shuttingDown = false
 
 function resolveDevRendererUrl(server: import("vite").ViteDevServer) {
@@ -44,8 +43,6 @@ async function stopElectronProcess() {
   electronProcess = null
 
   if (!child || child.exitCode !== null || child.signalCode !== null) return
-
-  stoppingElectron = true
 
   await new Promise<void>((resolve) => {
     let settled = false
@@ -69,8 +66,6 @@ async function stopElectronProcess() {
       finish()
     }
   })
-
-  stoppingElectron = false
 }
 
 function spawnElectronProcess(rendererUrl: string) {
@@ -88,13 +83,16 @@ function spawnElectronProcess(rendererUrl: string) {
   electronProcess = child
 
   child.once("error", (error) => {
+    if (electronProcess !== child || shuttingDown) return
+    electronProcess = null
     console.error("[template] Failed to start Electron.", error)
     void shutdownDevLauncher(1)
   })
 
   child.once("exit", (code, signal) => {
-    if (electronProcess === child) electronProcess = null
-    if (stoppingElectron || shuttingDown) return
+    if (electronProcess !== child) return
+    electronProcess = null
+    if (shuttingDown) return
 
     if (signal) {
       console.error(`[template] Electron exited after ${signal}.`)

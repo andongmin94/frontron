@@ -181,6 +181,174 @@ test('loadConfig accepts common app metadata and build publish settings', async 
   expect(loaded.config.build?.windows?.targets).toEqual(['portable'])
 })
 
+test('loadConfig normalizes auto-update defaults for a generic feed', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+  const configPath = join(fixtureDir, 'frontron', 'config.ts')
+  const configSource = readFileSync(configPath, 'utf8')
+
+  writeFileSync(
+    configPath,
+    configSource.replace(
+      '  windows,\n  bridge,\n  menu,\n  tray,\n  hooks,\n',
+      [
+        '  updates: {',
+        "    url: 'https://updates.example.com/appcast.xml',",
+        '  },',
+        '  windows,',
+        '  bridge,',
+        '  menu,',
+        '  tray,',
+        '  hooks,',
+      ].join('\n'),
+    ),
+  )
+
+  const loaded = await loadConfig({
+    cwd: join(fixtureDir, 'src', 'nested'),
+  })
+
+  expect(loaded.config.updates).toEqual({
+    enabled: true,
+    provider: 'generic',
+    url: 'https://updates.example.com/appcast.xml',
+    checkOnLaunch: true,
+  })
+})
+
+test('loadConfig normalizes explicit security navigation policy defaults', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+  const configPath = join(fixtureDir, 'frontron', 'config.ts')
+  const configSource = readFileSync(configPath, 'utf8')
+
+  writeFileSync(
+    configPath,
+    configSource.replace(
+      '  windows,\n  bridge,\n  menu,\n  tray,\n  hooks,\n',
+      [
+        '  security: {',
+        "    externalNavigation: 'deny',",
+        '  },',
+        '  windows,',
+        '  bridge,',
+        '  menu,',
+        '  tray,',
+        '  hooks,',
+      ].join('\n'),
+    ),
+  )
+
+  const loaded = await loadConfig({
+    cwd: join(fixtureDir, 'src', 'nested'),
+  })
+
+  expect(loaded.config.security).toEqual({
+    externalNavigation: 'deny',
+    newWindow: 'openExternal',
+  })
+})
+
+test('loadConfig allows disabling auto updates without a feed URL', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+  const configPath = join(fixtureDir, 'frontron', 'config.ts')
+  const configSource = readFileSync(configPath, 'utf8')
+
+  writeFileSync(
+    configPath,
+    configSource.replace(
+      '  windows,\n  bridge,\n  menu,\n  tray,\n  hooks,\n',
+      [
+        '  updates: {',
+        '    enabled: false,',
+        '  },',
+        '  windows,',
+        '  bridge,',
+        '  menu,',
+        '  tray,',
+        '  hooks,',
+      ].join('\n'),
+    ),
+  )
+
+  const loaded = await loadConfig({
+    cwd: join(fixtureDir, 'src', 'nested'),
+  })
+
+  expect(loaded.config.updates).toEqual({
+    enabled: false,
+    provider: 'generic',
+    checkOnLaunch: true,
+  })
+})
+
+test('loadConfig normalizes deep-link schemes and defaults the registration name', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+  const configPath = join(fixtureDir, 'frontron', 'config.ts')
+  const configSource = readFileSync(configPath, 'utf8')
+
+  writeFileSync(
+    configPath,
+    configSource.replace(
+      '  windows,\n  bridge,\n  menu,\n  tray,\n  hooks,\n',
+      [
+        '  deepLinks: {',
+        "    schemes: ['Fixture-App', 'fixture-auth'],",
+        '  },',
+        '  windows,',
+        '  bridge,',
+        '  menu,',
+        '  tray,',
+        '  hooks,',
+      ].join('\n'),
+    ),
+  )
+
+  const loaded = await loadConfig({
+    cwd: join(fixtureDir, 'src', 'nested'),
+  })
+
+  expect(loaded.config.deepLinks).toEqual({
+    enabled: true,
+    schemes: ['fixture-app', 'fixture-auth'],
+  })
+})
+
+test('loadConfig allows disabling deep links without schemes', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+  const configPath = join(fixtureDir, 'frontron', 'config.ts')
+  const configSource = readFileSync(configPath, 'utf8')
+
+  writeFileSync(
+    configPath,
+    configSource.replace(
+      '  windows,\n  bridge,\n  menu,\n  tray,\n  hooks,\n',
+      [
+        '  deepLinks: {',
+        '    enabled: false,',
+        '  },',
+        '  windows,',
+        '  bridge,',
+        '  menu,',
+        '  tray,',
+        '  hooks,',
+      ].join('\n'),
+    ),
+  )
+
+  const loaded = await loadConfig({
+    cwd: join(fixtureDir, 'src', 'nested'),
+  })
+
+  expect(loaded.config.deepLinks).toEqual({
+    enabled: false,
+    schemes: [],
+  })
+})
+
 test('loadConfig resolves advanced packaging settings and file pattern paths', async () => {
   const fixtureDir = createFixtureProject()
   fixtureDirs.push(fixtureDir)
@@ -198,10 +366,15 @@ test('loadConfig resolves advanced packaging settings and file pattern paths', a
         "    files: ['**/*', { from: 'web', to: 'web-copy', filter: ['**/*'] }],",
         "    extraResources: ['public/icon.png', { from: 'public', to: 'assets', filter: '**/*.png' }],",
         "    extraFiles: [{ from: 'public', to: 'public-copy' }],",
+        '    fileAssociations: [',
+        "      { ext: ['fixture', 'fixturedoc'], name: 'Fixture Document', description: 'Fixture desktop document', icon: 'public/icon.png', role: 'Editor', rank: 'Owner' },",
+        "      { ext: 'fixturemime', mimeType: 'application/x-fixture' },",
+        '    ],',
         '    windows: {',
         "      targets: 'portable',",
         "      icon: 'public/icon.png',",
         "      publisherName: 'Fixture Team',",
+        "      certificateSubjectName: 'Fixture Desktop Signing',",
         '      signAndEditExecutable: false,',
         "      requestedExecutionLevel: 'highestAvailable',",
         "      artifactName: 'fixture-win-${version}.${ext}',",
@@ -218,6 +391,11 @@ test('loadConfig resolves advanced packaging settings and file pattern paths', a
         "      targets: ['dmg', 'zip'],",
         "      icon: 'public/icon.png',",
         "      category: 'public.app-category.developer-tools',",
+        "      identity: 'Developer ID Application: Fixture Team',",
+        '      hardenedRuntime: true,',
+        '      gatekeeperAssess: false,',
+        "      entitlements: 'entitlements.mac.plist',",
+        "      entitlementsInherit: 'entitlements.mac.inherit.plist',",
         "      artifactName: 'fixture-mac-${version}.${ext}',",
         '    },',
         '    linux: {',
@@ -265,9 +443,24 @@ test('loadConfig resolves advanced packaging settings and file pattern paths', a
       to: 'public-copy',
     },
   ])
+  expect(loaded.config.build?.fileAssociations).toEqual([
+    {
+      ext: ['fixture', 'fixturedoc'],
+      name: 'Fixture Document',
+      description: 'Fixture desktop document',
+      icon: join(fixtureDir, 'public', 'icon.png'),
+      role: 'Editor',
+      rank: 'Owner',
+    },
+    {
+      ext: ['fixturemime'],
+      mimeType: 'application/x-fixture',
+    },
+  ])
   expect(loaded.config.build?.windows?.targets).toEqual(['portable'])
   expect(loaded.config.build?.windows?.icon).toBe(join(fixtureDir, 'public', 'icon.png'))
   expect(loaded.config.build?.windows?.publisherName).toEqual(['Fixture Team'])
+  expect(loaded.config.build?.windows?.certificateSubjectName).toBe('Fixture Desktop Signing')
   expect(loaded.config.build?.windows?.signAndEditExecutable).toBe(false)
   expect(loaded.config.build?.windows?.requestedExecutionLevel).toBe('highestAvailable')
   expect(loaded.config.build?.windows?.artifactName).toBe('fixture-win-${version}.${ext}')
@@ -280,12 +473,356 @@ test('loadConfig resolves advanced packaging settings and file pattern paths', a
   expect(loaded.config.build?.mac?.targets).toEqual(['dmg', 'zip'])
   expect(loaded.config.build?.mac?.icon).toBe(join(fixtureDir, 'public', 'icon.png'))
   expect(loaded.config.build?.mac?.category).toBe('public.app-category.developer-tools')
+  expect(loaded.config.build?.mac?.identity).toBe('Developer ID Application: Fixture Team')
+  expect(loaded.config.build?.mac?.hardenedRuntime).toBe(true)
+  expect(loaded.config.build?.mac?.gatekeeperAssess).toBe(false)
+  expect(loaded.config.build?.mac?.entitlements).toBe(join(fixtureDir, 'entitlements.mac.plist'))
+  expect(loaded.config.build?.mac?.entitlementsInherit).toBe(
+    join(fixtureDir, 'entitlements.mac.inherit.plist'),
+  )
   expect(loaded.config.build?.mac?.artifactName).toBe('fixture-mac-${version}.${ext}')
   expect(loaded.config.build?.linux?.targets).toEqual(['AppImage', 'deb'])
   expect(loaded.config.build?.linux?.icon).toBe(join(fixtureDir, 'public', 'icon.png'))
   expect(loaded.config.build?.linux?.category).toBe('Development')
   expect(loaded.config.build?.linux?.packageCategory).toBe('devel')
   expect(loaded.config.build?.linux?.artifactName).toBe('fixture-linux-${version}.${ext}')
+})
+
+test('loadConfig accepts guarded advanced overrides for builder and windows', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+  const configPath = join(fixtureDir, 'frontron', 'config.ts')
+  const configSource = readFileSync(configPath, 'utf8')
+  const windowsPath = join(fixtureDir, 'frontron', 'windows', 'index.ts')
+  const windowsSource = readFileSync(windowsPath, 'utf8')
+
+  writeFileSync(
+    configPath,
+    configSource.replace(
+      '  windows,\n  bridge,\n  menu,\n  tray,\n  hooks,\n',
+      [
+        '  build: {',
+        '    advanced: {',
+        '      electronBuilder: {',
+        '        compressionLevel: 7,',
+        '        directories: {',
+        "          buildResources: 'builder-resources',",
+        '        },',
+        '        win: {',
+        '          verifyUpdateCodeSignature: false,',
+        '        },',
+        '      },',
+        '    },',
+        '  },',
+        '  windows,',
+        '  bridge,',
+        '  menu,',
+        '  tray,',
+        '  hooks,',
+      ].join('\n'),
+    ),
+  )
+
+  writeFileSync(
+    windowsPath,
+    windowsSource.replace(
+      '    height: 800,',
+      [
+        '    height: 800,',
+        '    advanced: {',
+        '      x: 80,',
+        '      y: 40,',
+        '      movable: false,',
+        '    },',
+      ].join('\n'),
+    ),
+  )
+
+  const loaded = await loadConfig({
+    cwd: join(fixtureDir, 'src', 'nested'),
+  })
+
+  expect(loaded.config.build?.advanced?.electronBuilder).toEqual({
+    compressionLevel: 7,
+    directories: {
+      buildResources: 'builder-resources',
+    },
+    win: {
+      verifyUpdateCodeSignature: false,
+    },
+  })
+  expect(loaded.config.windows?.main.advanced).toEqual({
+    x: 80,
+    y: 40,
+    movable: false,
+  })
+})
+
+test('loadConfig rejects framework-owned builder advanced overrides', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+  const configPath = join(fixtureDir, 'frontron', 'config.ts')
+  const configSource = readFileSync(configPath, 'utf8')
+
+  writeFileSync(
+    configPath,
+    configSource.replace(
+      '  windows,\n  bridge,\n  menu,\n  tray,\n  hooks,\n',
+      [
+        '  build: {',
+        '    advanced: {',
+        '      electronBuilder: {',
+        '        extraMetadata: {',
+        "          main: 'custom-main.js',",
+        '        },',
+        '      },',
+        '    },',
+        '  },',
+        '  windows,',
+        '  bridge,',
+        '  menu,',
+        '  tray,',
+        '  hooks,',
+      ].join('\n'),
+    ),
+  )
+
+  await expect(
+    loadConfig({
+      cwd: join(fixtureDir, 'src', 'nested'),
+    }),
+  ).rejects.toThrow('"build.advanced.electronBuilder" cannot set "extraMetadata.main"')
+})
+
+test('loadConfig rejects protocol registration in builder advanced overrides', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+  const configPath = join(fixtureDir, 'frontron', 'config.ts')
+  const configSource = readFileSync(configPath, 'utf8')
+
+  writeFileSync(
+    configPath,
+    configSource.replace(
+      '  windows,\n  bridge,\n  menu,\n  tray,\n  hooks,\n',
+      [
+        '  build: {',
+        '    advanced: {',
+        '      electronBuilder: {',
+        '        protocols: [{',
+        "          name: 'Bypassed Protocols',",
+        "          schemes: ['fixture-bypass'],",
+        '        }],',
+        '      },',
+        '    },',
+        '  },',
+        '  windows,',
+        '  bridge,',
+        '  menu,',
+        '  tray,',
+        '  hooks,',
+      ].join('\n'),
+    ),
+  )
+
+  await expect(
+    loadConfig({
+      cwd: join(fixtureDir, 'src', 'nested'),
+    }),
+  ).rejects.toThrow('"build.advanced.electronBuilder" cannot set "protocols"')
+})
+
+test('loadConfig rejects file associations in builder advanced overrides', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+  const configPath = join(fixtureDir, 'frontron', 'config.ts')
+  const configSource = readFileSync(configPath, 'utf8')
+
+  writeFileSync(
+    configPath,
+    configSource.replace(
+      '  windows,\n  bridge,\n  menu,\n  tray,\n  hooks,\n',
+      [
+        '  build: {',
+        '    advanced: {',
+        '      electronBuilder: {',
+        '        fileAssociations: [{',
+        "          ext: 'fixture-bypass',",
+        '        }],',
+        '      },',
+        '    },',
+        '  },',
+        '  windows,',
+        '  bridge,',
+        '  menu,',
+        '  tray,',
+        '  hooks,',
+      ].join('\n'),
+    ),
+  )
+
+  await expect(
+    loadConfig({
+      cwd: join(fixtureDir, 'src', 'nested'),
+    }),
+  ).rejects.toThrow('"build.advanced.electronBuilder" cannot set "fileAssociations"')
+})
+
+test('loadConfig validates signing config types', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+  const configPath = join(fixtureDir, 'frontron', 'config.ts')
+  const configSource = readFileSync(configPath, 'utf8')
+
+  writeFileSync(
+    configPath,
+    configSource.replace(
+      '  windows,\n  bridge,\n  menu,\n  tray,\n  hooks,\n',
+      [
+        '  build: {',
+        '    windows: {',
+        '      certificateSubjectName: 42,',
+        '    },',
+        '    mac: {',
+        "      identity: 'Developer ID Application: Fixture Team',",
+        "      hardenedRuntime: 'yes',",
+        '    },',
+        '  },',
+        '  windows,',
+        '  bridge,',
+        '  menu,',
+        '  tray,',
+        '  hooks,',
+      ].join('\n'),
+    ),
+  )
+
+  await expect(
+    loadConfig({
+      cwd: fixtureDir,
+    }),
+  ).rejects.toThrow('"build.windows.certificateSubjectName" must be a non-empty string')
+})
+
+test('loadConfig validates file association shapes', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+  const configPath = join(fixtureDir, 'frontron', 'config.ts')
+  const configSource = readFileSync(configPath, 'utf8')
+
+  writeFileSync(
+    configPath,
+    configSource.replace(
+      '  windows,\n  bridge,\n  menu,\n  tray,\n  hooks,\n',
+      [
+        '  build: {',
+        '    fileAssociations: [',
+        "      { ext: [], role: 'BrokenRole' },",
+        '    ],',
+        '  },',
+        '  windows,',
+        '  bridge,',
+        '  menu,',
+        '  tray,',
+        '  hooks,',
+      ].join('\n'),
+    ),
+  )
+
+  await expect(
+    loadConfig({
+      cwd: fixtureDir,
+    }),
+  ).rejects.toThrow('"build.fileAssociations"[0].ext must be a non-empty array of strings.')
+})
+
+test('loadConfig requires a feed URL when auto updates stay enabled', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+  const configPath = join(fixtureDir, 'frontron', 'config.ts')
+  const configSource = readFileSync(configPath, 'utf8')
+
+  writeFileSync(
+    configPath,
+    configSource.replace(
+      '  windows,\n  bridge,\n  menu,\n  tray,\n  hooks,\n',
+      [
+        '  updates: {',
+        '    enabled: true,',
+        '  },',
+        '  windows,',
+        '  bridge,',
+        '  menu,',
+        '  tray,',
+        '  hooks,',
+      ].join('\n'),
+    ),
+  )
+
+  await expect(
+    loadConfig({
+      cwd: fixtureDir,
+    }),
+  ).rejects.toThrow('"updates.url" must be a non-empty string')
+})
+
+test('loadConfig validates supported security policies', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+  const configPath = join(fixtureDir, 'frontron', 'config.ts')
+  const configSource = readFileSync(configPath, 'utf8')
+
+  writeFileSync(
+    configPath,
+    configSource.replace(
+      '  windows,\n  bridge,\n  menu,\n  tray,\n  hooks,\n',
+      [
+        '  security: {',
+        "    externalNavigation: 'browserOnly',",
+        '  },',
+        '  windows,',
+        '  bridge,',
+        '  menu,',
+        '  tray,',
+        '  hooks,',
+      ].join('\n'),
+    ),
+  )
+
+  await expect(
+    loadConfig({
+      cwd: fixtureDir,
+    }),
+  ).rejects.toThrow('"security.externalNavigation" must be one of')
+})
+
+test('loadConfig requires deep-link schemes when deep links stay enabled', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+  const configPath = join(fixtureDir, 'frontron', 'config.ts')
+  const configSource = readFileSync(configPath, 'utf8')
+
+  writeFileSync(
+    configPath,
+    configSource.replace(
+      '  windows,\n  bridge,\n  menu,\n  tray,\n  hooks,\n',
+      [
+        '  deepLinks: {',
+        '    enabled: true,',
+        '  },',
+        '  windows,',
+        '  bridge,',
+        '  menu,',
+        '  tray,',
+        '  hooks,',
+      ].join('\n'),
+    ),
+  )
+
+  await expect(
+    loadConfig({
+      cwd: fixtureDir,
+    }),
+  ).rejects.toThrow('"deepLinks.schemes" must be a non-empty array of strings')
 })
 
 test('loadConfig validates supported build compression modes', async () => {
@@ -470,6 +1007,10 @@ test('loadConfig accepts advanced window options', async () => {
       '    skipTaskbar: false,',
       "    title: 'Fixture Window',",
       "    titleBarStyle: 'hidden',",
+      '    zoomFactor: 1.25,',
+      '    sandbox: true,',
+      '    spellcheck: false,',
+      '    webSecurity: false,',
       '  },',
       '}',
       '',
@@ -499,6 +1040,10 @@ test('loadConfig accepts advanced window options', async () => {
   expect(loaded.config.windows?.main.skipTaskbar).toBe(false)
   expect(loaded.config.windows?.main.title).toBe('Fixture Window')
   expect(loaded.config.windows?.main.titleBarStyle).toBe('hidden')
+  expect(loaded.config.windows?.main.zoomFactor).toBe(1.25)
+  expect(loaded.config.windows?.main.sandbox).toBe(true)
+  expect(loaded.config.windows?.main.spellcheck).toBe(false)
+  expect(loaded.config.windows?.main.webSecurity).toBe(false)
 })
 
 test('loadConfig validates window boolean options', async () => {
@@ -514,6 +1059,24 @@ test('loadConfig validates window boolean options', async () => {
       cwd: join(fixtureDir, 'src', 'nested'),
     }),
   ).rejects.toThrow('"windows.main.show" must be a boolean')
+})
+
+test('loadConfig validates window webPreferences subset types', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+  const windowsPath = join(fixtureDir, 'frontron', 'windows', 'index.ts')
+  const windowsSource = readFileSync(windowsPath, 'utf8')
+
+  writeFileSync(
+    windowsPath,
+    windowsSource.replace('    height: 800,', "    height: 800,\n    zoomFactor: 0,\n    sandbox: 'yes',"),
+  )
+
+  await expect(
+    loadConfig({
+      cwd: join(fixtureDir, 'src', 'nested'),
+    }),
+  ).rejects.toThrow('"windows.main.zoomFactor" must be a positive number')
 })
 
 test('loadConfig validates supported window title bar styles', async () => {
@@ -532,6 +1095,34 @@ test('loadConfig validates supported window title bar styles', async () => {
       cwd: join(fixtureDir, 'src', 'nested'),
     }),
   ).rejects.toThrow('"windows.main.titleBarStyle" must be one of')
+})
+
+test('loadConfig rejects framework-owned window advanced overrides', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+  const windowsPath = join(fixtureDir, 'frontron', 'windows', 'index.ts')
+  const windowsSource = readFileSync(windowsPath, 'utf8')
+
+  writeFileSync(
+    windowsPath,
+    windowsSource.replace(
+      '    height: 800,',
+      [
+        '    height: 800,',
+        '    advanced: {',
+        '      webPreferences: {',
+        '        preload: "./custom-preload.js",',
+        '      },',
+        '    },',
+      ].join('\n'),
+    ),
+  )
+
+  await expect(
+    loadConfig({
+      cwd: join(fixtureDir, 'src', 'nested'),
+    }),
+  ).rejects.toThrow('"windows.main.advanced" cannot set "webPreferences"')
 })
 
 test('loadConfig validates window min and max dimensions', async () => {

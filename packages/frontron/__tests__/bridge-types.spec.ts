@@ -51,6 +51,7 @@ test('renderBridgeTypes emits custom namespaces for frontron/client augmentation
     },
   } as any)
 
+  expect(source).toContain("import 'frontron/client'")
   expect(source).toContain('type FrontronConfigModule = typeof import("../../frontron.config")')
   expect(source).toContain('type FrontronBridgeMethod<T> = T extends (...args: infer Args) => infer Result')
   expect(source).toContain('type FrontronRustBridgeMap<T> = {')
@@ -76,6 +77,7 @@ test('writeBridgeTypes writes the generated client augmentation into .frontron/t
 
   const source = readFileSync(filePath, 'utf8')
 
+  expect(source).toContain("import 'frontron/client'")
   expect(source).toContain('type FrontronConfigModule = typeof import("../../frontron.config")')
   expect(source).toContain('type FrontronBridgeMap<T> = {')
   expect(source).toContain('type FrontronRustBridgeMap<T> = {')

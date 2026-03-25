@@ -61,13 +61,16 @@ Then read [Use the Desktop Bridge](/guide/use-bridge).
 
 ### If the window does not open
 
+- Run `npx frontron check` first
 - Make sure `npm install` finished successfully
 - Check the terminal for runtime errors
 - Check that no other process is already using the same port
 
 ### If you get a blank page
 
-Start by checking that `vite.config.ts` and `frontron/config.ts` use the same development port and URL.
+Run `npx frontron check` first.
+
+Start by checking that `vite.config.ts` and the root `frontron.config.ts` use the same development port and URL.
 
 ### If bridge-related UI looks wrong
 

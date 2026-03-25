@@ -31,6 +31,14 @@ test('bridge forwards calls to the installed runtime', async () => {
         }
       },
     },
+    windows: {
+      async open(input) {
+        return input
+      },
+      async listConfigured() {
+        return ['main', 'settings']
+      },
+    },
   })
 
   await expect(bridge.system.getVersion()).resolves.toBe('1.0.0')
@@ -40,6 +48,8 @@ test('bridge forwards calls to the installed runtime', async () => {
     ready: true,
   })
   await expect(bridge.native.add(2, 3)).resolves.toBe(5)
+  await expect(bridge.windows.open({ name: 'settings' })).resolves.toEqual({ name: 'settings' })
+  await expect(bridge.windows.listConfigured()).resolves.toEqual(['main', 'settings'])
 })
 
 test('bridge does not fall back to removed window.electron globals', () => {

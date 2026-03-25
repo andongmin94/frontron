@@ -36,6 +36,24 @@ preload global 을 직접 읽지 마세요.
 - `getState()`
 - `onMaximizedChanged(listener)`
 
+`bridge.window` 는 계속 primary window 편의 API 입니다.
+
+### `bridge.windows`
+
+- `open({ name })`
+- `show({ name })`
+- `hide({ name })`
+- `focus({ name })`
+- `close({ name })`
+- `minimize({ name })`
+- `toggleMaximize({ name })`
+- `exists({ name })`
+- `getState({ name })`
+- `listConfigured()`
+- `listOpen()`
+
+config 에 window 를 여러 개 정의했다면 이 namespace 를 사용하세요.
+
 ### `bridge.native`
 
 - `getStatus()`
@@ -50,6 +68,7 @@ import { bridge } from 'frontron/client'
 const version = await bridge.system.getVersion()
 const state = await bridge.window.getState()
 const nativeStatus = await bridge.native.getStatus()
+await bridge.windows.open({ name: 'settings' })
 ```
 
 이 메서드는 프로젝트별 bridge 코드를 추가하지 않아도 동작합니다.

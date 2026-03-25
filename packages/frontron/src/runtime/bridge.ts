@@ -25,6 +25,35 @@ function readFiniteNumber(value: unknown, owner: string) {
   return value
 }
 
+function readWindowNameInput(
+  input: unknown,
+  owner: string,
+) {
+  if (
+    !input ||
+    typeof input !== 'object' ||
+    !('name' in input) ||
+    typeof (input as { name?: unknown }).name !== 'string' ||
+    (input as { name: string }).name.trim().length === 0
+  ) {
+    throw new Error(`[Frontron] "${owner}" requires a non-empty \`{ name }\` object.`)
+  }
+
+  return (input as { name: string }).name.trim()
+}
+
+function ensureConfiguredWindowName(
+  context: FrontronDesktopContext,
+  name: string,
+  owner: string,
+) {
+  if (!context.windows.listConfigured().includes(name)) {
+    throw new Error(`[Frontron] "${owner}" references an unknown window "${name}".`)
+  }
+
+  return name
+}
+
 export function createBuiltInBridge(
   appVersion: string,
   context: FrontronDesktopContext,
@@ -62,6 +91,10 @@ export function createBuiltInBridge(
           readFiniteNumber(right, 'native.add(right)'),
         ),
     },
+    deepLink: {
+      getState: () => context.deepLinks.getState(),
+      consumePending: () => context.deepLinks.consumePending(),
+    },
     window: {
       minimize: () => {
         context.window.minimize()
@@ -76,6 +109,89 @@ export function createBuiltInBridge(
         return null
       },
       getState: () => context.window.getState(),
+    },
+    windows: {
+      open: async (input: unknown) => {
+        const name = ensureConfiguredWindowName(
+          context,
+          readWindowNameInput(input, 'windows.open'),
+          'windows.open',
+        )
+        await context.windows.open(name)
+        return null
+      },
+      show: async (input: unknown) => {
+        const name = ensureConfiguredWindowName(
+          context,
+          readWindowNameInput(input, 'windows.show'),
+          'windows.show',
+        )
+        await context.windows.show(name)
+        return null
+      },
+      hide: (input: unknown) => {
+        const name = ensureConfiguredWindowName(
+          context,
+          readWindowNameInput(input, 'windows.hide'),
+          'windows.hide',
+        )
+        context.windows.hide(name)
+        return null
+      },
+      focus: (input: unknown) => {
+        const name = ensureConfiguredWindowName(
+          context,
+          readWindowNameInput(input, 'windows.focus'),
+          'windows.focus',
+        )
+        context.windows.focus(name)
+        return null
+      },
+      close: (input: unknown) => {
+        const name = ensureConfiguredWindowName(
+          context,
+          readWindowNameInput(input, 'windows.close'),
+          'windows.close',
+        )
+        context.windows.close(name)
+        return null
+      },
+      minimize: (input: unknown) => {
+        const name = ensureConfiguredWindowName(
+          context,
+          readWindowNameInput(input, 'windows.minimize'),
+          'windows.minimize',
+        )
+        context.windows.minimize(name)
+        return null
+      },
+      toggleMaximize: (input: unknown) => {
+        const name = ensureConfiguredWindowName(
+          context,
+          readWindowNameInput(input, 'windows.toggleMaximize'),
+          'windows.toggleMaximize',
+        )
+        context.windows.toggleMaximize(name)
+        return null
+      },
+      exists: (input: unknown) => {
+        const name = ensureConfiguredWindowName(
+          context,
+          readWindowNameInput(input, 'windows.exists'),
+          'windows.exists',
+        )
+        return context.windows.exists(name)
+      },
+      getState: (input: unknown) => {
+        const name = ensureConfiguredWindowName(
+          context,
+          readWindowNameInput(input, 'windows.getState'),
+          'windows.getState',
+        )
+        return context.windows.getState(name)
+      },
+      listConfigured: () => context.windows.listConfigured(),
+      listOpen: () => context.windows.listOpen(),
     },
   }
 }

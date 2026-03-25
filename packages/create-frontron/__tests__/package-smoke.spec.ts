@@ -27,10 +27,6 @@ function runNpm(args: string[], cwd: string) {
 }
 
 function ensureBuildOutput() {
-  if (existsSync(join(packageRoot, 'dist', 'index.mjs'))) {
-    return
-  }
-
   runNpm(['run', 'build'], packageRoot)
 }
 
@@ -75,7 +71,10 @@ afterEach(() => {
   }
 })
 
-test('create-frontron npm pack output includes the thin starter generator contract', () => {
+test(
+  'create-frontron npm pack output includes the thin starter generator contract',
+  { timeout: 20_000 },
+  () => {
   const packedFiles = readPackedFiles()
 
   expect(packedFiles.has('index.js')).toBe(true)
@@ -98,9 +97,10 @@ test('create-frontron npm pack output includes the thin starter generator contra
   expect(packedFiles.has('template/src/lib/electron.ts')).toBe(false)
   expect(packedFiles.has('template/src/types/electron.d.ts')).toBe(false)
   expect(packedFiles.has('PLANS.md')).toBe(false)
-})
+  },
+)
 
-test('create-frontron can produce a real publish tarball', () => {
+test('create-frontron can produce a real publish tarball', { timeout: 20_000 }, () => {
   const tarballPath = packPackageForReal()
 
   expect(existsSync(tarballPath)).toBe(true)

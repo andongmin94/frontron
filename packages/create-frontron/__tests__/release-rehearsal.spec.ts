@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -42,10 +42,6 @@ function runNode(args: string[], cwd: string) {
 }
 
 function ensureBuildOutput(packageRoot: string) {
-  if (existsSync(join(packageRoot, 'dist', 'index.mjs'))) {
-    return
-  }
-
   runNpm(['run', 'build'], packageRoot)
 }
 
@@ -69,6 +65,29 @@ function packPackageForReal(packageRoot: string, tempPrefix: string) {
   }
 
   return join(outputDir, filename)
+}
+
+function stabilizeGeneratedStarterDevPort(appRoot: string, port: number) {
+  const packageJsonPath = join(appRoot, 'package.json')
+  const frontronConfigPath = join(appRoot, 'frontron', 'config.ts')
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+    scripts?: Record<string, string>
+  }
+
+  packageJson.scripts = {
+    ...packageJson.scripts,
+    dev: `vite --port ${port}`,
+    'web:dev': `vite --port ${port}`,
+  }
+
+  writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
+  writeFileSync(
+    frontronConfigPath,
+    readFileSync(frontronConfigPath, 'utf8').replace(
+      "url: 'http://localhost:3000'",
+      `url: 'http://localhost:${port}'`,
+    ),
+  )
 }
 
 afterEach(() => {
@@ -119,6 +138,7 @@ test(
     )
 
     runNode([createCliPath, generatedAppName, '--overwrite', 'yes'], rehearsalRoot)
+    stabilizeGeneratedStarterDevPort(generatedAppRoot, 4311)
 
     const generatedPackage = JSON.parse(
       readFileSync(join(generatedAppRoot, 'package.json'), 'utf8'),
@@ -138,9 +158,16 @@ test(
     runNode([frontronCliPath, 'dev', '--cwd', generatedAppRoot, '--check'], rehearsalRoot)
     runNpm(['install', '--ignore-scripts', frontronTarball], generatedAppRoot)
     runNpm(['install'], generatedAppRoot)
+    runNode([frontronCliPath, 'check', '--cwd', generatedAppRoot], generatedAppRoot)
+    runNode([frontronCliPath, 'build', '--cwd', generatedAppRoot, '--check'], generatedAppRoot)
+    runNpm(['run', 'web:build'], generatedAppRoot)
     runNpm(['run', 'lint'], generatedAppRoot)
+    runNpm(['run', 'app:build'], generatedAppRoot)
 
     expect(existsSync(join(generatedAppRoot, '.frontron', 'types', 'frontron-client.d.ts'))).toBe(
+      true,
+    )
+    expect(existsSync(join(generatedAppRoot, 'output', `${generatedAppName} Setup 0.0.0.exe`))).toBe(
       true,
     )
 
@@ -149,8 +176,10 @@ test(
       'utf8',
     )
 
+    expect(generatedTypes).toContain('export {}')
+    expect(generatedTypes).toContain("declare module 'frontron/client'")
     expect(generatedTypes).toContain('cpuCount')
     expect(generatedTypes).toContain('hasTxtExtension')
   },
-  180000,
+  300000,
 )

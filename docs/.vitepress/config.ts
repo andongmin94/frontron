@@ -38,6 +38,8 @@ interface LocaleThemeText {
   referenceSectionLabel: string;
   featuresLabel: string;
   configLabel: string;
+  supportMatrixLabel: string;
+  recipesLabel: string;
   outlineLabel: string;
 }
 
@@ -122,6 +124,14 @@ function createGuideSidebar(
             text: text.configLabel,
             link: withPrefix(prefix, "/guide/config"),
           },
+          {
+            text: text.supportMatrixLabel,
+            link: withPrefix(prefix, "/guide/support-matrix"),
+          },
+          {
+            text: text.recipesLabel,
+            link: withPrefix(prefix, "/guide/recipes"),
+          },
         ],
       },
     ],
@@ -203,6 +213,8 @@ const englishThemeText: LocaleThemeText = {
   referenceSectionLabel: "Reference",
   featuresLabel: "Features",
   configLabel: "Config",
+  supportMatrixLabel: "Support Matrix",
+  recipesLabel: "Recipes",
   outlineLabel: "On this page",
 };
 
@@ -236,6 +248,8 @@ const koreanThemeText: LocaleThemeText = {
   referenceSectionLabel: "레퍼런스",
   featuresLabel: "기능",
   configLabel: "설정",
+  supportMatrixLabel: "지원 범위 표",
+  recipesLabel: "스택별 레시피",
   outlineLabel: "목차",
 };
 

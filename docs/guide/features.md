@@ -47,7 +47,8 @@ This keeps the web app and the app-layer configuration easy to separate.
 
 `frontron` owns these core features:
 
-- main window creation
+- primary window creation
+- named secondary window management from configured `windows`
 - preload bridge exposure
 - window state reading and window controls
 - custom title bar wiring

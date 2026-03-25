@@ -44,6 +44,496 @@ test('runCli validates dev config in check mode', async () => {
   expect(existsSync(join(fixtureDir, GENERATED_BRIDGE_TYPES_RELATIVE_PATH))).toBe(true)
 })
 
+test('runCli check reports the first-run contract for a healthy project', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+
+  writeFileSync(
+    join(fixtureDir, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'fixture-app',
+        private: true,
+        type: 'module',
+        scripts: {
+          dev: 'vite --port 4123',
+          build: 'vite build',
+          'app:dev': 'frontron dev',
+          'app:build': 'frontron build',
+        },
+      },
+      null,
+      2,
+    ),
+  )
+  writeFileSync(
+    join(fixtureDir, 'frontron', 'config.ts'),
+    [
+      'export default {',
+      "  app: { name: 'Fixture App', id: 'com.example.fixture' },",
+      '}',
+      '',
+    ].join('\n'),
+  )
+
+  const info: string[] = []
+  const error: string[] = []
+  const exitCode = await runCli(
+    ['check', '--cwd', fixtureDir],
+    {
+      info(message) {
+        info.push(message)
+      },
+      error(message) {
+        error.push(message)
+      },
+    },
+  )
+
+  expect(exitCode).toBe(0)
+  expect(error).toEqual([])
+  expect(info.some((message) => message.includes('Check root:'))).toBe(true)
+  expect(info.some((message) => message.includes('app:dev script: frontron dev'))).toBe(true)
+  expect(info.some((message) => message.includes('app:build script: frontron build'))).toBe(true)
+  expect(info.some((message) => message.includes('Loaded config:'))).toBe(true)
+  expect(info.some((message) => message.includes('Inferred web dev command: npm run dev'))).toBe(true)
+  expect(info.some((message) => message.includes('Inferred web dev target: http://localhost:4123'))).toBe(true)
+  expect(info.some((message) => message.includes('Check passed.'))).toBe(true)
+})
+
+test('runCli doctor remains a compatibility alias for check', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+
+  writeFileSync(
+    join(fixtureDir, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'fixture-app',
+        private: true,
+        type: 'module',
+        scripts: {
+          dev: 'vite --port 4123',
+          build: 'vite build',
+          'app:dev': 'frontron dev',
+          'app:build': 'frontron build',
+        },
+      },
+      null,
+      2,
+    ),
+  )
+  writeFileSync(
+    join(fixtureDir, 'frontron', 'config.ts'),
+    [
+      'export default {',
+      "  app: { name: 'Fixture App', id: 'com.example.fixture' },",
+      '}',
+      '',
+    ].join('\n'),
+  )
+
+  const info: string[] = []
+  const error: string[] = []
+  const exitCode = await runCli(
+    ['doctor', '--cwd', fixtureDir],
+    {
+      info(message) {
+        info.push(message)
+      },
+      error(message) {
+        error.push(message)
+      },
+    },
+  )
+
+  expect(exitCode).toBe(0)
+  expect(error).toEqual([])
+  expect(info.some((message) => message.includes('Check passed.'))).toBe(true)
+})
+
+test('runCli check reports a dev-port conflict before app:dev starts', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+
+  writeFileSync(
+    join(fixtureDir, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'fixture-app',
+        private: true,
+        type: 'module',
+        scripts: {
+          dev: 'vite --host 127.0.0.1 --port 4123',
+          build: 'vite build',
+          'app:dev': 'frontron dev',
+          'app:build': 'frontron build',
+        },
+      },
+      null,
+      2,
+    ),
+  )
+
+  const info: string[] = []
+  const error: string[] = []
+  const exitCode = await runCli(
+    ['check', '--cwd', fixtureDir],
+    {
+      info(message) {
+        info.push(message)
+      },
+      error(message) {
+        error.push(message)
+      },
+    },
+    {
+      probeDevUrl() {
+        return {
+          portAvailable: false,
+          responding: true,
+        }
+      },
+    },
+  )
+
+  expect(exitCode).toBe(1)
+
+  expect(
+    error.some((message) => message.includes('Dev URL already responds before Frontron starts:')),
+  ).toBe(true)
+})
+
+test('runCli check reports incomplete staged build artifacts', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+
+  writeFileSync(
+    join(fixtureDir, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'fixture-app',
+        private: true,
+        type: 'module',
+        scripts: {
+          dev: 'vite',
+          build: 'vite build',
+          'app:dev': 'frontron dev',
+          'app:build': 'frontron build',
+        },
+      },
+      null,
+      2,
+    ),
+  )
+
+  mkdirSync(join(fixtureDir, '.frontron', 'runtime', 'build', 'app'), { recursive: true })
+  writeFileSync(join(fixtureDir, '.frontron', 'runtime', 'build', 'app', 'manifest.json'), '{}')
+  mkdirSync(join(fixtureDir, 'output'), { recursive: true })
+
+  const info: string[] = []
+  const error: string[] = []
+  const exitCode = await runCli(
+    ['check', '--cwd', fixtureDir],
+    {
+      info(message) {
+        info.push(message)
+      },
+      error(message) {
+        error.push(message)
+      },
+    },
+  )
+
+  expect(exitCode).toBe(1)
+  expect(error.some((message) => message.includes('Framework staged app is incomplete'))).toBe(true)
+  expect(error.some((message) => message.includes('Packaged output dir is empty: output'))).toBe(true)
+})
+
+test('runCli check reports a missing Rust toolchain when rust is enabled', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+
+  writeFileSync(
+    join(fixtureDir, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'fixture-app',
+        private: true,
+        type: 'module',
+        scripts: {
+          dev: 'vite',
+          build: 'vite build',
+          'app:dev': 'frontron dev',
+          'app:build': 'frontron build',
+        },
+      },
+      null,
+      2,
+    ),
+  )
+  writeFileSync(
+    join(fixtureDir, 'frontron', 'config.ts'),
+    [
+      'export default {',
+      "  app: { name: 'Fixture App', id: 'com.example.fixture' },",
+      '  rust: {',
+      '    enabled: true,',
+      '  },',
+      '}',
+      '',
+    ].join('\n'),
+  )
+
+  const info: string[] = []
+  const error: string[] = []
+  const exitCode = await runCli(
+    ['check', '--cwd', fixtureDir],
+    {
+      info(message) {
+        info.push(message)
+      },
+      error(message) {
+        error.push(message)
+      },
+    },
+    {
+      resolveCargoVersion() {
+        return null
+      },
+    },
+  )
+
+  expect(exitCode).toBe(1)
+  expect(error.some((message) => message.includes('Rust toolchain: cargo was not found'))).toBe(true)
+})
+
+test('runCli check prints a monorepo and custom-script hint when the project uses workspace wrappers', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+
+  writeFileSync(join(fixtureDir, 'pnpm-workspace.yaml'), 'packages:\n  - apps/*\n')
+  writeFileSync(join(fixtureDir, 'turbo.json'), '{ "tasks": {} }\n')
+  writeFileSync(
+    join(fixtureDir, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'fixture-app',
+        private: true,
+        type: 'module',
+        workspaces: ['apps/*'],
+        scripts: {
+          'app:dev': 'frontron dev',
+          'app:build': 'frontron build',
+          'frontend:dev': 'turbo run dev --filter web',
+          'frontend:build': 'turbo run build --filter web',
+        },
+      },
+      null,
+      2,
+    ),
+  )
+  writeFileSync(
+    join(fixtureDir, 'frontron', 'config.ts'),
+    [
+      'export default {',
+      "  app: { name: 'Fixture App', id: 'com.example.fixture' },",
+      '  web: {',
+      '    dev: {',
+      "      command: 'pnpm --filter web dev',",
+      "      url: 'http://localhost:4173',",
+      '    },',
+      '    build: {',
+      "      command: 'pnpm --filter web build',",
+      "      outDir: 'dist',",
+      '    },',
+      '  },',
+      '}',
+      '',
+    ].join('\n'),
+  )
+
+  const info: string[] = []
+  const error: string[] = []
+  const exitCode = await runCli(
+    ['check', '--cwd', fixtureDir],
+    {
+      info(message) {
+        info.push(message)
+      },
+      error(message) {
+        error.push(message)
+      },
+    },
+    {
+      probeDevUrl() {
+        return {
+          portAvailable: true,
+          responding: false,
+        }
+      },
+    },
+  )
+
+  expect(exitCode).toBe(0)
+  expect(error).toEqual([])
+  expect(info.some((message) => message.includes('Workspace/custom script hint:'))).toBe(true)
+  expect(
+    info.some((message) =>
+      message.includes('Prefer explicit "web.dev.command", "web.dev.url", "web.build.command", and "web.build.outDir"'),
+    ),
+  ).toBe(true)
+})
+
+test('runCli check reports missing official config and scripts', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+
+  rmSync(join(fixtureDir, 'frontron.config.ts'), { force: true })
+  writeFileSync(
+    join(fixtureDir, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'fixture-app',
+        private: true,
+        type: 'module',
+        scripts: {
+          dev: 'vite',
+        },
+      },
+      null,
+      2,
+    ),
+  )
+
+  const info: string[] = []
+  const error: string[] = []
+  const exitCode = await runCli(
+    ['check', '--cwd', fixtureDir],
+    {
+      info(message) {
+        info.push(message)
+      },
+      error(message) {
+        error.push(message)
+      },
+    },
+  )
+
+  expect(exitCode).toBe(1)
+  expect(info.some((message) => message.includes('package.json: found'))).toBe(true)
+  expect(error).toContain('[Frontron] app:dev script: missing')
+  expect(error).toContain('[Frontron] app:build script: missing')
+  expect(error).toContain('[Frontron] Root frontron.config.ts: missing')
+  expect(error.some((message) => message.includes('Run `npx frontron init`'))).toBe(true)
+})
+
+test('runCli dev check shows candidate scripts and root config hints when inference fails', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+
+  writeFileSync(
+    join(fixtureDir, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'fixture-app',
+        private: true,
+        type: 'module',
+        scripts: {
+          'frontend:start': 'custom-dev-runner',
+          'app:dev': 'frontron dev',
+          'app:build': 'frontron build',
+        },
+      },
+      null,
+      2,
+    ),
+  )
+  writeFileSync(
+    join(fixtureDir, 'frontron', 'config.ts'),
+    [
+      'export default {',
+      "  app: { name: 'Fixture App', id: 'com.example.fixture' },",
+      '}',
+      '',
+    ].join('\n'),
+  )
+
+  const info: string[] = []
+  const error: string[] = []
+  const exitCode = await runCli(
+    ['dev', '--cwd', fixtureDir, '--check'],
+    {
+      info(message) {
+        info.push(message)
+      },
+      error(message) {
+        error.push(message)
+      },
+    },
+  )
+
+  expect(exitCode).toBe(1)
+  expect(info).toEqual([])
+  expect(error.some((message) => message.includes('"dev" requires "web.dev.command"'))).toBe(true)
+  expect(error.some((message) => message.includes('Candidate package scripts: "frontend:start"'))).toBe(true)
+  expect(error.some((message) => message.includes('Set "web.dev.command" in the root frontron.config.ts'))).toBe(true)
+  expect(error.some((message) => message.includes('Run `npx frontron check`'))).toBe(true)
+})
+
+test('runCli build check shows candidate scripts and root config hints when inference fails', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+
+  writeFileSync(
+    join(fixtureDir, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'fixture-app',
+        private: true,
+        type: 'module',
+        scripts: {
+          'frontend:bundle': 'custom-build-runner',
+          'app:dev': 'frontron dev',
+          'app:build': 'frontron build',
+        },
+      },
+      null,
+      2,
+    ),
+  )
+  writeFileSync(
+    join(fixtureDir, 'frontron', 'config.ts'),
+    [
+      'export default {',
+      "  app: { name: 'Fixture App', id: 'com.example.fixture' },",
+      '}',
+      '',
+    ].join('\n'),
+  )
+
+  const info: string[] = []
+  const error: string[] = []
+  const exitCode = await runCli(
+    ['build', '--cwd', fixtureDir, '--check'],
+    {
+      info(message) {
+        info.push(message)
+      },
+      error(message) {
+        error.push(message)
+      },
+    },
+  )
+
+  expect(exitCode).toBe(1)
+  expect(info).toEqual([])
+  expect(error.some((message) => message.includes('"build" requires "web.build.command"'))).toBe(true)
+  expect(error.some((message) => message.includes('Candidate package scripts: "frontend:bundle"'))).toBe(true)
+  expect(error.some((message) => message.includes('Set "web.build.command" in the root frontron.config.ts'))).toBe(true)
+  expect(error.some((message) => message.includes('Run `npx frontron check`'))).toBe(true)
+})
+
 test('runCli init creates a basic config file and desktop scripts when install is skipped', async () => {
   const fixtureDir = createFixtureProject()
   fixtureDirs.push(fixtureDir)
@@ -311,6 +801,13 @@ test('runCli reports configurable packaging settings in build check mode', async
     configSource.replace(
       '  windows,\n  bridge,\n  menu,\n  tray,\n  hooks,\n',
       [
+        '  deepLinks: {',
+        "    name: 'Fixture Link Handler',",
+        "    schemes: ['fixture-app', 'fixture-auth'],",
+        '  },',
+        '  updates: {',
+        "    url: 'https://updates.example.com/appcast.xml',",
+        '  },',
         '  build: {',
         "    outputDir: 'release-output',",
         "    artifactName: 'fixture-${version}-${target}.${ext}',",
@@ -319,9 +816,11 @@ test('runCli reports configurable packaging settings in build check mode', async
         "    files: ['**/*'],",
         "    extraResources: ['public/icon.png'],",
         "    extraFiles: ['public/icon.png'],",
-        "    windows: { targets: ['portable', 'dir'], artifactName: 'fixture-win-${version}.${ext}', requestedExecutionLevel: 'highestAvailable' },",
-        "    mac: { targets: ['dmg', 'zip'], artifactName: 'fixture-mac-${version}.${ext}', category: 'public.app-category.developer-tools' },",
+        "    fileAssociations: [{ ext: ['fixture', 'fixturedoc'], name: 'Fixture Document' }],",
+        "    windows: { targets: ['portable', 'dir'], artifactName: 'fixture-win-${version}.${ext}', certificateSubjectName: 'Fixture Desktop Signing', requestedExecutionLevel: 'highestAvailable' },",
+        "    mac: { targets: ['dmg', 'zip'], artifactName: 'fixture-mac-${version}.${ext}', category: 'public.app-category.developer-tools', identity: 'Developer ID Application: Fixture Team', hardenedRuntime: true },",
         "    linux: { targets: ['AppImage', 'deb'], artifactName: 'fixture-linux-${version}.${ext}', category: 'Development', packageCategory: 'devel' },",
+        "    advanced: { electronBuilder: { compressionLevel: 7 } },",
         '  },',
         '  windows,',
         '  bridge,',
@@ -348,6 +847,29 @@ test('runCli reports configurable packaging settings in build check mode', async
   expect(info.some((message) => message.includes(`Package output dir: ${join(fixtureDir, 'release-output')}`))).toBe(
     true,
   )
+  expect(info.some((message) => message.includes('Deep-link schemes: fixture-app, fixture-auth'))).toBe(
+    true,
+  )
+  expect(info.some((message) => message.includes('Deep-link registration name: Fixture Link Handler'))).toBe(
+    true,
+  )
+  expect(
+    info.some((message) =>
+      message.includes('File association extensions: fixture, fixturedoc'),
+    ),
+  ).toBe(true)
+  expect(info.some((message) => message.includes('Auto updates: enabled (generic)'))).toBe(true)
+  expect(
+    info.some((message) =>
+      message.includes('Auto update feed URL: https://updates.example.com/appcast.xml'),
+    ),
+  ).toBe(true)
+  expect(info.some((message) => message.includes('Auto update launch check: enabled'))).toBe(true)
+  expect(
+    info.some((message) =>
+      message.includes('Auto update runtime is currently supported for packaged macOS apps with a generic feed URL.'),
+    ),
+  ).toBe(true)
   expect(info.some((message) => message.includes('Package artifact pattern: fixture-${version}-${target}.${ext}'))).toBe(
     true,
   )
@@ -362,6 +884,9 @@ test('runCli reports configurable packaging settings in build check mode', async
   expect(info.some((message) => message.includes('Windows artifact pattern: fixture-win-${version}.${ext}'))).toBe(
     true,
   )
+  expect(info.some((message) => message.includes('Windows signing subject: Fixture Desktop Signing'))).toBe(
+    true,
+  )
   expect(info.some((message) => message.includes('Windows execution level: highestAvailable'))).toBe(
     true,
   )
@@ -374,6 +899,12 @@ test('runCli reports configurable packaging settings in build check mode', async
       message.includes('macOS category: public.app-category.developer-tools'),
     ),
   ).toBe(true)
+  expect(
+    info.some((message) =>
+      message.includes('macOS signing identity: Developer ID Application: Fixture Team'),
+    ),
+  ).toBe(true)
+  expect(info.some((message) => message.includes('macOS hardened runtime: enabled'))).toBe(true)
   expect(info.some((message) => message.includes('Linux package targets: AppImage, deb'))).toBe(
     true,
   )
@@ -384,6 +915,7 @@ test('runCli reports configurable packaging settings in build check mode', async
   ).toBe(true)
   expect(info.some((message) => message.includes('Linux category: Development'))).toBe(true)
   expect(info.some((message) => message.includes('Linux package category: devel'))).toBe(true)
+  expect(info.some((message) => message.includes('Advanced electron-builder overrides: enabled'))).toBe(true)
 })
 
 test('runCli infers Vite dev settings and the default icon in check mode', async () => {
@@ -1371,20 +1903,26 @@ test('stageBuildApp applies configurable metadata and Windows packaging targets'
       .replace(
         '  windows,\n  bridge,\n  menu,\n  tray,\n  hooks,\n',
         [
+          '  deepLinks: {',
+          "    name: 'Fixture Link Handler',",
+          "    schemes: ['fixture-app', 'fixture-auth'],",
+          '  },',
           '  build: {',
           "    outputDir: 'release-output',",
           "    artifactName: 'fixture-${version}-${target}.${ext}',",
           "    publish: 'onTag',",
-          '    asar: false,',
-          "    compression: 'maximum',",
-          "    files: ['main.mjs', { from: 'public', to: 'public-files', filter: ['**/*'] }],",
-          "    extraResources: ['public/icon.png'],",
-          "    extraFiles: [{ from: 'public', to: 'public-copy' }],",
-          "    windows: { targets: ['portable', 'dir'], icon: 'public/icon.png', publisherName: ['Fixture Desktop Team'], signAndEditExecutable: false, requestedExecutionLevel: 'highestAvailable', artifactName: 'fixture-win-${version}.${ext}' },",
-          "    nsis: { oneClick: false, perMachine: true, allowToChangeInstallationDirectory: true, deleteAppDataOnUninstall: true, installerIcon: 'public/icon.png', uninstallerIcon: 'public/icon.png' },",
-          "    mac: { targets: ['dmg', 'zip'], icon: 'public/icon.png', category: 'public.app-category.developer-tools', artifactName: 'fixture-mac-${version}.${ext}' },",
-          "    linux: { targets: ['AppImage', 'deb'], icon: 'public/icon.png', category: 'Development', packageCategory: 'devel', artifactName: 'fixture-linux-${version}.${ext}' },",
-          '  },',
+            '    asar: false,',
+            "    compression: 'maximum',",
+            "    files: ['main.mjs', { from: 'public', to: 'public-files', filter: ['**/*'] }],",
+            "    extraResources: ['public/icon.png'],",
+            "    extraFiles: [{ from: 'public', to: 'public-copy' }],",
+            "    fileAssociations: [{ ext: ['fixture', 'fixturedoc'], name: 'Fixture Document', description: 'Fixture desktop document', icon: 'public/icon.png', role: 'Editor', rank: 'Owner' }, { ext: 'fixturemime', mimeType: 'application/x-fixture' }],",
+            "    windows: { targets: ['portable', 'dir'], icon: 'public/icon.png', publisherName: ['Fixture Desktop Team'], certificateSubjectName: 'Fixture Desktop Signing', signAndEditExecutable: false, requestedExecutionLevel: 'highestAvailable', artifactName: 'fixture-win-${version}.${ext}' },",
+            "    nsis: { oneClick: false, perMachine: true, allowToChangeInstallationDirectory: true, deleteAppDataOnUninstall: true, installerIcon: 'public/icon.png', uninstallerIcon: 'public/icon.png' },",
+            "    mac: { targets: ['dmg', 'zip'], icon: 'public/icon.png', category: 'public.app-category.developer-tools', identity: 'Developer ID Application: Fixture Team', hardenedRuntime: true, gatekeeperAssess: false, entitlements: 'entitlements.mac.plist', entitlementsInherit: 'entitlements.mac.inherit.plist', artifactName: 'fixture-mac-${version}.${ext}' },",
+            "    linux: { targets: ['AppImage', 'deb'], icon: 'public/icon.png', category: 'Development', packageCategory: 'devel', artifactName: 'fixture-linux-${version}.${ext}' },",
+            "    advanced: { electronBuilder: { compressionLevel: 7, directories: { buildResources: 'builder-resources' }, win: { verifyUpdateCodeSignature: false }, extraMetadata: { homepage: 'https://example.com' } } },",
+            '  },',
           '  windows,',
           '  bridge,',
           '  menu,',
@@ -1407,13 +1945,32 @@ test('stageBuildApp applies configurable metadata and Windows packaging targets'
     asar?: boolean
     artifactName?: string
     compression?: string
+    compressionLevel?: number
     copyright?: string
     directories?: {
+      buildResources?: string
       output?: string
+    }
+    extraMetadata?: {
+      homepage?: string
     }
     extraFiles?: Array<Record<string, unknown> | string>
     extraResources?: string[]
+    fileAssociations?: Array<{
+      description?: string
+      ext?: string | string[]
+      icon?: string
+      isPackage?: boolean
+      mimeType?: string
+      name?: string
+      rank?: string
+      role?: string
+    }>
     files?: Array<Record<string, unknown> | string>
+    protocols?: Array<{
+      name?: string
+      schemes?: string[]
+    }>
     nsis?: {
       oneClick?: boolean
       perMachine?: boolean
@@ -1422,12 +1979,17 @@ test('stageBuildApp applies configurable metadata and Windows packaging targets'
       installerIcon?: string
       uninstallerIcon?: string
     }
-    mac?: {
-      artifactName?: string
-      category?: string
-      icon?: string
-      target?: string[]
-    }
+      mac?: {
+        artifactName?: string
+        category?: string
+        entitlements?: string
+        entitlementsInherit?: string
+        gatekeeperAssess?: boolean
+        hardenedRuntime?: boolean
+        icon?: string
+        identity?: string
+        target?: string[]
+      }
     linux?: {
       artifactName?: string
       category?: string
@@ -1435,13 +1997,15 @@ test('stageBuildApp applies configurable metadata and Windows packaging targets'
       packageCategory?: string
       target?: string[]
     }
-    win?: {
-      artifactName?: string
-      icon?: string
-      publisherName?: string[]
-      requestedExecutionLevel?: string
+      win?: {
+        artifactName?: string
+        certificateSubjectName?: string
+        icon?: string
+        publisherName?: string[]
+        requestedExecutionLevel?: string
       signAndEditExecutable?: boolean
       target?: string[]
+      verifyUpdateCodeSignature?: boolean
     }
   }
 
@@ -1452,6 +2016,9 @@ test('stageBuildApp applies configurable metadata and Windows packaging targets'
   expect(builderConfig.asar).toBe(false)
   expect(builderConfig.artifactName).toBe('fixture-${version}-${target}.${ext}')
   expect(builderConfig.compression).toBe('maximum')
+  expect(builderConfig.compressionLevel).toBe(7)
+  expect(builderConfig.extraMetadata?.homepage).toBe('https://example.com')
+  expect(builderConfig.directories?.buildResources).toBe('builder-resources')
   expect(builderConfig.directories?.output).toBe(join(fixtureDir, 'release-output'))
   expect(builderConfig.files).toEqual([
     '**/*',
@@ -1460,6 +2027,26 @@ test('stageBuildApp applies configurable metadata and Windows packaging targets'
       from: join(fixtureDir, 'public'),
       to: 'public-files',
       filter: ['**/*'],
+    },
+  ])
+  expect(builderConfig.protocols).toEqual([
+    {
+      name: 'Fixture Link Handler',
+      schemes: ['fixture-app', 'fixture-auth'],
+    },
+  ])
+  expect(builderConfig.fileAssociations).toEqual([
+    {
+      ext: ['fixture', 'fixturedoc'],
+      name: 'Fixture Document',
+      description: 'Fixture desktop document',
+      icon: join(fixtureDir, 'public', 'icon.png'),
+      role: 'Editor',
+      rank: 'Owner',
+    },
+    {
+      ext: 'fixturemime',
+      mimeType: 'application/x-fixture',
     },
   ])
   expect(builderConfig.extraResources).toEqual([join(fixtureDir, 'public', 'icon.png')])
@@ -1472,9 +2059,11 @@ test('stageBuildApp applies configurable metadata and Windows packaging targets'
   expect(builderConfig.win?.target).toEqual(['portable', 'dir'])
   expect(builderConfig.win?.icon).toBe(join(fixtureDir, 'public', 'icon.png'))
   expect(builderConfig.win?.publisherName).toEqual(['Fixture Desktop Team'])
+  expect(builderConfig.win?.certificateSubjectName).toBe('Fixture Desktop Signing')
   expect(builderConfig.win?.signAndEditExecutable).toBe(false)
   expect(builderConfig.win?.requestedExecutionLevel).toBe('highestAvailable')
   expect(builderConfig.win?.artifactName).toBe('fixture-win-${version}.${ext}')
+  expect(builderConfig.win?.verifyUpdateCodeSignature).toBe(false)
   expect(builderConfig.nsis).toEqual({
     oneClick: false,
     perMachine: true,
@@ -1486,6 +2075,13 @@ test('stageBuildApp applies configurable metadata and Windows packaging targets'
   expect(builderConfig.mac?.target).toEqual(['dmg', 'zip'])
   expect(builderConfig.mac?.icon).toBe(join(fixtureDir, 'public', 'icon.png'))
   expect(builderConfig.mac?.category).toBe('public.app-category.developer-tools')
+  expect(builderConfig.mac?.identity).toBe('Developer ID Application: Fixture Team')
+  expect(builderConfig.mac?.hardenedRuntime).toBe(true)
+  expect(builderConfig.mac?.gatekeeperAssess).toBe(false)
+  expect(builderConfig.mac?.entitlements).toBe(join(fixtureDir, 'entitlements.mac.plist'))
+  expect(builderConfig.mac?.entitlementsInherit).toBe(
+    join(fixtureDir, 'entitlements.mac.inherit.plist'),
+  )
   expect(builderConfig.mac?.artifactName).toBe('fixture-mac-${version}.${ext}')
   expect(builderConfig.linux?.target).toEqual(['AppImage', 'deb'])
   expect(builderConfig.linux?.icon).toBe(join(fixtureDir, 'public', 'icon.png'))

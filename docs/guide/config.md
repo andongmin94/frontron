@@ -9,7 +9,7 @@ You do not need to understand every value at once. Start with the values that ha
 For most people, this order is enough:
 
 1. `public/icon.ico`
-2. `frontron/config.ts` or root `frontron.config.ts` app metadata
+2. root `frontron.config.ts` app metadata
 3. build output policy in `frontron.config.ts`
 4. `frontron/windows/index.ts`
 5. `vite.config.ts`
@@ -95,21 +95,62 @@ The common fields are:
 - `build.files`: filter staged packaged app contents
 - `build.extraResources`: copy extra project files into packaged resources
 - `build.extraFiles`: copy extra project files next to packaged app output
+- `build.fileAssociations`: register packaged document/file associations
 - `build.windows.targets`: choose Windows targets such as `nsis`, `portable`, or `dir`
-- `build.windows.icon`, `build.windows.publisherName`, `build.windows.signAndEditExecutable`
+- `build.windows.icon`, `build.windows.publisherName`, `build.windows.certificateSubjectName`, `build.windows.signAndEditExecutable`
 - `build.windows.requestedExecutionLevel`, `build.windows.artifactName`
 - `build.nsis.oneClick`, `build.nsis.perMachine`, `build.nsis.allowToChangeInstallationDirectory`
 - `build.nsis.deleteAppDataOnUninstall`, `build.nsis.installerIcon`, `build.nsis.uninstallerIcon`
 - `build.mac.targets`: choose macOS targets such as `dmg`, `zip`, `pkg`, or `dir`
-- `build.mac.icon`, `build.mac.category`, `build.mac.artifactName`
+- `build.mac.icon`, `build.mac.category`, `build.mac.identity`, `build.mac.hardenedRuntime`
+- `build.mac.gatekeeperAssess`, `build.mac.entitlements`, `build.mac.entitlementsInherit`, `build.mac.artifactName`
 - `build.linux.targets`: choose Linux targets such as `AppImage`, `deb`, `rpm`, or `dir`
 - `build.linux.icon`, `build.linux.category`, `build.linux.packageCategory`, `build.linux.artifactName`
+- `build.advanced.electronBuilder`: add guarded extra `electron-builder` fields for edge cases
+- `deepLinks.enabled`, `deepLinks.name`, `deepLinks.schemes`
+- `updates.enabled`, `updates.provider`, `updates.url`, `updates.checkOnLaunch`
+- `security.externalNavigation`, `security.newWindow`
 
 If you omit `build.outputDir`, Frontron uses `output/`.
 
-Path-based resource settings such as `build.extraResources`, `build.extraFiles`, `build.windows.icon`, `build.nsis.installerIcon`, `build.mac.icon`, and `build.linux.icon` are resolved from the project root.
+Path-based resource settings such as `build.extraResources`, `build.extraFiles`, `build.windows.icon`, `build.nsis.installerIcon`, `build.mac.icon`, `build.mac.entitlements`, `build.mac.entitlementsInherit`, and `build.linux.icon` are resolved from the project root.
 
 `build.files` is different. It filters the staged packaged app contents, so keep those patterns relative to the staged app root.
+
+`build.fileAssociations` is the typed file-association surface. Use it for packaged document types instead of trying to push raw `fileAssociations` through `build.advanced.electronBuilder`.
+
+Path-based file association icons are resolved from the project root.
+
+On Windows, electron-builder only applies file associations for NSIS builds, and NSIS registration is effective when `build.nsis.perMachine` is `true`.
+
+`build.advanced.electronBuilder` is a best-effort escape hatch. Prefer the typed `build.*` fields first. Frontron blocks framework-owned fields such as staged app paths, package entry wiring, and the typed packaging fields it already owns.
+
+Typed signing fields describe normal product policy, not secret material. Certificates, keychains, and CI signing secrets still stay outside the repo.
+
+`updates.*` is also a typed product-policy surface now, but this first slice is intentionally small. Frontron currently supports a generic feed URL with launch-time update checks for packaged macOS apps only.
+
+Keep `updates.url` empty only when `updates.enabled` is `false`.
+
+`deepLinks.*` controls custom protocol registration and runtime deep-link capture. The current slice registers the configured schemes through packaged build metadata and exposes incoming URLs through `bridge.deepLink.getState()` and `bridge.deepLink.consumePending()`.
+
+`security.*` is the first typed runtime policy slice for external navigation. Use it when your product should explicitly decide whether external links stay in-app, are blocked, or are opened in the system browser.
+
+Example:
+
+```ts
+security: {
+  externalNavigation: 'openExternal',
+  newWindow: 'deny',
+}
+```
+
+Supported values are:
+
+- `allow`
+- `deny`
+- `openExternal`
+
+These policies only apply when renderer content tries to leave the current app origin. Same-origin navigation stays inside the app.
 
 ## 4. Window config
 
@@ -132,6 +173,12 @@ const windows = {
 }
 ```
 
+`main` is still the primary window.
+
+Any additional configured windows are runtime-owned named windows.
+
+In the current slice, non-primary configured windows are lazy singleton windows. Frontron does not create them during bootstrap. Open them later from menu, tray, hooks, or renderer bridge calls such as `bridge.windows.open({ name: 'settings' })`.
+
 Common window fields you can now change from `frontron.config.ts` or `frontron/windows/index.ts` are:
 
 - `route`
@@ -145,8 +192,14 @@ Common window fields you can now change from `frontron.config.ts` or `frontron/w
 - `backgroundColor`, `transparent`
 - `autoHideMenuBar`
 - `title`, `titleBarStyle`
+- `zoomFactor`, `sandbox`, `spellcheck`, `webSecurity`
+- `advanced`: guarded extra `BrowserWindow` options for edge cases
 
 Use `show: false` when your app should start hidden and open later from your tray or bridge logic.
+
+`windows.*.advanced` is intentionally limited. Frontron still owns `webPreferences`, icon wiring, and the common typed window fields above.
+
+The safe web preference subset is intentionally small. Use `zoomFactor`, `sandbox`, `spellcheck`, and `webSecurity` here, but keep `preload`, `contextIsolation`, `nodeIntegration`, and raw session ownership inside Frontron.
 
 ## 5. Development server alignment
 
@@ -211,7 +264,7 @@ import hooks from './frontron/hooks'
 
 ## 9. Rust slot
 
-The official Rust slot is enabled from `frontron/config.ts`.
+The official Rust slot is enabled from the root `frontron.config.ts`.
 
 ```ts
 export default defineConfig({

@@ -5,22 +5,31 @@ import { createRequire } from 'node:module'
 import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import type { FrontronBridgeConfig, FrontronWindowConfig } from '../types'
-import { createDesktopContext } from './context'
+import type {
+  FrontronDeepLinkState,
+  FrontronBridgeConfig,
+  FrontronDesktopContext,
+  FrontronUpdateState,
+  FrontronWindowConfig,
+  ResolvedFrontronConfig,
+} from '../types'
+import { createDesktopContext, type RuntimeWindowController } from './context'
 import { createRuntimeBridge } from './bridge'
 import { loadRuntimeConfig } from './config'
 import type { RuntimeManifest } from './manifest'
 import { loadRustRuntime } from './native'
+import { applyConfiguredSecurityPolicy } from './security'
 import { applyConfiguredMenu, createConfiguredTray } from './shell'
 
 const require = createRequire(import.meta.url)
 const electron = require('electron') as typeof import('electron')
-const { app, BrowserWindow, ipcMain } = electron
+const { app, autoUpdater, BrowserWindow, ipcMain } = electron
 
 type ElectronBrowserWindow = InstanceType<typeof BrowserWindow>
 type ElectronTray = import('electron').Tray
 
-let mainWindow: ElectronBrowserWindow | null = null
+let primaryWindowName: string | null = null
+const openWindows = new Map<string, ElectronBrowserWindow>()
 let appTray: ElectronTray | null = null
 let productionWebServer: Server | null = null
 let productionWebOrigin: string | null = null
@@ -29,6 +38,10 @@ const smokeResultPath = process.env.FRONTRON_SMOKE_RESULT_PATH
   ? resolve(process.env.FRONTRON_SMOKE_RESULT_PATH)
   : null
 const isSmokeTest = process.env.FRONTRON_SMOKE_TEST === '1'
+const smokeOpenWindowNames = (process.env.FRONTRON_SMOKE_OPEN_WINDOWS ?? '')
+  .split(',')
+  .map((windowName) => windowName.trim())
+  .filter(Boolean)
 
 function getManifestPath() {
   if (process.env.FRONTRON_MANIFEST_PATH) {
@@ -65,17 +78,98 @@ function resolveManifestPath(manifestPath: string, value: string | undefined) {
   return resolve(dirname(manifestPath), value)
 }
 
-function getMainWindowConfig(manifest: RuntimeManifest): FrontronWindowConfig {
-  return (
-    manifest.windows.main ??
-    Object.values(manifest.windows)[0] ?? {
-      route: '/',
-      width: 1280,
-      height: 800,
-      frame: true,
-      resizable: true,
+function createDefaultWindowConfig(): FrontronWindowConfig {
+  return {
+    route: '/',
+    width: 1280,
+    height: 800,
+    frame: true,
+    resizable: true,
+  }
+}
+
+function getConfiguredWindowNames(manifest: RuntimeManifest) {
+  const configuredWindowNames = Object.keys(manifest.windows ?? {})
+
+  return configuredWindowNames.length > 0 ? configuredWindowNames : ['main']
+}
+
+function getPrimaryWindowName(manifest: RuntimeManifest) {
+  if (manifest.windows.main) {
+    return 'main'
+  }
+
+  return getConfiguredWindowNames(manifest)[0] ?? 'main'
+}
+
+function getConfiguredWindowConfig(
+  manifest: RuntimeManifest,
+  windowName: string,
+): FrontronWindowConfig {
+  return manifest.windows[windowName] ?? createDefaultWindowConfig()
+}
+
+function getPrimaryWindowConfig(manifest: RuntimeManifest) {
+  return getConfiguredWindowConfig(manifest, getPrimaryWindowName(manifest))
+}
+
+function getPrimaryWindow() {
+  if (!primaryWindowName) {
+    return null
+  }
+
+  return openWindows.get(primaryWindowName) ?? null
+}
+
+function getOpenWindowNames() {
+  return [...openWindows.keys()].sort()
+}
+
+function isPlainObjectRecord(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false
+  }
+
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
+function cloneConfigValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => cloneConfigValue(item))
+  }
+
+  if (!isPlainObjectRecord(value)) {
+    return value
+  }
+
+  const clonedValue: Record<string, unknown> = {}
+
+  for (const [key, nestedValue] of Object.entries(value)) {
+    clonedValue[key] = cloneConfigValue(nestedValue)
+  }
+
+  return clonedValue
+}
+
+function mergeConfigRecords(
+  base: Record<string, unknown> | undefined,
+  override: Record<string, unknown>,
+) {
+  const mergedRecord = (cloneConfigValue(base) as Record<string, unknown> | undefined) ?? {}
+
+  for (const [key, overrideValue] of Object.entries(override)) {
+    const baseValue = mergedRecord[key]
+
+    if (isPlainObjectRecord(baseValue) && isPlainObjectRecord(overrideValue)) {
+      mergedRecord[key] = mergeConfigRecords(baseValue, overrideValue)
+      continue
     }
-  )
+
+    mergedRecord[key] = cloneConfigValue(overrideValue)
+  }
+
+  return mergedRecord
 }
 
 function normalizeRoute(route: string | undefined) {
@@ -214,6 +308,309 @@ async function stopProductionWebServer() {
   })
 }
 
+function readUpdateErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function createDeepLinkState(
+  deepLinksConfig: ResolvedFrontronConfig['deepLinks'],
+  partial: Partial<FrontronDeepLinkState> = {},
+): FrontronDeepLinkState {
+  return {
+    enabled: deepLinksConfig?.enabled ?? false,
+    schemes: deepLinksConfig?.schemes ?? [],
+    pending: [],
+    ...partial,
+  }
+}
+
+type RuntimeDeepLinksController = FrontronDesktopContext['deepLinks'] & {
+  enqueue(urls: string[]): void
+}
+
+function normalizeDeepLinkScheme(scheme: string) {
+  return scheme.trim().toLowerCase().replace(/:$/, '')
+}
+
+function isConfiguredDeepLink(urlText: string, schemes: string[]) {
+  try {
+    const parsed = new URL(urlText)
+    return schemes.includes(normalizeDeepLinkScheme(parsed.protocol))
+  } catch {
+    return false
+  }
+}
+
+function readDeepLinksFromArgv(argv: string[], schemes: string[]) {
+  return argv.filter((value) => isConfiguredDeepLink(value, schemes))
+}
+
+function createDeepLinksController(
+  deepLinksConfig: ResolvedFrontronConfig['deepLinks'],
+  onIncomingDeepLink?: () => void,
+): RuntimeDeepLinksController {
+  let state = createDeepLinkState(deepLinksConfig)
+
+  return {
+    getState() {
+      return {
+        ...state,
+        pending: [...state.pending],
+      }
+    },
+    consumePending() {
+      const pendingLinks = [...state.pending]
+      state = createDeepLinkState(deepLinksConfig, {
+        ...state,
+        pending: [],
+      })
+      return pendingLinks
+    },
+    enqueue(urls) {
+      if (!deepLinksConfig?.enabled || urls.length === 0) {
+        return
+      }
+
+      const nextUrls = urls.filter((url) => isConfiguredDeepLink(url, state.schemes))
+
+      if (nextUrls.length === 0) {
+        return
+      }
+
+      state = createDeepLinkState(deepLinksConfig, {
+        ...state,
+        pending: [...state.pending, ...nextUrls],
+        last: nextUrls[nextUrls.length - 1],
+      })
+
+      onIncomingDeepLink?.()
+    },
+  }
+}
+
+function createUpdateState(
+  manifest: RuntimeManifest,
+  partial: Partial<FrontronUpdateState>,
+): FrontronUpdateState {
+  return {
+    enabled: false,
+    supported: false,
+    status: 'disabled',
+    currentVersion: manifest.app.version,
+    ...partial,
+  }
+}
+
+function focusWindow(targetWindow: ElectronBrowserWindow | null) {
+  if (!targetWindow) {
+    return
+  }
+
+  if (!targetWindow.isVisible()) {
+    targetWindow.show()
+  }
+
+  if (targetWindow.isMinimized()) {
+    targetWindow.restore()
+  }
+
+  targetWindow.focus()
+}
+
+function focusPrimaryWindow() {
+  focusWindow(getPrimaryWindow())
+}
+
+function createUpdatesController(
+  manifest: RuntimeManifest,
+  updatesConfig: ResolvedFrontronConfig['updates'],
+): FrontronDesktopContext['updates'] {
+  let state = createUpdateState(manifest, {
+    enabled: updatesConfig?.enabled ?? false,
+    status: updatesConfig?.enabled === false || !updatesConfig ? 'disabled' : 'unsupported',
+  })
+
+  if (!updatesConfig || updatesConfig.enabled === false) {
+    return {
+      getState() {
+        return state
+      },
+      async check() {
+        return state
+      },
+      quitAndInstall() {
+        return false
+      },
+    }
+  }
+
+  const supported = manifest.mode === 'production' && app.isPackaged && process.platform === 'darwin'
+
+  state = createUpdateState(manifest, {
+    enabled: true,
+    supported,
+    status: supported ? 'idle' : 'unsupported',
+  })
+
+  if (!supported) {
+    return {
+      getState() {
+        return state
+      },
+      async check() {
+        return state
+      },
+      quitAndInstall() {
+        return false
+      },
+    }
+  }
+
+  let configured = false
+  let listenersRegistered = false
+
+  const registerListeners = () => {
+    if (listenersRegistered) {
+      return
+    }
+
+    listenersRegistered = true
+
+    autoUpdater.on('checking-for-update', () => {
+      state = createUpdateState(manifest, {
+        ...state,
+        enabled: true,
+        supported: true,
+        status: 'checking',
+        error: undefined,
+      })
+    })
+
+    autoUpdater.on('update-available', () => {
+      state = createUpdateState(manifest, {
+        ...state,
+        enabled: true,
+        supported: true,
+        status: 'available',
+        error: undefined,
+      })
+    })
+
+    autoUpdater.on('update-not-available', () => {
+      state = createUpdateState(manifest, {
+        ...state,
+        enabled: true,
+        supported: true,
+        status: 'not-available',
+        error: undefined,
+      })
+    })
+
+    autoUpdater.on('update-downloaded', (_event, _releaseNotes, releaseName) => {
+      state = createUpdateState(manifest, {
+        ...state,
+        enabled: true,
+        supported: true,
+        status: 'downloaded',
+        latestVersion: releaseName || state.latestVersion,
+        error: undefined,
+      })
+    })
+
+    autoUpdater.on('error', (error) => {
+      state = createUpdateState(manifest, {
+        ...state,
+        enabled: true,
+        supported: true,
+        status: 'error',
+        error: readUpdateErrorMessage(error),
+      })
+    })
+  }
+
+  const ensureConfigured = () => {
+    if (configured) {
+      return true
+    }
+
+    if (!updatesConfig.url) {
+      state = createUpdateState(manifest, {
+        ...state,
+        enabled: true,
+        supported: true,
+        status: 'error',
+        error: 'Missing updates.url for the configured auto-update feed.',
+      })
+      return false
+    }
+
+    try {
+      registerListeners()
+      autoUpdater.setFeedURL({
+        url: updatesConfig.url,
+      })
+      configured = true
+      return true
+    } catch (error) {
+      const message = readUpdateErrorMessage(error)
+      state = createUpdateState(manifest, {
+        ...state,
+        enabled: true,
+        supported: true,
+        status: 'error',
+        error: message,
+      })
+      console.error(`[Frontron] Auto updates could not be configured: ${message}`)
+      return false
+    }
+  }
+
+  return {
+    getState() {
+      return state
+    },
+    async check() {
+      if (!ensureConfigured()) {
+        return state
+      }
+
+      try {
+        autoUpdater.checkForUpdates()
+      } catch (error) {
+        const message = readUpdateErrorMessage(error)
+        state = createUpdateState(manifest, {
+          ...state,
+          enabled: true,
+          supported: true,
+          status: 'error',
+          error: message,
+        })
+      }
+
+      return state
+    },
+    quitAndInstall() {
+      if (state.status !== 'downloaded') {
+        return false
+      }
+
+      try {
+        autoUpdater.quitAndInstall()
+        return true
+      } catch (error) {
+        state = createUpdateState(manifest, {
+          ...state,
+          enabled: true,
+          supported: true,
+          status: 'error',
+          error: readUpdateErrorMessage(error),
+        })
+        return false
+      }
+    },
+  }
+}
+
 async function ensureProductionWebServer(
   manifest: RuntimeManifest,
   manifestPath: string,
@@ -298,6 +695,7 @@ async function ensureProductionWebServer(
 }
 
 async function loadWindowContent(
+  targetWindow: ElectronBrowserWindow,
   manifest: RuntimeManifest,
   manifestPath: string,
   windowConfig: FrontronWindowConfig,
@@ -314,24 +712,26 @@ async function loadWindowContent(
     await waitForUrlReady(devUrl)
 
     const windowUrl = route === '/' ? devUrl : new URL(route, devUrl).toString()
-    await mainWindow?.loadURL(windowUrl)
+    await targetWindow.loadURL(windowUrl)
     return
   }
 
   const serverOrigin = await ensureProductionWebServer(manifest, manifestPath)
   const windowUrl = new URL(route, `${serverOrigin}/`).toString()
 
-  await mainWindow?.loadURL(windowUrl)
+  await targetWindow.loadURL(windowUrl)
 }
 
-function sendMaximizedChanged() {
-  if (!mainWindow) {
+function sendPrimaryMaximizedChanged() {
+  const primaryWindow = getPrimaryWindow()
+
+  if (!primaryWindow) {
     return
   }
 
-  mainWindow.webContents.send(
+  primaryWindow.webContents.send(
     'frontron:event:window.maximizedChanged',
-    mainWindow.isMaximized(),
+    primaryWindow.isMaximized(),
   )
 }
 
@@ -344,12 +744,14 @@ function reportSmokeSuccess(payload: Record<string, unknown>) {
 }
 
 async function readSmokeRenderState() {
-  if (!mainWindow) {
+  const primaryWindow = getPrimaryWindow()
+
+  if (!primaryWindow) {
     return null
   }
 
   try {
-    return await mainWindow.webContents.executeJavaScript(
+    return await primaryWindow.webContents.executeJavaScript(
       `(() => {
         const root = document.getElementById('root')
         return {
@@ -392,80 +794,164 @@ function registerBridgeHandlers(bridge: FrontronBridgeConfig) {
     const result = await handler(...args)
 
     if (command === 'window.toggleMaximize') {
-      sendMaximizedChanged()
+      sendPrimaryMaximizedChanged()
     }
 
     return result
   })
 }
 
-async function createWindow(
+interface OpenConfiguredWindowOptions {
+  reveal?: boolean
+  focus?: boolean
+  onDidFinishLoad?: () => void
+}
+
+async function openConfiguredWindow(
+  windowName: string,
   manifest: RuntimeManifest,
   manifestPath: string,
-  onDidFinishLoad?: () => void,
+  desktopContext: FrontronDesktopContext,
+  securityConfig: ResolvedFrontronConfig['security'],
+  options: OpenConfiguredWindowOptions = {
+    reveal: true,
+    focus: true,
+  },
 ) {
-  const windowConfig = getMainWindowConfig(manifest)
-  const shouldShowWindow = windowConfig.show ?? true
+  if (!getConfiguredWindowNames(manifest).includes(windowName)) {
+    throw new Error(`[Frontron] Unknown configured window "${windowName}".`)
+  }
+
+  const existingWindow = openWindows.get(windowName)
+  const shouldRevealWindow = options.reveal ?? true
+  const shouldFocusWindow = options.focus ?? true
+
+  if (existingWindow) {
+    if (shouldRevealWindow) {
+      if (existingWindow.isMinimized()) {
+        existingWindow.restore()
+      }
+
+      existingWindow.show()
+    }
+
+    if (shouldFocusWindow) {
+      focusWindow(existingWindow)
+    }
+
+    return existingWindow
+  }
+
+  const windowConfig = getConfiguredWindowConfig(manifest, windowName)
   const preloadPath = join(dirname(fileURLToPath(import.meta.url)), 'preload.mjs')
   const iconPath = resolveManifestPath(manifestPath, manifest.app.icon)
 
-  mainWindow = new BrowserWindow({
-    show: windowConfig.show ?? false,
-    width: windowConfig.width ?? 1280,
-    height: windowConfig.height ?? 800,
-    minWidth: windowConfig.minWidth,
-    minHeight: windowConfig.minHeight,
-    maxWidth: windowConfig.maxWidth,
-    maxHeight: windowConfig.maxHeight,
-    frame: windowConfig.frame ?? true,
-    resizable: windowConfig.resizable ?? true,
-    fullscreen: windowConfig.fullscreen,
-    fullscreenable: windowConfig.fullscreenable,
-    maximizable: windowConfig.maximizable,
-    minimizable: windowConfig.minimizable,
-    closable: windowConfig.closable,
-    alwaysOnTop: windowConfig.alwaysOnTop,
-    backgroundColor: windowConfig.backgroundColor,
-    transparent: windowConfig.transparent,
-    autoHideMenuBar: windowConfig.autoHideMenuBar,
-    skipTaskbar: windowConfig.skipTaskbar,
-    title: windowConfig.title ?? manifest.app.name,
-    titleBarStyle: windowConfig.titleBarStyle,
-    icon: iconPath && existsSync(iconPath) ? iconPath : undefined,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: preloadPath,
+  const browserWindowOptions = mergeConfigRecords(
+    isPlainObjectRecord(windowConfig.advanced) ? windowConfig.advanced : undefined,
+    {
+      show: false,
+      width: windowConfig.width ?? 1280,
+      height: windowConfig.height ?? 800,
+      minWidth: windowConfig.minWidth,
+      minHeight: windowConfig.minHeight,
+      maxWidth: windowConfig.maxWidth,
+      maxHeight: windowConfig.maxHeight,
+      frame: windowConfig.frame ?? true,
+      resizable: windowConfig.resizable ?? true,
+      fullscreen: windowConfig.fullscreen,
+      fullscreenable: windowConfig.fullscreenable,
+      maximizable: windowConfig.maximizable,
+      minimizable: windowConfig.minimizable,
+      closable: windowConfig.closable,
+      alwaysOnTop: windowConfig.alwaysOnTop,
+      backgroundColor: windowConfig.backgroundColor,
+      transparent: windowConfig.transparent,
+      autoHideMenuBar: windowConfig.autoHideMenuBar,
+      skipTaskbar: windowConfig.skipTaskbar,
+      title: windowConfig.title ?? manifest.app.name,
+      titleBarStyle: windowConfig.titleBarStyle,
+      icon: iconPath && existsSync(iconPath) ? iconPath : undefined,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: preloadPath,
+        zoomFactor: windowConfig.zoomFactor,
+        sandbox: windowConfig.sandbox,
+        spellcheck: windowConfig.spellcheck,
+        webSecurity: windowConfig.webSecurity,
+      },
     },
-  })
+  )
 
-  mainWindow.on('maximize', sendMaximizedChanged)
-  mainWindow.on('unmaximize', sendMaximizedChanged)
-  mainWindow.on('closed', () => {
-    mainWindow = null
+  const targetWindow = new BrowserWindow(
+    browserWindowOptions as import('electron').BrowserWindowConstructorOptions,
+  )
+  const isPrimaryWindow = windowName === primaryWindowName
+
+  openWindows.set(windowName, targetWindow)
+
+  if (isPrimaryWindow) {
+    targetWindow.on('maximize', sendPrimaryMaximizedChanged)
+    targetWindow.on('unmaximize', sendPrimaryMaximizedChanged)
+  }
+
+  targetWindow.on('closed', () => {
+    openWindows.delete(windowName)
   })
 
   if (windowConfig.center) {
-    mainWindow.center()
+    targetWindow.center()
   }
 
-  mainWindow.once('ready-to-show', () => {
-    if (!isSmokeTest && shouldShowWindow && !mainWindow?.isVisible()) {
-      mainWindow?.show()
+  targetWindow.once('ready-to-show', () => {
+    const shouldShowWindow = shouldRevealWindow || (windowConfig.show ?? true)
+
+    if (!isSmokeTest && shouldShowWindow && !targetWindow.isVisible()) {
+      targetWindow.show()
     }
 
-    sendMaximizedChanged()
+    if (!isSmokeTest && shouldFocusWindow) {
+      focusWindow(targetWindow)
+    }
+
+    if (isPrimaryWindow) {
+      sendPrimaryMaximizedChanged()
+    }
   })
 
-  if (onDidFinishLoad) {
-    mainWindow.webContents.once('did-finish-load', onDidFinishLoad)
+  if (options.onDidFinishLoad) {
+    targetWindow.webContents.once('did-finish-load', options.onDidFinishLoad)
   }
 
-  await loadWindowContent(manifest, manifestPath, windowConfig)
+  await loadWindowContent(targetWindow, manifest, manifestPath, windowConfig)
+  applyConfiguredSecurityPolicy(targetWindow.webContents, desktopContext.shell, securityConfig)
+
+  return targetWindow
 }
 
 async function bootstrap() {
   const { manifest, manifestPath } = readManifest()
+  primaryWindowName = getPrimaryWindowName(manifest)
+  const runtimeConfig = await loadRuntimeConfig(manifest)
+  const deepLinksController = createDeepLinksController(runtimeConfig?.deepLinks, () => {
+    if (!isSmokeTest) {
+      focusPrimaryWindow()
+    }
+  })
+  const configuredDeepLinkSchemes = runtimeConfig?.deepLinks?.enabled
+    ? runtimeConfig.deepLinks.schemes
+    : []
+
+  if (configuredDeepLinkSchemes.length > 0) {
+    app.on('open-url', (event, url) => {
+      event.preventDefault()
+      deepLinksController.enqueue([url])
+    })
+
+    if (process.platform !== 'darwin') {
+      deepLinksController.enqueue(readDeepLinksFromArgv(process.argv, configuredDeepLinkSchemes))
+    }
+  }
 
   if (isSmokeTest) {
     app.setPath('userData', join(manifest.rootDir, '.frontron-smoke-user-data'))
@@ -476,20 +962,12 @@ async function bootstrap() {
     return
   }
 
-  app.on('second-instance', () => {
-    if (!mainWindow) {
-      return
+  app.on('second-instance', (_event, argv) => {
+    if (configuredDeepLinkSchemes.length > 0) {
+      deepLinksController.enqueue(readDeepLinksFromArgv(argv, configuredDeepLinkSchemes))
     }
 
-    if (!mainWindow.isVisible()) {
-      mainWindow.show()
-    }
-
-    if (mainWindow.isMinimized()) {
-      mainWindow.restore()
-    }
-
-    mainWindow.focus()
+    focusPrimaryWindow()
   })
 
   await app.whenReady()
@@ -499,12 +977,41 @@ async function bootstrap() {
     void stopProductionWebServer()
   })
   app.setName(manifest.app.name)
-  const desktopContext = createDesktopContext(
+  const updatesController = createUpdatesController(manifest, runtimeConfig?.updates)
+  let desktopContext!: FrontronDesktopContext
+  const windowController: RuntimeWindowController = {
+    getPrimaryWindow() {
+      return getPrimaryWindow()
+    },
+    async openConfiguredWindow(name) {
+      return await openConfiguredWindow(
+        name,
+        manifest,
+        manifestPath,
+        desktopContext,
+        runtimeConfig?.security,
+      )
+    },
+    getConfiguredWindow(name) {
+      return openWindows.get(name) ?? null
+    },
+    hasConfiguredWindow(name) {
+      return getConfiguredWindowNames(manifest).includes(name)
+    },
+    listConfiguredWindows() {
+      return getConfiguredWindowNames(manifest)
+    },
+    listOpenWindows() {
+      return getOpenWindowNames()
+    },
+  }
+  desktopContext = createDesktopContext(
     manifest,
-    () => mainWindow,
-    sendMaximizedChanged,
+    windowController,
+    sendPrimaryMaximizedChanged,
+    deepLinksController,
+    updatesController,
   )
-  const runtimeConfig = await loadRuntimeConfig(manifest)
   const rustRuntime = loadRustRuntime(runtimeConfig?.rust, manifest.mode)
   const bridge = createRuntimeBridge(
     runtimeConfig?.bridge,
@@ -520,6 +1027,14 @@ async function bootstrap() {
 
   const smokeCallback = isSmokeTest
     ? async () => {
+        for (const windowName of smokeOpenWindowNames) {
+          if (windowName === primaryWindowName || !windowController.hasConfiguredWindow(windowName)) {
+            continue
+          }
+
+          await desktopContext.windows.open(windowName)
+        }
+
         const renderState = await readSmokeRenderState()
 
         reportSmokeSuccess({
@@ -530,14 +1045,19 @@ async function bootstrap() {
           hasMenu: Boolean(runtimeConfig?.menu?.length),
           hasTray: Boolean(runtimeConfig?.tray),
           nativeStatus: rustRuntime.getStatus(),
-          windowRoute: getMainWindowConfig(manifest).route,
-          loadedUrl: mainWindow?.webContents.getURL(),
+          windowRoute: getPrimaryWindowConfig(manifest).route,
+          configuredWindowNames: getConfiguredWindowNames(manifest),
+          openWindowNames: getOpenWindowNames(),
+          loadedUrl: getPrimaryWindow()?.webContents.getURL(),
+          zoomFactor: getPrimaryWindow()?.webContents.getZoomFactor(),
           renderState,
         })
 
         setTimeout(() => {
           try {
-            mainWindow?.destroy()
+            for (const openWindow of openWindows.values()) {
+              openWindow.destroy()
+            }
           } catch {
             // Best-effort cleanup before forcing smoke exit.
           }
@@ -547,7 +1067,22 @@ async function bootstrap() {
       }
     : undefined
 
-  await createWindow(manifest, manifestPath, smokeCallback)
+  await openConfiguredWindow(
+    primaryWindowName,
+    manifest,
+    manifestPath,
+    desktopContext,
+    runtimeConfig?.security,
+    {
+      reveal: false,
+      focus: false,
+      onDidFinishLoad: smokeCallback,
+    },
+  )
+
+  if (!isSmokeTest && runtimeConfig?.updates?.enabled && runtimeConfig.updates.checkOnLaunch) {
+    void updatesController.check()
+  }
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
@@ -558,12 +1093,23 @@ async function bootstrap() {
   })
 
   app.on('activate', async () => {
-    if (!mainWindow) {
-      await createWindow(manifest, manifestPath, smokeCallback)
+    if (!getPrimaryWindow()) {
+      await openConfiguredWindow(
+        primaryWindowName,
+        manifest,
+        manifestPath,
+        desktopContext,
+        runtimeConfig?.security,
+        {
+          reveal: true,
+          focus: true,
+          onDidFinishLoad: smokeCallback,
+        },
+      )
       return
     }
 
-    mainWindow.show()
+    focusPrimaryWindow()
   })
 }
 

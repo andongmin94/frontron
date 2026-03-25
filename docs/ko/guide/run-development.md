@@ -61,13 +61,16 @@ React 변경은 보통 빠르게 반영됩니다. 런타임 쪽 변경은 다시
 
 ### 창이 뜨지 않을 때
 
+- 먼저 `npx frontron check` 를 실행합니다
 - `npm install` 이 정상적으로 끝났는지
 - 터미널에 runtime 에러가 없는지
 - 같은 포트를 쓰는 다른 프로세스가 없는지
 
 ### 흰 화면이 보일 때
 
-가장 먼저 `vite.config.ts` 와 `frontron/config.ts` 의 개발 포트와 URL 이 맞는지 확인하세요.
+먼저 `npx frontron check` 를 실행하세요.
+
+가장 먼저 `vite.config.ts` 와 루트 `frontron.config.ts` 의 개발 포트와 URL 이 맞는지 확인하세요.
 
 ### 브리지 관련 UI 가 이상할 때
 

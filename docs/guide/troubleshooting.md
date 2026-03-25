@@ -4,10 +4,30 @@ Most first-time users get stuck in similar places.
 
 This page is meant to help you decide where to look first.
 
+## Start with `frontron check`
+
+Before changing files by hand, run:
+
+```bash
+npx frontron check
+```
+
+It checks the first-run contract:
+
+- `package.json`
+- root `frontron.config.ts`
+- `app:dev` and `app:build`
+- inferred or explicit `web.dev` and `web.build`
+- dev-port conflicts before `app:dev` starts
+- frontend build output, `.frontron/`, and packaged output state
+- Rust toolchain presence when `rust.enabled` is true
+- monorepo and custom-script hints when inference is likely ambiguous
+
 ## If the app does not start
 
 Check these things first:
 
+- `npx frontron check` already showed the first failing item
 - `npm install` finished successfully
 - `npm run app:dev` does not already show a terminal error
 - your Node.js version is `22+`
@@ -20,8 +40,13 @@ A blank page is often a development-server mismatch.
 Check:
 
 - the port in `vite.config.ts`
-- the `web.dev.url` value in `frontron/config.ts`
+- the `web.dev.url` value in the root `frontron.config.ts`
 - whether another process is already using the same port
+
+If `frontron check` says the dev URL already responds before Frontron starts, another server is already occupying the target port.
+
+- stop the stale server and run `npm run app:dev` again
+- or keep `web.dev.url` pointed at that running server on purpose
 
 ## If window buttons or bridge calls do not react
 
@@ -54,7 +79,7 @@ The first things to check are:
 Check these in order:
 
 1. confirm that `public/icon.ico` was replaced
-2. confirm that `frontron/config.ts` still points to that file
+2. confirm that `app.icon` in the root `frontron.config.ts` still points to that file
 3. run the build again
 4. make sure you are not looking at an old packaged output
 
@@ -70,6 +95,42 @@ Check:
 - the last terminal lines do not show an error
 
 On Windows, the current default output usually includes `win-unpacked/` and an installer `.exe`.
+
+`frontron check` now also reports:
+
+- whether the frontend build output exists or is empty
+- whether `.frontron/runtime/build/app/` is complete
+- whether the packaged output directory exists but is empty
+
+If `.frontron/runtime/build/app/` is incomplete, remove `.frontron/` and run `npm run app:build` again.
+
+## If Rust is enabled and check reports `cargo` missing
+
+Frontron only checks this when `rust.enabled` is true.
+
+Do one of these:
+
+- install Rust and make sure `cargo --version` works in the same terminal
+- or disable `rust.enabled` until the Rust slot is ready
+
+## If the project is a monorepo or uses wrapper scripts
+
+Inference is intentionally conservative for workspace wrappers.
+
+If check shows a monorepo/custom-script hint, prefer explicit config in the root `frontron.config.ts`:
+
+```ts
+web: {
+  dev: {
+    command: 'pnpm --filter web dev',
+    url: 'http://localhost:5173',
+  },
+  build: {
+    command: 'pnpm --filter web build',
+    outDir: 'apps/web/dist',
+  },
+}
+```
 
 ## If Windows packaging fails with file-not-found errors
 

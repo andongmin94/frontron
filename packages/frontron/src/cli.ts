@@ -2,21 +2,24 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
 import { createRequire } from 'node:module'
+import { createServer as createNetServer } from 'node:net'
 import { dirname, extname, join, relative, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, URL } from 'node:url'
 import { spawn, type ChildProcess } from 'node:child_process'
 
-import { loadConfig } from './config'
+import { findConfigPath, loadConfig } from './config'
 import { writeBridgeTypes } from './bridge-types'
 import { runHook, type HookOutput } from './hooks'
 import { getRustTask } from './rust'
 import type { RuntimeManifest } from './runtime/manifest'
 import type {
+  ResolvedFrontronBuildFileAssociation,
   FrontronPublishMode,
   ResolvedFrontronBuildLinuxConfig,
   ResolvedFrontronBuildMacConfig,
@@ -26,7 +29,7 @@ import type {
 } from './types'
 
 type CommandName = 'dev' | 'build'
-type CliCommand = CommandName | 'init'
+type CliCommand = CommandName | 'init' | 'check'
 
 interface ParsedCliArgs {
   command: string | null
@@ -54,6 +57,8 @@ interface InitDependencyRequest {
 
 interface CliRuntimeOptions {
   installDependency?(request: InitDependencyRequest): Promise<number> | number
+  probeDevUrl?(url: string): Promise<DoctorDevUrlProbe | null> | DoctorDevUrlProbe | null
+  resolveCargoVersion?(): Promise<string | null> | string | null
 }
 
 interface ProjectPackageJson {
@@ -87,6 +92,22 @@ interface ConfiguredCommand {
   command: string
   commandSource: InferenceSource
   targetSource: InferenceSource
+}
+
+interface CandidatePackageScript {
+  name: string
+  body: string
+  command: string
+}
+
+interface ConfiguredCommandDiagnostic {
+  configuredCommand: ConfiguredCommand | null
+  issues: string[]
+}
+
+interface DoctorDevUrlProbe {
+  portAvailable: boolean
+  responding: boolean
 }
 
 const defaultOutput: CliOutput = {
@@ -153,6 +174,15 @@ const VUE_CLI_CONFIG_FILES = [
   'vue.config.mjs',
   'vue.config.cjs',
 ]
+const DOCTOR_STAGED_APP_REQUIRED_ENTRIES = ['manifest.json', 'main.mjs', 'preload.mjs', 'web'] as const
+const MONOREPO_MARKER_FILES = [
+  'pnpm-workspace.yaml',
+  'turbo.json',
+  'nx.json',
+  'lerna.json',
+] as const
+const CUSTOM_SCRIPT_HINT_PATTERN =
+  /\b(?:turbo\s+run|pnpm\s+--filter|pnpm\s+-F|pnpm\s+-r\b|yarn\s+workspace|npm\s+--workspace\b|npm\s+run\s+\S+\s+--workspace\b|bun\s+--filter|nx\s+\S+|lerna\b|rush\b|moon\b)/i
 const ANGULAR_WORKSPACE_FILE = 'angular.json'
 const COMMON_SCRIPT_PREFIXES = [
   'web',
@@ -217,7 +247,7 @@ function parseArgs(argv: string[]): ParsedCliArgs {
 
 function printHelp(output: CliOutput) {
   output.info(
-    'Usage: frontron <init|dev|build> [--cwd <path>] [--config <path>] [--check] [--skip-install]',
+    'Usage: frontron <init|dev|build|check> [--cwd <path>] [--config <path>] [--check] [--skip-install]',
   )
   output.info('')
   output.info('Commands:')
@@ -226,15 +256,21 @@ function printHelp(output: CliOutput) {
   )
   output.info('  dev     Run the configured web dev command and launch the framework-owned Electron runtime.')
   output.info('  build   Run the configured web build command and package the framework-owned Electron runtime.')
+  output.info('  check   Check the first-run project contract and show config hints for missing frontend wiring.')
+  output.info('          `doctor` is kept as a compatibility alias.')
 }
 
 function ensureCommand(command: string | null): CliCommand {
-  if (command === 'dev' || command === 'build' || command === 'init') {
+  if (command === 'doctor') {
+    return 'check'
+  }
+
+  if (command === 'dev' || command === 'build' || command === 'init' || command === 'check') {
     return command
   }
 
   throw new Error(
-    `[Frontron] Unknown command "${command ?? ''}". Expected "init", "dev", or "build".`,
+    `[Frontron] Unknown command "${command ?? ''}". Expected "init", "dev", "build", or "check".`,
   )
 }
 
@@ -392,6 +428,109 @@ function createBuilderExtraEntries(
   return patterns.map((pattern) => createBuilderFilePattern(pattern))
 }
 
+function createBuilderFileAssociations(
+  associations: readonly ResolvedFrontronBuildFileAssociation[] | undefined,
+) {
+  if (!associations?.length) {
+    return undefined
+  }
+
+  return associations.map((association) => {
+    const builderAssociation: Record<string, unknown> = {
+      ext: association.ext.length === 1 ? association.ext[0] : association.ext,
+    }
+
+    if (association.name) {
+      builderAssociation.name = association.name
+    }
+
+    if (association.description) {
+      builderAssociation.description = association.description
+    }
+
+    if (association.mimeType) {
+      builderAssociation.mimeType = association.mimeType
+    }
+
+    if (association.icon) {
+      builderAssociation.icon = association.icon
+    }
+
+    if (association.role) {
+      builderAssociation.role = association.role
+    }
+
+    if (typeof association.isPackage !== 'undefined') {
+      builderAssociation.isPackage = association.isPackage
+    }
+
+    if (association.rank) {
+      builderAssociation.rank = association.rank
+    }
+
+    return builderAssociation
+  })
+}
+
+function isPlainObjectRecord(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false
+  }
+
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
+function cloneConfigValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => cloneConfigValue(item))
+  }
+
+  if (!isPlainObjectRecord(value)) {
+    return value
+  }
+
+  const clonedValue: Record<string, unknown> = {}
+
+  for (const [key, nestedValue] of Object.entries(value)) {
+    clonedValue[key] = cloneConfigValue(nestedValue)
+  }
+
+  return clonedValue
+}
+
+function mergeConfigRecords(
+  base: Record<string, unknown> | undefined,
+  override: Record<string, unknown> | undefined,
+) {
+  if (!base && !override) {
+    return undefined
+  }
+
+  if (!base) {
+    return cloneConfigValue(override) as Record<string, unknown>
+  }
+
+  if (!override) {
+    return cloneConfigValue(base) as Record<string, unknown>
+  }
+
+  const mergedRecord = cloneConfigValue(base) as Record<string, unknown>
+
+  for (const [key, overrideValue] of Object.entries(override)) {
+    const baseValue = mergedRecord[key]
+
+    if (isPlainObjectRecord(baseValue) && isPlainObjectRecord(overrideValue)) {
+      mergedRecord[key] = mergeConfigRecords(baseValue, overrideValue)
+      continue
+    }
+
+    mergedRecord[key] = cloneConfigValue(overrideValue)
+  }
+
+  return mergedRecord
+}
+
 function createBuilderWindowsConfig(
   windows: ResolvedFrontronBuildWindowsConfig | undefined,
 ) {
@@ -411,6 +550,10 @@ function createBuilderWindowsConfig(
 
   if (windows.publisherName?.length) {
     builderWindows.publisherName = windows.publisherName
+  }
+
+  if (windows.certificateSubjectName) {
+    builderWindows.certificateSubjectName = windows.certificateSubjectName
   }
 
   if (typeof windows.signAndEditExecutable !== 'undefined') {
@@ -481,6 +624,26 @@ function createBuilderMacConfig(mac: ResolvedFrontronBuildMacConfig | undefined)
     builderMac.category = mac.category
   }
 
+  if (mac.identity) {
+    builderMac.identity = mac.identity
+  }
+
+  if (typeof mac.hardenedRuntime !== 'undefined') {
+    builderMac.hardenedRuntime = mac.hardenedRuntime
+  }
+
+  if (typeof mac.gatekeeperAssess !== 'undefined') {
+    builderMac.gatekeeperAssess = mac.gatekeeperAssess
+  }
+
+  if (mac.entitlements) {
+    builderMac.entitlements = mac.entitlements
+  }
+
+  if (mac.entitlementsInherit) {
+    builderMac.entitlementsInherit = mac.entitlementsInherit
+  }
+
   if (mac.artifactName) {
     builderMac.artifactName = mac.artifactName
   }
@@ -516,6 +679,22 @@ function createBuilderLinuxConfig(linux: ResolvedFrontronBuildLinuxConfig | unde
   }
 
   return Object.keys(builderLinux).length > 0 ? builderLinux : undefined
+}
+
+function createBuilderProtocolsConfig(
+  appName: string,
+  deepLinks: LoadedConfig['config']['deepLinks'],
+) {
+  if (!deepLinks?.enabled || deepLinks.schemes.length === 0) {
+    return undefined
+  }
+
+  return [
+    {
+      name: deepLinks.name ?? appName,
+      schemes: deepLinks.schemes,
+    },
+  ]
 }
 
 function resolveAppDescription(
@@ -1089,6 +1268,125 @@ function inferNextStaticOutDir(rootDir: string, commandText?: string) {
   }
 
   return null
+}
+
+function readSuggestedPackageScripts(
+  rootDir: string,
+  commandName: CommandName,
+): CandidatePackageScript[] {
+  const suggestions: CandidatePackageScript[] = []
+  const seenNames = new Set<string>()
+
+  for (const [scriptName, scriptBody] of readScriptCandidates(rootDir, commandName)) {
+    if (!scriptBody || isRecursiveFrontronScript(scriptBody, commandName) || seenNames.has(scriptName)) {
+      continue
+    }
+
+    seenNames.add(scriptName)
+    suggestions.push({
+      name: scriptName,
+      body: scriptBody,
+      command: createRunScriptCommand(rootDir, scriptName),
+    })
+  }
+
+  if (suggestions.length > 0) {
+    return suggestions
+  }
+
+  const packageScripts = readProjectScripts(rootDir)
+
+  for (const [scriptName, scriptBody] of Object.entries(packageScripts)) {
+    if (
+      typeof scriptBody !== 'string' ||
+      isRecursiveFrontronScript(scriptBody, commandName) ||
+      scriptName.startsWith('app:')
+    ) {
+      continue
+    }
+
+    if (seenNames.has(scriptName)) {
+      continue
+    }
+
+    seenNames.add(scriptName)
+    suggestions.push({
+      name: scriptName,
+      body: scriptBody,
+      command: createRunScriptCommand(rootDir, scriptName),
+    })
+
+    if (suggestions.length >= 5) {
+      break
+    }
+  }
+
+  return suggestions
+}
+
+function formatCandidateScriptNames(scripts: readonly CandidatePackageScript[]) {
+  return scripts.map((script) => `"${script.name}"`).join(', ')
+}
+
+function createDoctorConfigExample(
+  commandName: CommandName,
+  rootDir: string,
+) {
+  const fallbackScriptName = commandName === 'dev' ? 'dev' : 'build'
+  const suggestedScript =
+    readSuggestedPackageScripts(rootDir, commandName)[0]?.command ??
+    createRunScriptCommand(rootDir, fallbackScriptName)
+
+  if (commandName === 'dev') {
+    return `{ web: { dev: { command: '${suggestedScript}', url: 'http://localhost:5173' } } }`
+  }
+
+  return `{ web: { build: { command: '${suggestedScript}', outDir: 'dist' } } }`
+}
+
+function createConfiguredCommandIssues(
+  commandName: CommandName,
+  rootDir: string,
+  focus: 'command' | 'target',
+  baseMessage: string,
+) {
+  const lines = [baseMessage]
+  const suggestedScripts = readSuggestedPackageScripts(rootDir, commandName)
+
+  if (suggestedScripts.length > 0) {
+    lines.push(
+      `[Frontron] Candidate package scripts: ${formatCandidateScriptNames(suggestedScripts)}.`,
+    )
+  } else {
+    lines.push('[Frontron] No candidate package scripts were found in package.json.')
+  }
+
+  if (commandName === 'dev') {
+    if (focus === 'command') {
+      lines.push(
+        '[Frontron] Set "web.dev.command" in the root frontron.config.ts if your script name is custom.',
+      )
+    } else {
+      lines.push(
+        '[Frontron] Set "web.dev.url" in the root frontron.config.ts if your dev server URL is custom.',
+      )
+    }
+  } else if (focus === 'command') {
+    lines.push(
+      '[Frontron] Set "web.build.command" in the root frontron.config.ts if your build script name is custom.',
+    )
+  } else {
+    lines.push(
+      '[Frontron] Set "web.build.outDir" in the root frontron.config.ts if your frontend output folder is custom.',
+    )
+  }
+
+  lines.push(
+    `[Frontron] Example config: ${createDoctorConfigExample(commandName, rootDir)}`,
+  )
+  lines.push('[Frontron] Run `npx frontron check` for a first-run diagnostic summary.')
+
+  return lines
 }
 
 function inferNuxtStaticOutDir(commandText?: string) {
@@ -1766,10 +2064,60 @@ async function runShellCommand(command: string, cwd: string) {
   return await waitForChildExit(child)
 }
 
-function getConfiguredCommand(
+function runCapturedCommand(
+  command: string,
+  args: string[],
+  cwd = process.cwd(),
+) {
+  return new Promise<{
+    exitCode: number
+    stdout: string
+    stderr: string
+  }>((resolvePromise, rejectPromise) => {
+    const child = spawn(command, args, {
+      cwd,
+      env: process.env,
+      shell: false,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+
+    let stdout = ''
+    let stderr = ''
+
+    child.stdout?.setEncoding('utf8')
+    child.stdout?.on('data', (chunk) => {
+      stdout += chunk
+    })
+
+    child.stderr?.setEncoding('utf8')
+    child.stderr?.on('data', (chunk) => {
+      stderr += chunk
+    })
+
+    child.on('error', rejectPromise)
+    child.on('exit', (code, signal) => {
+      if (signal) {
+        resolvePromise({
+          exitCode: 1,
+          stdout,
+          stderr,
+        })
+        return
+      }
+
+      resolvePromise({
+        exitCode: code ?? 0,
+        stdout,
+        stderr,
+      })
+    })
+  })
+}
+
+function diagnoseConfiguredCommand(
   command: CommandName,
   loadedConfig: LoadedConfig,
-): ConfiguredCommand {
+): ConfiguredCommandDiagnostic {
   const config = loadedConfig.config
 
   if (command === 'dev') {
@@ -1788,23 +2136,38 @@ function getConfiguredCommand(
     const targetSource = explicitUrl ? 'config' : inferredUrl?.source ?? null
 
     if (!commandValue || !commandSource) {
-      throw new Error(
-        '[Frontron] "dev" requires "web.dev.command" or a runnable package script such as "web:dev" or "dev".',
-      )
+      return {
+        configuredCommand: null,
+        issues: createConfiguredCommandIssues(
+          'dev',
+          loadedConfig.rootDir,
+          'command',
+          '[Frontron] "dev" requires "web.dev.command" or a runnable package script such as "web:dev" or "dev".',
+        ),
+      }
     }
 
     if (!urlValue || !targetSource) {
-      throw new Error(
-        '[Frontron] "dev" requires "web.dev.url" or an inferable frontend dev server such as a standard Vite setup.',
-      )
+      return {
+        configuredCommand: null,
+        issues: createConfiguredCommandIssues(
+          'dev',
+          loadedConfig.rootDir,
+          'target',
+          '[Frontron] "dev" requires "web.dev.url" or an inferable frontend dev server such as a standard Vite setup.',
+        ),
+      }
     }
 
     return {
-      mode: 'dev',
-      target: urlValue,
-      command: commandValue,
-      commandSource,
-      targetSource,
+      configuredCommand: {
+        mode: 'dev',
+        target: urlValue,
+        command: commandValue,
+        commandSource,
+        targetSource,
+      },
+      issues: [],
     }
   }
 
@@ -1824,24 +2187,464 @@ function getConfiguredCommand(
   const targetSource = explicitOutDir ? 'config' : inferredOutDir?.source ?? null
 
   if (!commandValue || !commandSource) {
-    throw new Error(
-      '[Frontron] "build" requires "web.build.command" or a runnable package script such as "web:build" or "build".',
-    )
+    return {
+      configuredCommand: null,
+      issues: createConfiguredCommandIssues(
+        'build',
+        loadedConfig.rootDir,
+        'command',
+        '[Frontron] "build" requires "web.build.command" or a runnable package script such as "web:build" or "build".',
+      ),
+    }
   }
 
   if (!outDirValue || !targetSource) {
-    throw new Error(
-      '[Frontron] "build" requires "web.build.outDir" or an inferable frontend build output such as a standard Vite build, a Next.js static export, or a Nuxt generate setup.',
-    )
+    return {
+      configuredCommand: null,
+      issues: createConfiguredCommandIssues(
+        'build',
+        loadedConfig.rootDir,
+        'target',
+        '[Frontron] "build" requires "web.build.outDir" or an inferable frontend build output such as a standard Vite build, a Next.js static export, or a Nuxt generate setup.',
+      ),
+    }
   }
 
   return {
-    mode: 'build',
-    target: outDirValue,
-    command: commandValue,
-    commandSource,
-    targetSource,
+    configuredCommand: {
+      mode: 'build',
+      target: outDirValue,
+      command: commandValue,
+      commandSource,
+      targetSource,
+    },
+    issues: [],
   }
+}
+
+function getConfiguredCommand(
+  command: CommandName,
+  loadedConfig: LoadedConfig,
+): ConfiguredCommand {
+  const diagnostic = diagnoseConfiguredCommand(command, loadedConfig)
+
+  if (!diagnostic.configuredCommand) {
+    throw new Error(diagnostic.issues.join('\n'))
+  }
+
+  return diagnostic.configuredCommand
+}
+
+function outputConfiguredCommandSummary(
+  configuredCommand: ConfiguredCommand,
+  output: CliOutput,
+) {
+  if (configuredCommand.commandSource !== 'config') {
+    output.info(
+      `[Frontron] Inferred web ${configuredCommand.mode} command: ${configuredCommand.command}`,
+    )
+  }
+
+  if (configuredCommand.targetSource !== 'config') {
+    output.info(
+      `[Frontron] Inferred web ${configuredCommand.mode} target: ${configuredCommand.target}`,
+    )
+  }
+
+  output.info(`[Frontron] Web ${configuredCommand.mode} target: ${configuredCommand.target}`)
+}
+
+function formatDoctorPath(rootDir: string, targetPath: string) {
+  const relativePath = relative(rootDir, targetPath).replace(/\\/g, '/')
+
+  if (!relativePath) {
+    return '.'
+  }
+
+  return relativePath.startsWith('..') ? targetPath : relativePath
+}
+
+function readDirectoryEntries(targetDir: string) {
+  if (!existsSync(targetDir)) {
+    return []
+  }
+
+  try {
+    return readdirSync(targetDir)
+  } catch {
+    return []
+  }
+}
+
+function looksLikeWorkspaceProject(rootDir: string) {
+  const packageJson = readProjectPackageJson(rootDir) as
+    | (ProjectPackageJson & { workspaces?: unknown })
+    | null
+
+  if (typeof packageJson?.workspaces !== 'undefined') {
+    return true
+  }
+
+  return MONOREPO_MARKER_FILES.some((fileName) => existsSync(join(rootDir, fileName)))
+}
+
+function looksLikeCustomScriptProject(rootDir: string) {
+  return Object.values(readProjectScripts(rootDir)).some((scriptBody) =>
+    typeof scriptBody === 'string' ? CUSTOM_SCRIPT_HINT_PATTERN.test(scriptBody) : false,
+  )
+}
+
+function outputDoctorWorkspaceHint(
+  rootDir: string,
+  output: CliOutput,
+) {
+  if (!looksLikeWorkspaceProject(rootDir) && !looksLikeCustomScriptProject(rootDir)) {
+    return
+  }
+
+  output.info(
+    '[Frontron] Workspace/custom script hint: this project looks like a monorepo or wrapper-script setup.',
+  )
+  output.info(
+    '[Frontron] Prefer explicit "web.dev.command", "web.dev.url", "web.build.command", and "web.build.outDir" in the root frontron.config.ts when inference is ambiguous.',
+  )
+}
+
+function checkPortAvailability(host: string, port: number) {
+  return new Promise<boolean>((resolvePromise) => {
+    const server = createNetServer()
+    let resolved = false
+
+    const finish = (result: boolean) => {
+      if (resolved) {
+        return
+      }
+
+      resolved = true
+      resolvePromise(result)
+    }
+
+    server.once('error', () => {
+      finish(false)
+    })
+
+    server.listen(port, host, () => {
+      server.close(() => finish(true))
+    })
+  })
+}
+
+async function defaultProbeDevUrl(urlText: string): Promise<DoctorDevUrlProbe | null> {
+  let parsedUrl: URL
+
+  try {
+    parsedUrl = new URL(urlText)
+  } catch {
+    return null
+  }
+
+  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+    return null
+  }
+
+  const port = parsedUrl.port
+    ? Number.parseInt(parsedUrl.port, 10)
+    : parsedUrl.protocol === 'https:'
+      ? 443
+      : 80
+
+  if (!Number.isFinite(port) || port <= 0) {
+    return null
+  }
+
+  let responding = false
+
+  try {
+    const response = await fetch(urlText, {
+      method: 'GET',
+      redirect: 'manual',
+      signal: AbortSignal.timeout(1200),
+    })
+    responding = Boolean(response)
+    await response.body?.cancel()
+  } catch {
+    responding = false
+  }
+
+  const host = parsedUrl.hostname === 'localhost'
+    ? '127.0.0.1'
+    : parsedUrl.hostname
+  const portAvailable = await checkPortAvailability(host, port)
+
+  return {
+    portAvailable,
+    responding,
+  }
+}
+
+async function defaultResolveCargoVersion() {
+  try {
+    const result = await runCapturedCommand('cargo', ['--version'])
+
+    if (result.exitCode !== 0) {
+      return null
+    }
+
+    const firstLine = result.stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line.length > 0)
+
+    return firstLine ?? null
+  } catch {
+    return null
+  }
+}
+
+async function outputDoctorDevPortCheck(
+  configuredCommand: ConfiguredCommand,
+  output: CliOutput,
+  runtimeOptions: CliRuntimeOptions,
+) {
+  const probe = await (runtimeOptions.probeDevUrl ?? defaultProbeDevUrl)(configuredCommand.target)
+
+  if (!probe) {
+    return false
+  }
+
+  if (probe.responding) {
+    output.error(
+      `[Frontron] Dev URL already responds before Frontron starts: ${configuredCommand.target}. Stop the existing server if it is stale, or keep "web.dev.url" pointed at it on purpose.`,
+    )
+    return true
+  }
+
+  if (!probe.portAvailable) {
+    output.error(
+      `[Frontron] Dev port is already occupied before Frontron starts: ${configuredCommand.target}. Another process may already be using this port.`,
+    )
+    return true
+  }
+
+  output.info(`[Frontron] Dev port check: available (${configuredCommand.target})`)
+  return false
+}
+
+function outputDoctorBuildArtifactsCheck(
+  loadedConfig: LoadedConfig,
+  buildCommand: ConfiguredCommand,
+  output: CliOutput,
+) {
+  let hasIssues = false
+
+  const frontendBuildDir = buildCommand.target
+  const frontendBuildEntries = readDirectoryEntries(frontendBuildDir)
+
+  if (!existsSync(frontendBuildDir)) {
+    output.info(
+      `[Frontron] Frontend build output: missing (${formatDoctorPath(loadedConfig.rootDir, frontendBuildDir)}). Run \`npm run app:build\` once to generate it.`,
+    )
+  } else if (frontendBuildEntries.length === 0) {
+    hasIssues = true
+    output.error(
+      `[Frontron] Frontend build output is empty: ${formatDoctorPath(loadedConfig.rootDir, frontendBuildDir)}. Re-run \`npm run app:build\`.`,
+    )
+  } else {
+    output.info(
+      `[Frontron] Frontend build output: found (${formatDoctorPath(loadedConfig.rootDir, frontendBuildDir)})`,
+    )
+  }
+
+  const dotFrontronDir = join(loadedConfig.rootDir, '.frontron')
+
+  if (!existsSync(dotFrontronDir)) {
+    output.info('[Frontron] Framework staging: missing (.frontron/). This is normal before the first dev/build run.')
+  } else {
+    output.info('[Frontron] Framework staging: found (.frontron/)')
+
+    const stagedAppDir = join(dotFrontronDir, 'runtime', 'build', 'app')
+
+    if (!existsSync(stagedAppDir)) {
+      output.info(
+        '[Frontron] Framework staged app: missing (.frontron/runtime/build/app/). Run `npm run app:build` once to stage the packaged runtime.',
+      )
+    } else {
+      const missingEntries = DOCTOR_STAGED_APP_REQUIRED_ENTRIES.filter(
+        (entryName) => !existsSync(join(stagedAppDir, entryName)),
+      )
+
+      if (missingEntries.length > 0) {
+        hasIssues = true
+        output.error(
+          `[Frontron] Framework staged app is incomplete: missing ${missingEntries.join(', ')} under ${formatDoctorPath(loadedConfig.rootDir, stagedAppDir)}. Remove ".frontron" and run \`npm run app:build\` again.`,
+        )
+      } else {
+        output.info(
+          `[Frontron] Framework staged app: complete (${formatDoctorPath(loadedConfig.rootDir, stagedAppDir)})`,
+        )
+      }
+    }
+  }
+
+  const packagedOutputDir = resolveBuildOutputDir(loadedConfig)
+  const packagedEntries = readDirectoryEntries(packagedOutputDir)
+
+  if (!existsSync(packagedOutputDir)) {
+    output.info(
+      `[Frontron] Packaged output dir: missing (${formatDoctorPath(loadedConfig.rootDir, packagedOutputDir)}). This is normal before the first packaged build.`,
+    )
+  } else if (packagedEntries.length === 0) {
+    hasIssues = true
+    output.error(
+      `[Frontron] Packaged output dir is empty: ${formatDoctorPath(loadedConfig.rootDir, packagedOutputDir)}. Re-run \`npm run app:build\`.`,
+    )
+  } else {
+    output.info(
+      `[Frontron] Packaged output dir: found (${formatDoctorPath(loadedConfig.rootDir, packagedOutputDir)})`,
+    )
+  }
+
+  return hasIssues
+}
+
+async function outputDoctorRustToolchainCheck(
+  loadedConfig: LoadedConfig,
+  output: CliOutput,
+  runtimeOptions: CliRuntimeOptions,
+) {
+  if (!loadedConfig.config.rust?.enabled) {
+    return false
+  }
+
+  const cargoVersion = await (runtimeOptions.resolveCargoVersion ?? defaultResolveCargoVersion)()
+
+  if (!cargoVersion) {
+    output.error(
+      '[Frontron] Rust toolchain: cargo was not found. Install Rust or disable "rust.enabled" in the root frontron.config.ts.',
+    )
+    return true
+  }
+
+  output.info(`[Frontron] Rust toolchain: ${cargoVersion}`)
+  return false
+}
+
+async function runDoctor(
+  cwd: string,
+  output: CliOutput,
+  runtimeOptions: CliRuntimeOptions,
+  configFile?: string,
+) {
+  let hasIssues = false
+
+  output.info(`[Frontron] Check root: ${cwd}`)
+
+  const projectPackageJson = readProjectPackageJson(cwd)
+
+  if (!projectPackageJson) {
+    output.error('[Frontron] package.json: missing')
+    output.error('[Frontron] Start from the project root that owns package.json.')
+    return 1
+  }
+
+  output.info('[Frontron] package.json: found')
+
+  const appDevScript = projectPackageJson.scripts?.['app:dev']
+  const appBuildScript = projectPackageJson.scripts?.['app:build']
+
+  if (appDevScript) {
+    output.info(`[Frontron] app:dev script: ${appDevScript}`)
+  } else {
+    hasIssues = true
+    output.error('[Frontron] app:dev script: missing')
+  }
+
+  if (appBuildScript) {
+    output.info(`[Frontron] app:build script: ${appBuildScript}`)
+  } else {
+    hasIssues = true
+    output.error('[Frontron] app:build script: missing')
+  }
+
+  let configPath: string | null = null
+
+  try {
+    configPath = findConfigPath({
+      cwd,
+      configFile,
+    })
+  } catch (error) {
+    output.error(error instanceof Error ? error.message : String(error))
+    return 1
+  }
+
+  if (!configPath) {
+    output.error('[Frontron] Root frontron.config.ts: missing')
+    output.error('[Frontron] Run `npx frontron init` to add the official config and scripts.')
+    return 1
+  }
+
+  output.info(`[Frontron] Loaded config: ${configPath}`)
+
+  let loadedConfig: LoadedConfig
+
+  try {
+    loadedConfig = await loadConfig({
+      cwd,
+      configFile,
+    })
+  } catch (error) {
+    output.error(error instanceof Error ? error.message : String(error))
+    return 1
+  }
+
+  output.info(
+    `[Frontron] App: ${loadedConfig.config.app.name} (${loadedConfig.config.app.id})`,
+  )
+
+  const configuredCommands = new Map<CommandName, ConfiguredCommand>()
+
+  for (const commandName of ['dev', 'build'] as const) {
+    const diagnostic = diagnoseConfiguredCommand(commandName, loadedConfig)
+
+    if (diagnostic.configuredCommand) {
+      configuredCommands.set(commandName, diagnostic.configuredCommand)
+      outputConfiguredCommandSummary(diagnostic.configuredCommand, output)
+      continue
+    }
+
+    hasIssues = true
+
+    for (const issue of diagnostic.issues) {
+      output.error(issue)
+    }
+  }
+
+  const devCommand = configuredCommands.get('dev')
+
+  if (devCommand) {
+    hasIssues =
+      (await outputDoctorDevPortCheck(devCommand, output, runtimeOptions)) || hasIssues
+  }
+
+  const buildCommand = configuredCommands.get('build')
+
+  if (buildCommand) {
+    hasIssues = outputDoctorBuildArtifactsCheck(loadedConfig, buildCommand, output) || hasIssues
+  }
+
+  hasIssues =
+    (await outputDoctorRustToolchainCheck(loadedConfig, output, runtimeOptions)) || hasIssues
+
+  outputDoctorWorkspaceHint(loadedConfig.rootDir, output)
+
+  if (hasIssues) {
+    output.error('[Frontron] Check found problems. Fix the items above and run `npx frontron check` again.')
+    return 1
+  }
+
+  output.info('[Frontron] Check passed.')
+  return 0
 }
 
 async function runRustTask(
@@ -2014,7 +2817,7 @@ export function stageBuildApp(loadedConfig: Awaited<ReturnType<typeof loadConfig
   )
 
   const builderConfigPath = join(stageDir, 'builder.json')
-  const builderConfig: Record<string, unknown> = {
+  const generatedBuilderConfig: Record<string, unknown> = {
     appId: loadedConfig.config.app.id,
     productName: loadedConfig.config.app.name,
     directories: {
@@ -2025,38 +2828,47 @@ export function stageBuildApp(loadedConfig: Awaited<ReturnType<typeof loadConfig
     compression: buildConfig?.compression,
     extraResources: createBuilderExtraEntries(buildConfig?.extraResources),
     extraFiles: createBuilderExtraEntries(buildConfig?.extraFiles),
+    fileAssociations: createBuilderFileAssociations(buildConfig?.fileAssociations),
     icon: stagedIconName ? join(packagedAppDir, stagedIconName) : undefined,
     artifactName: buildConfig?.artifactName,
     electronVersion,
     npmRebuild: false,
     nodeGypRebuild: false,
     publish: null,
+    protocols: createBuilderProtocolsConfig(
+      loadedConfig.config.app.name,
+      loadedConfig.config.deepLinks,
+    ),
     copyright: loadedConfig.config.app.copyright,
   }
 
   const builderWindowsConfig = createBuilderWindowsConfig(buildConfig?.windows)
 
   if (builderWindowsConfig) {
-    builderConfig.win = builderWindowsConfig
+    generatedBuilderConfig.win = builderWindowsConfig
   }
 
   const builderNsisConfig = createBuilderNsisConfig(buildConfig?.nsis)
 
   if (builderNsisConfig) {
-    builderConfig.nsis = builderNsisConfig
+    generatedBuilderConfig.nsis = builderNsisConfig
   }
 
   const builderMacConfig = createBuilderMacConfig(buildConfig?.mac)
 
   if (builderMacConfig) {
-    builderConfig.mac = builderMacConfig
+    generatedBuilderConfig.mac = builderMacConfig
   }
 
   const builderLinuxConfig = createBuilderLinuxConfig(buildConfig?.linux)
 
   if (builderLinuxConfig) {
-    builderConfig.linux = builderLinuxConfig
+    generatedBuilderConfig.linux = builderLinuxConfig
   }
+
+  const builderConfig =
+    mergeConfigRecords(buildConfig?.advanced?.electronBuilder, generatedBuilderConfig) ??
+    generatedBuilderConfig
 
   writeFileSync(
     builderConfigPath,
@@ -2172,6 +2984,14 @@ export async function runCli(
       return 0
     }
 
+      if (command === 'check') {
+        if (parsed.check) {
+          throw new Error('[Frontron] "--check" is not supported with "check".')
+        }
+
+        return await runDoctor(cwd, output, runtimeOptions, parsed.configFile)
+      }
+
     const loadedConfig = await loadConfig({
       cwd,
       configFile: parsed.configFile,
@@ -2187,20 +3007,49 @@ export async function runCli(
     if (!loadedConfig.config.app.icon) {
       output.info('[Frontron] App icon: using the default Frontron icon.')
     }
-    if (configuredCommand.commandSource !== 'config') {
-      output.info(
-        `[Frontron] Inferred web ${configuredCommand.mode} command: ${configuredCommand.command}`,
-      )
-    }
-    if (configuredCommand.targetSource !== 'config') {
-      output.info(
-        `[Frontron] Inferred web ${configuredCommand.mode} target: ${configuredCommand.target}`,
-      )
-    }
-    output.info(`[Frontron] Web ${configuredCommand.mode} target: ${configuredCommand.target}`)
+    outputConfiguredCommandSummary(configuredCommand, output)
 
     if (command === 'build') {
       output.info(`[Frontron] Package output dir: ${resolveBuildOutputDir(loadedConfig)}`)
+
+      if (loadedConfig.config.deepLinks?.enabled && loadedConfig.config.deepLinks.schemes.length > 0) {
+        output.info(
+          `[Frontron] Deep-link schemes: ${loadedConfig.config.deepLinks.schemes.join(', ')}`,
+        )
+        output.info(
+          `[Frontron] Deep-link registration name: ${loadedConfig.config.deepLinks.name ?? loadedConfig.config.app.name}`,
+        )
+      }
+
+      if (loadedConfig.config.build?.fileAssociations?.length) {
+        const associatedExtensions = loadedConfig.config.build.fileAssociations.flatMap(
+          (association) => association.ext,
+        )
+
+        output.info(
+          `[Frontron] File association extensions: ${associatedExtensions.join(', ')}`,
+        )
+      }
+
+      if (loadedConfig.config.updates) {
+        output.info(
+          `[Frontron] Auto updates: ${loadedConfig.config.updates.enabled ? 'enabled' : 'disabled'} (${loadedConfig.config.updates.provider})`,
+        )
+
+        if (loadedConfig.config.updates.url) {
+          output.info(`[Frontron] Auto update feed URL: ${loadedConfig.config.updates.url}`)
+        }
+
+        output.info(
+          `[Frontron] Auto update launch check: ${loadedConfig.config.updates.checkOnLaunch ? 'enabled' : 'disabled'}`,
+        )
+
+        if (loadedConfig.config.updates.enabled) {
+          output.info(
+            '[Frontron] Auto update runtime is currently supported for packaged macOS apps with a generic feed URL.',
+          )
+        }
+      }
 
       if (loadedConfig.config.build?.artifactName) {
         output.info(`[Frontron] Package artifact pattern: ${loadedConfig.config.build.artifactName}`)
@@ -2244,6 +3093,12 @@ export async function runCli(
         )
       }
 
+      if (loadedConfig.config.build?.windows?.certificateSubjectName) {
+        output.info(
+          `[Frontron] Windows signing subject: ${loadedConfig.config.build.windows.certificateSubjectName}`,
+        )
+      }
+
       if (loadedConfig.config.build?.windows?.requestedExecutionLevel) {
         output.info(
           `[Frontron] Windows execution level: ${loadedConfig.config.build.windows.requestedExecutionLevel}`,
@@ -2266,6 +3121,16 @@ export async function runCli(
         output.info(`[Frontron] macOS category: ${loadedConfig.config.build.mac.category}`)
       }
 
+      if (loadedConfig.config.build?.mac?.identity) {
+        output.info(`[Frontron] macOS signing identity: ${loadedConfig.config.build.mac.identity}`)
+      }
+
+      if (typeof loadedConfig.config.build?.mac?.hardenedRuntime !== 'undefined') {
+        output.info(
+          `[Frontron] macOS hardened runtime: ${loadedConfig.config.build.mac.hardenedRuntime ? 'enabled' : 'disabled'}`,
+        )
+      }
+
       if (loadedConfig.config.build?.linux?.targets) {
         output.info(
           `[Frontron] Linux package targets: ${loadedConfig.config.build.linux.targets.join(', ')}`,
@@ -2286,6 +3151,10 @@ export async function runCli(
         output.info(
           `[Frontron] Linux package category: ${loadedConfig.config.build.linux.packageCategory}`,
         )
+      }
+
+      if (loadedConfig.config.build?.advanced?.electronBuilder) {
+        output.info('[Frontron] Advanced electron-builder overrides: enabled')
       }
     }
 

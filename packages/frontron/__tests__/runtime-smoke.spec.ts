@@ -12,7 +12,11 @@ import { createFixtureProject, removeFixtureProject } from './helpers'
 
 const fixtureDirs: string[] = []
 const activeChildren: Array<ReturnType<typeof spawn>> = []
-const smokeEnvKeys = ['FRONTRON_SMOKE_TEST', 'FRONTRON_SMOKE_RESULT_PATH'] as const
+const smokeEnvKeys = [
+  'FRONTRON_SMOKE_TEST',
+  'FRONTRON_SMOKE_RESULT_PATH',
+  'FRONTRON_SMOKE_OPEN_WINDOWS',
+] as const
 const previousSmokeEnv = new Map<string, string | undefined>()
 const require = createRequire(import.meta.url)
 const packageRoot = dirname(fileURLToPath(new URL('../package.json', import.meta.url)))
@@ -445,6 +449,12 @@ test.sequential('staged build runtime boots in Electron smoke mode', async () =>
       "    route: '/settings/profile',",
       '    width: 1280,',
       '    height: 800,',
+      '    zoomFactor: 1.25,',
+      '  },',
+      '  settings: {',
+      "    route: '/settings',",
+      '    width: 960,',
+      '    height: 720,',
       '  },',
       '}',
       '',
@@ -467,6 +477,7 @@ test.sequential('staged build runtime boots in Electron smoke mode', async () =>
       FRONTRON_MANIFEST_PATH: manifestPath,
       FRONTRON_SMOKE_TEST: '1',
       FRONTRON_SMOKE_RESULT_PATH: smokeResultPath,
+      FRONTRON_SMOKE_OPEN_WINDOWS: 'settings',
     },
     stdio: ['ignore', 'ignore', 'pipe'],
   })
@@ -491,7 +502,10 @@ test.sequential('staged build runtime boots in Electron smoke mode', async () =>
       ready: boolean
     }
     windowRoute: string
+    configuredWindowNames: string[]
+    openWindowNames: string[]
     loadedUrl?: string
+    zoomFactor?: number
     renderState: {
       title: string
       bodyText: string
@@ -510,9 +524,12 @@ test.sequential('staged build runtime boots in Electron smoke mode', async () =>
     ready: false,
   })
   expect(smokePayload.windowRoute).toBe('/settings/profile')
+  expect(smokePayload.configuredWindowNames).toEqual(['main', 'settings'])
+  expect(smokePayload.openWindowNames).toEqual(['main', 'settings'])
   expect(smokePayload.loadedUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/settings\/profile$/)
+  expect(smokePayload.zoomFactor).toBeCloseTo(1.25)
   expect(smokePayload.renderState?.bodyText).toContain('fixture')
-}, 30_000)
+}, 60_000)
 
 test.sequential('runCli boots the development app flow in Electron smoke mode', async () => {
   ensureBuiltRuntime()

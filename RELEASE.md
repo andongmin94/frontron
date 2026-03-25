@@ -22,6 +22,22 @@ This checklist is for releasing the framework-first packages.
 - `cd packages/create-frontron && npm run build`
 - `cd packages/create-frontron && npm test`
 
+## Release-only smoke
+
+- `cd packages/frontron && npm run test:package-smoke`
+- `cd packages/create-frontron && npm run test:release-smoke`
+- `cd packages/create-frontron && npm run release:verify`
+
+These smoke checks are intentionally separate from the default `npm test` commands because they build packed tarballs and real packaged apps.
+
+## Long-running candidate matrix
+
+- `cd packages/create-frontron && npm run release:matrix-smoke`
+
+This is the wider representative-stack smoke job for the stable public-package paths we expect to keep green: packed starter generation, existing-project Vite install, and existing-project VitePress install.
+It is intentionally separate from `npm run release` because it is slower and may hit external generators and package installs.
+Treat Next static export, Nuxt generate, and other stack-specific paths as manual spot checks when touched, not as part of the default release matrix.
+
 ## Package checks
 
 - Confirm `npm pack --dry-run` smoke tests pass in both packages.
@@ -42,4 +58,5 @@ This checklist is for releasing the framework-first packages.
 - `npm version` in `packages/create-frontron` now only syncs the paired `frontron` version.
 - Verify `packages/create-frontron/template/package.json` points to the intended `frontron` version.
 - Use `npm run release` in `packages/create-frontron` for the publish order: `frontron` first, then `create-frontron`.
+- `npm run release` now includes `npm run release:verify` before publish.
 - Publish only after all package smoke checks are green.

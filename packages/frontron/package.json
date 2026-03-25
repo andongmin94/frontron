@@ -1,6 +1,6 @@
 {
   "name": "frontron",
-  "version": "0.10.0",
+  "version": "0.11.2",
   "type": "module",
   "description": "Framework-first desktop app layer for existing web projects",
   "license": "MIT",
@@ -26,7 +26,8 @@
   },
   "scripts": {
     "build": "unbuild",
-    "test": "vitest run --no-file-parallelism",
+    "test": "vitest run --no-file-parallelism --exclude __tests__/package-smoke.spec.ts",
+    "test:package-smoke": "vitest run --no-file-parallelism __tests__/package-smoke.spec.ts",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },

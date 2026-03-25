@@ -89,9 +89,11 @@ export default defineConfig({
 - `build.files`
 - `build.extraResources`
 - `build.extraFiles`
+- `build.fileAssociations`
 - `build.windows.targets`
 - `build.windows.icon`
 - `build.windows.publisherName`
+- `build.windows.certificateSubjectName`
 - `build.windows.signAndEditExecutable`
 - `build.windows.requestedExecutionLevel`
 - `build.windows.artifactName`
@@ -104,6 +106,11 @@ export default defineConfig({
 - `build.mac.targets`
 - `build.mac.icon`
 - `build.mac.category`
+- `build.mac.identity`
+- `build.mac.hardenedRuntime`
+- `build.mac.gatekeeperAssess`
+- `build.mac.entitlements`
+- `build.mac.entitlementsInherit`
 - `build.mac.artifactName`
 - `build.linux.targets`
 - `build.linux.icon`
@@ -111,11 +118,45 @@ export default defineConfig({
 - `build.linux.packageCategory`
 - `build.linux.artifactName`
 
+자동 업데이트도 첫 typed 설정 슬라이스가 들어갔습니다.
+
+- `updates.enabled`
+- `updates.provider`
+- `updates.url`
+- `updates.checkOnLaunch`
+
+이 설정은 현재 generic feed URL 을 쓰는 packaged macOS 앱만 공식 지원합니다. 현재 Windows 패키징 대상에 대한 자동 업데이트는 아직 typed surface 밖에 둡니다.
+
+딥링크도 첫 typed 설정 슬라이스가 들어갔습니다.
+
+- `deepLinks.enabled`
+- `deepLinks.name`
+- `deepLinks.schemes`
+
+Frontron 은 이 값을 패키징 메타데이터에 넣고 런타임에서 들어온 링크를 수집합니다. 렌더러에서는 `bridge.deepLink.getState()` 와 `bridge.deepLink.consumePending()` 으로 읽을 수 있습니다.
+
+파일 연결도 첫 typed 설정 슬라이스가 들어갔습니다.
+
+- `build.fileAssociations[].ext`
+- `build.fileAssociations[].name`
+- `build.fileAssociations[].description`
+- `build.fileAssociations[].mimeType`
+- `build.fileAssociations[].icon`
+- `build.fileAssociations[].role`
+- `build.fileAssociations[].isPackage`
+- `build.fileAssociations[].rank`
+
+Frontron 은 이 값을 패키징 메타데이터로 넣고, `build.advanced.electronBuilder` 에서 raw `fileAssociations` 로 우회 덮어쓰는 경로는 계속 막습니다.
+
 경로 기반 값인 `build.extraResources`, `build.extraFiles`, `build.windows.icon`, `build.nsis.installerIcon` 은 프로젝트 루트 기준으로 해석합니다.
 
 `build.mac.icon`, `build.linux.icon` 도 같은 방식으로 프로젝트 루트 기준 경로입니다.
 
 반대로 `build.files` 는 스테이징된 패키지 앱 내용을 필터링하는 패턴이라서, 스테이지 앱 루트 기준으로 적어야 합니다.
+
+`build.fileAssociations[].icon` 도 프로젝트 루트 기준 경로입니다.
+
+실제 target 지원은 electron-builder 에 따릅니다. Windows 에서는 NSIS 빌드와 함께 쓰는 쪽이 현실적이고, 보통 `build.nsis.perMachine: true` 가 필요합니다.
 
 ## 5. Windows 에서 어떤 결과를 기대해야 하나?
 
@@ -161,3 +202,12 @@ output/
 ::: warning
 Windows 에서는 프로젝트 경로가 너무 길면 패키징 단계가 깨질 수 있습니다. 긴 경로 안쪽에서 파일을 찾지 못하는 오류가 보이면 `C:\dev\my-app` 같은 짧은 경로에서 다시 빌드해 보세요.
 :::
+## 6. Guarded advanced overrides
+
+`build.advanced.electronBuilder` 는 edge case 용 예외 블록입니다.
+
+이 블록은 best-effort 이고 intentionally incomplete 입니다.
+
+즉, 자주 쓰는 패키징 결정은 계속 `build.outputDir`, `build.windows.*`, `build.nsis.*`, `build.mac.*`, `build.linux.*` 같은 공식 typed surface 로 해결해야 합니다.
+
+반대로 Frontron 이 소유하는 스테이징 경로, 패키지 엔트리, 그리고 공통 패키징 필드는 여기서 덮을 수 없습니다.

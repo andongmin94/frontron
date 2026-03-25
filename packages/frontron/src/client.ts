@@ -1,4 +1,4 @@
-import type { FrontronNativeStatus, FrontronWindowState } from './types'
+import type { FrontronDeepLinkState, FrontronNativeStatus, FrontronWindowState } from './types'
 
 export type BridgeHandler = (...args: unknown[]) => unknown
 type BridgeNamespace = Record<string, BridgeHandler>
@@ -17,12 +17,29 @@ export interface FrontronBuiltInBridge {
     isNativeReady(): Promise<boolean>
     openExternal(input: string | { url: string }): Promise<null>
   }
+  deepLink: {
+    getState(): Promise<FrontronDeepLinkState>
+    consumePending(): Promise<string[]>
+  }
   window: {
     minimize(): Promise<null>
     toggleMaximize(): Promise<null>
     hide(): Promise<null>
     getState(): Promise<FrontronWindowState>
     onMaximizedChanged(listener: (isMaximized: boolean) => void): () => void
+  }
+  windows: {
+    open(input: { name: string }): Promise<null>
+    show(input: { name: string }): Promise<null>
+    hide(input: { name: string }): Promise<null>
+    focus(input: { name: string }): Promise<null>
+    close(input: { name: string }): Promise<null>
+    minimize(input: { name: string }): Promise<null>
+    toggleMaximize(input: { name: string }): Promise<null>
+    exists(input: { name: string }): Promise<boolean>
+    getState(input: { name: string }): Promise<FrontronWindowState | null>
+    listConfigured(): Promise<string[]>
+    listOpen(): Promise<string[]>
   }
 }
 

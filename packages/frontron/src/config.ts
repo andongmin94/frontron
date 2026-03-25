@@ -4,15 +4,21 @@ import { registerHooks, stripTypeScriptTypes } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import type {
+  FrontronAdvancedObject,
   FrontronBuildCompression,
+  FrontronBuildFileAssociation,
   FrontronBuildFilePattern,
   FrontronBuildFileSet,
   FrontronConfig,
+  FrontronFileAssociationRank,
+  FrontronFileAssociationRole,
   FrontronLinuxBuildTarget,
   FrontronMacBuildTarget,
   FrontronPublishMode,
   FrontronRequestedExecutionLevel,
   FrontronRustBridgeConfig,
+  FrontronSecurityNavigationPolicy,
+  FrontronUpdateProvider,
   FrontronRustValueType,
   FrontronTitleBarStyle,
   FrontronWindowsBuildTarget,
@@ -22,6 +28,7 @@ import type {
   ResolvedFrontronBuildConfig,
   ResolvedFrontronConfig,
   ResolvedFrontronRustConfig,
+  ResolvedFrontronUpdatesConfig,
 } from './types'
 
 const OFFICIAL_CONFIG_FILE = 'frontron.config.ts'
@@ -82,10 +89,28 @@ const SUPPORTED_BUILD_COMPRESSIONS: FrontronBuildCompression[] = [
   'normal',
   'maximum',
 ]
+const SUPPORTED_FILE_ASSOCIATION_ROLES: FrontronFileAssociationRole[] = [
+  'Editor',
+  'Viewer',
+  'Shell',
+  'None',
+]
+const SUPPORTED_FILE_ASSOCIATION_RANKS: FrontronFileAssociationRank[] = [
+  'Owner',
+  'Default',
+  'Alternate',
+  'None',
+]
 const SUPPORTED_REQUESTED_EXECUTION_LEVELS: FrontronRequestedExecutionLevel[] = [
   'asInvoker',
   'highestAvailable',
   'requireAdministrator',
+]
+const SUPPORTED_UPDATE_PROVIDERS: FrontronUpdateProvider[] = ['generic']
+const SUPPORTED_SECURITY_NAVIGATION_POLICIES: FrontronSecurityNavigationPolicy[] = [
+  'allow',
+  'deny',
+  'openExternal',
 ]
 const SUPPORTED_TITLE_BAR_STYLES: FrontronTitleBarStyle[] = [
   'default',
@@ -93,6 +118,86 @@ const SUPPORTED_TITLE_BAR_STYLES: FrontronTitleBarStyle[] = [
   'hiddenInset',
   'customButtonsOnHover',
 ]
+const BLOCKED_ELECTRON_BUILDER_ADVANCED_PATHS = [
+  'appId',
+  'productName',
+  'artifactName',
+  'asar',
+  'compression',
+  'files',
+  'fileAssociations',
+  'extraResources',
+  'extraFiles',
+  'protocols',
+  'icon',
+  'publish',
+  'copyright',
+  'electronVersion',
+  'npmRebuild',
+  'nodeGypRebuild',
+  'directories.app',
+  'directories.output',
+  'extraMetadata.main',
+  'extraMetadata.type',
+  'win.target',
+  'win.icon',
+  'win.publisherName',
+  'win.certificateSubjectName',
+  'win.signAndEditExecutable',
+  'win.requestedExecutionLevel',
+  'win.artifactName',
+  'nsis.oneClick',
+  'nsis.perMachine',
+  'nsis.allowToChangeInstallationDirectory',
+  'nsis.deleteAppDataOnUninstall',
+  'nsis.installerIcon',
+  'nsis.uninstallerIcon',
+  'mac.target',
+  'mac.icon',
+  'mac.category',
+  'mac.identity',
+  'mac.hardenedRuntime',
+  'mac.gatekeeperAssess',
+  'mac.entitlements',
+  'mac.entitlementsInherit',
+  'mac.artifactName',
+  'linux.target',
+  'linux.icon',
+  'linux.category',
+  'linux.packageCategory',
+  'linux.artifactName',
+] as const
+const BLOCKED_WINDOW_ADVANCED_PATHS = [
+  'route',
+  'width',
+  'height',
+  'minWidth',
+  'minHeight',
+  'maxWidth',
+  'maxHeight',
+  'frame',
+  'resizable',
+  'show',
+  'center',
+  'fullscreen',
+  'fullscreenable',
+  'maximizable',
+  'minimizable',
+  'closable',
+  'alwaysOnTop',
+  'backgroundColor',
+  'transparent',
+  'autoHideMenuBar',
+  'skipTaskbar',
+  'title',
+  'titleBarStyle',
+  'zoomFactor',
+  'sandbox',
+  'spellcheck',
+  'webSecurity',
+  'icon',
+  'webPreferences',
+] as const
 
 function isRelativeSpecifier(specifier: string) {
   return specifier.startsWith('./') || specifier.startsWith('../')
@@ -160,6 +265,74 @@ function resolveProjectPath(rootDir: string, value: string | undefined) {
   return resolve(rootDir, value)
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false
+  }
+
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
+function isBlockedAdvancedPath(path: string, blockedPaths: readonly string[]) {
+  return blockedPaths.some((blockedPath) => path === blockedPath || path.startsWith(`${blockedPath}.`))
+}
+
+function validateAdvancedValue(
+  value: unknown,
+  owner: string,
+  blockedPaths: readonly string[],
+  pathSegments: string[] = [],
+) {
+  const path = pathSegments.join('.')
+
+  if (path && isBlockedAdvancedPath(path, blockedPaths)) {
+    throw new Error(
+      `[Frontron] ${owner} cannot set "${path}" because Frontron owns that field.`,
+    )
+  }
+
+  if (value === null) {
+    return
+  }
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      validateAdvancedValue(item, owner, blockedPaths, pathSegments)
+    }
+
+    return
+  }
+
+  if (!isPlainObject(value)) {
+    throw new Error(
+      `[Frontron] ${owner} must contain only plain objects, arrays, strings, numbers, booleans, or null.`,
+    )
+  }
+
+  for (const [key, nestedValue] of Object.entries(value)) {
+    validateAdvancedValue(nestedValue, owner, blockedPaths, [...pathSegments, key])
+  }
+}
+
+function validateAdvancedObject(
+  value: unknown,
+  owner: string,
+  blockedPaths: readonly string[],
+): asserts value is FrontronAdvancedObject {
+  if (!isPlainObject(value)) {
+    throw new Error(`[Frontron] ${owner} must be a plain object.`)
+  }
+
+  for (const [key, nestedValue] of Object.entries(value)) {
+    validateAdvancedValue(nestedValue, owner, blockedPaths, [key])
+  }
+}
+
 function normalizeTray(rootDir: string, tray: FrontronConfig['tray']) {
   if (!tray) {
     return tray
@@ -225,6 +398,24 @@ function normalizeBuildFilePatterns(
   return patterns.map((pattern) => normalizeBuildFilePattern(rootDir, pattern, resolveFromPath))
 }
 
+function normalizeBuildFileAssociations(
+  rootDir: string,
+  associations: readonly FrontronBuildFileAssociation[] | undefined,
+) {
+  if (!associations) {
+    return undefined
+  }
+
+  return associations.map((association) => ({
+    ...association,
+    ext:
+      typeof association.ext === 'string'
+        ? [association.ext]
+        : [...association.ext],
+    icon: resolveProjectPath(rootDir, association.icon),
+  }))
+}
+
 function normalizeBuild(
   rootDir: string,
   build: FrontronConfig['build'],
@@ -243,24 +434,25 @@ function normalizeBuild(
     files: normalizeBuildFilePatterns(rootDir, build.files, false),
     extraResources: normalizeBuildFilePatterns(rootDir, build.extraResources, true),
     extraFiles: normalizeBuildFilePatterns(rootDir, build.extraFiles, true),
-    windows: build.windows
-      ? {
-          ...build.windows,
-          icon: resolveProjectPath(rootDir, build.windows.icon),
-          publisherName:
-            typeof build.windows.publisherName === 'string'
-              ? [build.windows.publisherName]
-              : build.windows.publisherName
-                ? [...build.windows.publisherName]
-                : undefined,
-          targets:
-            typeof windowsTargets === 'string'
-              ? [windowsTargets]
-              : windowsTargets
-                ? [...windowsTargets]
-                : undefined,
-        }
-      : undefined,
+    fileAssociations: normalizeBuildFileAssociations(rootDir, build.fileAssociations),
+      windows: build.windows
+        ? {
+            ...build.windows,
+            icon: resolveProjectPath(rootDir, build.windows.icon),
+            publisherName:
+              typeof build.windows.publisherName === 'string'
+                ? [build.windows.publisherName]
+                : build.windows.publisherName
+                  ? [...build.windows.publisherName]
+                  : undefined,
+            targets:
+              typeof windowsTargets === 'string'
+                ? [windowsTargets]
+                : windowsTargets
+                  ? [...windowsTargets]
+                  : undefined,
+          }
+        : undefined,
     nsis: build.nsis
       ? {
           ...build.nsis,
@@ -268,15 +460,17 @@ function normalizeBuild(
           uninstallerIcon: resolveProjectPath(rootDir, build.nsis.uninstallerIcon),
         }
       : undefined,
-    mac: build.mac
-      ? {
-          ...build.mac,
-          icon: resolveProjectPath(rootDir, build.mac.icon),
-          targets:
-            typeof macTargets === 'string'
-              ? [macTargets]
-              : macTargets
-                ? [...macTargets]
+      mac: build.mac
+        ? {
+            ...build.mac,
+            icon: resolveProjectPath(rootDir, build.mac.icon),
+            entitlements: resolveProjectPath(rootDir, build.mac.entitlements),
+            entitlementsInherit: resolveProjectPath(rootDir, build.mac.entitlementsInherit),
+            targets:
+              typeof macTargets === 'string'
+                ? [macTargets]
+                : macTargets
+                  ? [...macTargets]
                 : undefined,
         }
       : undefined,
@@ -292,6 +486,54 @@ function normalizeBuild(
                 : undefined,
         }
       : undefined,
+  }
+}
+
+function normalizeDeepLinks(
+  deepLinks: FrontronConfig['deepLinks'],
+): ResolvedFrontronConfig['deepLinks'] {
+  if (!deepLinks) {
+    return undefined
+  }
+
+  const schemes = Array.isArray(deepLinks.schemes)
+    ? [...deepLinks.schemes]
+    : typeof deepLinks.schemes === 'string'
+      ? [deepLinks.schemes]
+      : []
+
+  return {
+    ...deepLinks,
+    enabled: deepLinks.enabled ?? true,
+    schemes: schemes.map((scheme) => scheme.trim().toLowerCase()),
+  }
+}
+
+function normalizeUpdates(
+  updates: FrontronConfig['updates'],
+): ResolvedFrontronUpdatesConfig | undefined {
+  if (!updates) {
+    return undefined
+  }
+
+  return {
+    ...updates,
+    enabled: updates.enabled ?? true,
+    provider: updates.provider ?? 'generic',
+    checkOnLaunch: updates.checkOnLaunch ?? true,
+  }
+}
+
+function normalizeSecurity(
+  security: FrontronConfig['security'],
+): ResolvedFrontronConfig['security'] {
+  if (!security) {
+    return undefined
+  }
+
+  return {
+    externalNavigation: security.externalNavigation ?? 'openExternal',
+    newWindow: security.newWindow ?? 'openExternal',
   }
 }
 
@@ -314,6 +556,9 @@ function normalizeConfig(rootDir: string, config: FrontronConfig): ResolvedFront
         }
       : undefined,
     build: normalizeBuild(rootDir, config.build),
+    deepLinks: normalizeDeepLinks(config.deepLinks),
+    updates: normalizeUpdates(config.updates),
+    security: normalizeSecurity(config.security),
     tray: normalizeTray(rootDir, config.tray),
     rust: normalizeRust(rootDir, config.rust),
   }
@@ -423,6 +668,66 @@ function validateBuildFilePatterns(value: unknown, owner: string) {
   }
 }
 
+function validateBuildFileAssociation(value: unknown, owner: string) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`[Frontron] ${owner} must be an object.`)
+  }
+
+  const candidate = value as FrontronBuildFileAssociation
+
+  if (typeof candidate.ext === 'string') {
+    validateOptionalString(candidate.ext, `${owner}.ext`)
+  } else {
+    validateStringArray(candidate.ext, `${owner}.ext`)
+  }
+
+  if (typeof candidate.name !== 'undefined') {
+    validateOptionalString(candidate.name, `${owner}.name`)
+  }
+
+  if (typeof candidate.description !== 'undefined') {
+    validateOptionalString(candidate.description, `${owner}.description`)
+  }
+
+  if (typeof candidate.mimeType !== 'undefined') {
+    validateOptionalString(candidate.mimeType, `${owner}.mimeType`)
+  }
+
+  if (typeof candidate.icon !== 'undefined') {
+    validateOptionalString(candidate.icon, `${owner}.icon`)
+  }
+
+  if (typeof candidate.role !== 'undefined') {
+    if (!SUPPORTED_FILE_ASSOCIATION_ROLES.includes(candidate.role)) {
+      throw new Error(
+        `[Frontron] ${owner}.role must be one of ${SUPPORTED_FILE_ASSOCIATION_ROLES.join(', ')}.`,
+      )
+    }
+  }
+
+  if (typeof candidate.isPackage !== 'undefined') {
+    validateOptionalBoolean(candidate.isPackage, `${owner}.isPackage`)
+  }
+
+  if (typeof candidate.rank !== 'undefined') {
+    if (!SUPPORTED_FILE_ASSOCIATION_RANKS.includes(candidate.rank)) {
+      throw new Error(
+        `[Frontron] ${owner}.rank must be one of ${SUPPORTED_FILE_ASSOCIATION_RANKS.join(', ')}.`,
+      )
+    }
+  }
+}
+
+function validateBuildFileAssociations(value: unknown, owner: string) {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`[Frontron] ${owner} must be a non-empty array.`)
+  }
+
+  for (const [index, association] of value.entries()) {
+    validateBuildFileAssociation(association, `${owner}[${index}]`)
+  }
+}
+
 function validateWindowDimensions(
   candidate: {
     width?: unknown
@@ -525,6 +830,11 @@ function validateWindows(windows: unknown) {
       skipTaskbar?: unknown
       title?: unknown
       titleBarStyle?: unknown
+      zoomFactor?: unknown
+      sandbox?: unknown
+      spellcheck?: unknown
+      webSecurity?: unknown
+      advanced?: unknown
     }
     const owner = `windows.${windowName}`
 
@@ -626,6 +936,26 @@ function validateWindows(windows: unknown) {
         )
       }
     }
+
+    if (typeof candidate.zoomFactor !== 'undefined') {
+      validateOptionalPositiveNumber(candidate.zoomFactor, `"${owner}.zoomFactor"`)
+    }
+
+    if (typeof candidate.sandbox !== 'undefined') {
+      validateOptionalBoolean(candidate.sandbox, `"${owner}.sandbox"`)
+    }
+
+    if (typeof candidate.spellcheck !== 'undefined') {
+      validateOptionalBoolean(candidate.spellcheck, `"${owner}.spellcheck"`)
+    }
+
+    if (typeof candidate.webSecurity !== 'undefined') {
+      validateOptionalBoolean(candidate.webSecurity, `"${owner}.webSecurity"`)
+    }
+
+    if (typeof candidate.advanced !== 'undefined') {
+      validateAdvancedObject(candidate.advanced, `"${owner}.advanced"`, BLOCKED_WINDOW_ADVANCED_PATHS)
+    }
   }
 }
 
@@ -687,10 +1017,12 @@ function validateBuild(build: unknown) {
     files?: unknown
     extraResources?: unknown
     extraFiles?: unknown
+    fileAssociations?: unknown
     windows?: unknown
     nsis?: unknown
     mac?: unknown
     linux?: unknown
+    advanced?: unknown
   }
 
   if (typeof candidate.outputDir !== 'undefined') {
@@ -737,6 +1069,10 @@ function validateBuild(build: unknown) {
 
   if (typeof candidate.extraFiles !== 'undefined') {
     validateBuildFilePatterns(candidate.extraFiles, '"build.extraFiles"')
+  }
+
+  if (typeof candidate.fileAssociations !== 'undefined') {
+    validateBuildFileAssociations(candidate.fileAssociations, '"build.fileAssociations"')
   }
 
   if (typeof candidate.nsis !== 'undefined') {
@@ -789,14 +1125,15 @@ function validateBuild(build: unknown) {
       throw new Error('[Frontron] "build.windows" must be an object.')
     }
 
-    const windows = candidate.windows as {
-      targets?: unknown
-      icon?: unknown
-      publisherName?: unknown
-      signAndEditExecutable?: unknown
-      requestedExecutionLevel?: unknown
-      artifactName?: unknown
-    }
+      const windows = candidate.windows as {
+        targets?: unknown
+        icon?: unknown
+        publisherName?: unknown
+        certificateSubjectName?: unknown
+        signAndEditExecutable?: unknown
+        requestedExecutionLevel?: unknown
+        artifactName?: unknown
+      }
 
     if (typeof windows.targets !== 'undefined') {
       validateBuildTargetList(
@@ -810,13 +1147,20 @@ function validateBuild(build: unknown) {
       validateOptionalString(windows.icon, '"build.windows.icon"')
     }
 
-    if (typeof windows.publisherName !== 'undefined') {
-      if (typeof windows.publisherName === 'string') {
-        validateOptionalString(windows.publisherName, '"build.windows.publisherName"')
-      } else {
-        validateStringArray(windows.publisherName, '"build.windows.publisherName"')
+      if (typeof windows.publisherName !== 'undefined') {
+        if (typeof windows.publisherName === 'string') {
+          validateOptionalString(windows.publisherName, '"build.windows.publisherName"')
+        } else {
+          validateStringArray(windows.publisherName, '"build.windows.publisherName"')
+        }
       }
-    }
+
+      if (typeof windows.certificateSubjectName !== 'undefined') {
+        validateOptionalString(
+          windows.certificateSubjectName,
+          '"build.windows.certificateSubjectName"',
+        )
+      }
 
     if (typeof windows.signAndEditExecutable !== 'undefined') {
       validateOptionalBoolean(
@@ -848,12 +1192,17 @@ function validateBuild(build: unknown) {
       throw new Error('[Frontron] "build.mac" must be an object.')
     }
 
-    const mac = candidate.mac as {
-      targets?: unknown
-      icon?: unknown
-      category?: unknown
-      artifactName?: unknown
-    }
+      const mac = candidate.mac as {
+        targets?: unknown
+        icon?: unknown
+        category?: unknown
+        identity?: unknown
+        hardenedRuntime?: unknown
+        gatekeeperAssess?: unknown
+        entitlements?: unknown
+        entitlementsInherit?: unknown
+        artifactName?: unknown
+      }
 
     if (typeof mac.targets !== 'undefined') {
       validateBuildTargetList(mac.targets, '"build.mac.targets"', validateMacBuildTarget)
@@ -863,13 +1212,33 @@ function validateBuild(build: unknown) {
       validateOptionalString(mac.icon, '"build.mac.icon"')
     }
 
-    if (typeof mac.category !== 'undefined') {
-      validateOptionalString(mac.category, '"build.mac.category"')
-    }
+      if (typeof mac.category !== 'undefined') {
+        validateOptionalString(mac.category, '"build.mac.category"')
+      }
 
-    if (typeof mac.artifactName !== 'undefined') {
-      validateOptionalString(mac.artifactName, '"build.mac.artifactName"')
-    }
+      if (typeof mac.identity !== 'undefined') {
+        validateOptionalString(mac.identity, '"build.mac.identity"')
+      }
+
+      if (typeof mac.hardenedRuntime !== 'undefined') {
+        validateOptionalBoolean(mac.hardenedRuntime, '"build.mac.hardenedRuntime"')
+      }
+
+      if (typeof mac.gatekeeperAssess !== 'undefined') {
+        validateOptionalBoolean(mac.gatekeeperAssess, '"build.mac.gatekeeperAssess"')
+      }
+
+      if (typeof mac.entitlements !== 'undefined') {
+        validateOptionalString(mac.entitlements, '"build.mac.entitlements"')
+      }
+
+      if (typeof mac.entitlementsInherit !== 'undefined') {
+        validateOptionalString(mac.entitlementsInherit, '"build.mac.entitlementsInherit"')
+      }
+
+      if (typeof mac.artifactName !== 'undefined') {
+        validateOptionalString(mac.artifactName, '"build.mac.artifactName"')
+      }
   }
 
   if (typeof candidate.linux !== 'undefined') {
@@ -907,6 +1276,142 @@ function validateBuild(build: unknown) {
 
     if (typeof linux.artifactName !== 'undefined') {
       validateOptionalString(linux.artifactName, '"build.linux.artifactName"')
+    }
+  }
+
+  if (typeof candidate.advanced !== 'undefined') {
+    if (!candidate.advanced || typeof candidate.advanced !== 'object' || Array.isArray(candidate.advanced)) {
+      throw new Error('[Frontron] "build.advanced" must be an object.')
+    }
+
+    const advanced = candidate.advanced as {
+      electronBuilder?: unknown
+    }
+
+    for (const advancedKey of Object.keys(advanced)) {
+      if (advancedKey !== 'electronBuilder') {
+        throw new Error(
+          `[Frontron] "build.advanced.${advancedKey}" is not supported. Use "build.advanced.electronBuilder".`,
+        )
+      }
+    }
+
+    if (typeof advanced.electronBuilder !== 'undefined') {
+      validateAdvancedObject(
+        advanced.electronBuilder,
+        '"build.advanced.electronBuilder"',
+        BLOCKED_ELECTRON_BUILDER_ADVANCED_PATHS,
+      )
+    }
+  }
+}
+
+function validateDeepLinks(deepLinks: unknown) {
+  if (!deepLinks || typeof deepLinks !== 'object' || Array.isArray(deepLinks)) {
+    throw new Error('[Frontron] "deepLinks" must be an object.')
+  }
+
+  const candidate = deepLinks as {
+    enabled?: unknown
+    name?: unknown
+    schemes?: unknown
+  }
+
+  if (typeof candidate.enabled !== 'undefined') {
+    validateOptionalBoolean(candidate.enabled, '"deepLinks.enabled"')
+  }
+
+  if (typeof candidate.name !== 'undefined') {
+    validateOptionalString(candidate.name, '"deepLinks.name"')
+  }
+
+  if (candidate.enabled === false) {
+    if (typeof candidate.schemes === 'undefined') {
+      return
+    }
+  }
+
+  if (typeof candidate.schemes === 'string') {
+    validateOptionalString(candidate.schemes, '"deepLinks.schemes"')
+    return
+  }
+
+  validateStringArray(candidate.schemes, '"deepLinks.schemes"')
+}
+
+function validateUpdates(updates: unknown) {
+  if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
+    throw new Error('[Frontron] "updates" must be an object.')
+  }
+
+  const candidate = updates as {
+    enabled?: unknown
+    provider?: unknown
+    url?: unknown
+    checkOnLaunch?: unknown
+  }
+
+  if (typeof candidate.enabled !== 'undefined') {
+    validateOptionalBoolean(candidate.enabled, '"updates.enabled"')
+  }
+
+  if (typeof candidate.provider !== 'undefined') {
+    if (
+      typeof candidate.provider !== 'string' ||
+      !SUPPORTED_UPDATE_PROVIDERS.includes(candidate.provider as FrontronUpdateProvider)
+    ) {
+      throw new Error(
+        `[Frontron] "updates.provider" must be one of: ${SUPPORTED_UPDATE_PROVIDERS.join(', ')}.`,
+      )
+    }
+  }
+
+  if (candidate.enabled === false) {
+    if (typeof candidate.url !== 'undefined') {
+      validateOptionalString(candidate.url, '"updates.url"')
+    }
+  } else {
+    validateOptionalString(candidate.url, '"updates.url"')
+  }
+
+  if (typeof candidate.checkOnLaunch !== 'undefined') {
+    validateOptionalBoolean(candidate.checkOnLaunch, '"updates.checkOnLaunch"')
+  }
+}
+
+function validateSecurity(security: unknown) {
+  if (!security || typeof security !== 'object' || Array.isArray(security)) {
+    throw new Error('[Frontron] "security" must be an object.')
+  }
+
+  const candidate = security as {
+    externalNavigation?: unknown
+    newWindow?: unknown
+  }
+
+  if (typeof candidate.externalNavigation !== 'undefined') {
+    if (
+      typeof candidate.externalNavigation !== 'string' ||
+      !SUPPORTED_SECURITY_NAVIGATION_POLICIES.includes(
+        candidate.externalNavigation as FrontronSecurityNavigationPolicy,
+      )
+    ) {
+      throw new Error(
+        `[Frontron] "security.externalNavigation" must be one of: ${SUPPORTED_SECURITY_NAVIGATION_POLICIES.join(', ')}.`,
+      )
+    }
+  }
+
+  if (typeof candidate.newWindow !== 'undefined') {
+    if (
+      typeof candidate.newWindow !== 'string' ||
+      !SUPPORTED_SECURITY_NAVIGATION_POLICIES.includes(
+        candidate.newWindow as FrontronSecurityNavigationPolicy,
+      )
+    ) {
+      throw new Error(
+        `[Frontron] "security.newWindow" must be one of: ${SUPPORTED_SECURITY_NAVIGATION_POLICIES.join(', ')}.`,
+      )
     }
   }
 }
@@ -1089,6 +1594,18 @@ function validateBaseConfig(config: unknown): asserts config is FrontronConfig {
 
   if (typeof candidate.build !== 'undefined') {
     validateBuild(candidate.build)
+  }
+
+  if (typeof candidate.deepLinks !== 'undefined') {
+    validateDeepLinks(candidate.deepLinks)
+  }
+
+  if (typeof candidate.updates !== 'undefined') {
+    validateUpdates(candidate.updates)
+  }
+
+  if (typeof candidate.security !== 'undefined') {
+    validateSecurity(candidate.security)
   }
 
   if (typeof candidate.windows !== 'undefined') {

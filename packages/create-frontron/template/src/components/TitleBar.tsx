@@ -36,7 +36,7 @@ export default function TitleBar() {
 
     async function connectWindowBridge() {
       try {
-        unsubscribe = bridge.window.onMaximizedChanged((value) => {
+        unsubscribe = bridge.window.onMaximizedChanged((value: boolean) => {
           if (cancelled) {
             return
           }

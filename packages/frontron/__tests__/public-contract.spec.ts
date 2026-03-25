@@ -42,6 +42,40 @@ test('main onboarding docs keep the renderer API modern-only', () => {
   }
 })
 
+test('public docs keep root frontron.config.ts and canonical app scripts as the contract', () => {
+  const configReferenceFiles = [
+    join(repoRoot, 'docs', 'guide', 'config.md'),
+    join(repoRoot, 'docs', 'guide', 'customize-app.md'),
+    join(repoRoot, 'docs', 'guide', 'run-development.md'),
+    join(repoRoot, 'docs', 'guide', 'troubleshooting.md'),
+    join(repoRoot, 'docs', 'ko', 'guide', 'config.md'),
+    join(repoRoot, 'docs', 'ko', 'guide', 'customize-app.md'),
+    join(repoRoot, 'docs', 'ko', 'guide', 'run-development.md'),
+    join(repoRoot, 'docs', 'ko', 'guide', 'troubleshooting.md'),
+  ]
+
+  for (const filePath of configReferenceFiles) {
+    const source = readFileSync(filePath, 'utf8')
+
+    expect(source).toContain('frontron.config.ts')
+    expect(source).not.toContain('frontron/config.ts')
+  }
+
+  const configGuideFiles = [
+    join(repoRoot, 'docs', 'guide', 'config.md'),
+    join(repoRoot, 'docs', 'ko', 'guide', 'config.md'),
+  ]
+
+  for (const filePath of configGuideFiles) {
+    const source = readFileSync(filePath, 'utf8')
+
+    expect(source).toContain('"app:dev": "frontron dev"')
+    expect(source).toContain('"app:build": "frontron build"')
+    expect(source).not.toContain('"app": "npm run app:dev"')
+    expect(source).not.toContain('"build": "npm run app:build"')
+  }
+})
+
 test('starter template files do not reintroduce legacy renderer or runtime paths', () => {
   const templateRoot = join(repoRoot, 'packages', 'create-frontron', 'template')
   const templateFiles = listFilesRecursive(templateRoot)

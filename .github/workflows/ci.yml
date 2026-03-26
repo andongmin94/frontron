@@ -21,7 +21,7 @@ jobs:
         run: npm run validate
 
   frontron:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -38,10 +38,10 @@ jobs:
         run: npm run typecheck
       - name: Test frontron
         working-directory: packages/frontron
-        run: xvfb-run -a npm test
+        run: npm test
       - name: Package smoke
         working-directory: packages/frontron
-        run: xvfb-run -a npm run test:package-smoke
+        run: npm run test:package-smoke
 
   create-frontron:
     runs-on: ubuntu-latest
@@ -64,7 +64,7 @@ jobs:
         run: npm test
 
   release-confidence:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     needs:
       - frontron
       - create-frontron
@@ -81,4 +81,4 @@ jobs:
         run: npm install
       - name: Run release confidence checks
         working-directory: packages/create-frontron
-        run: xvfb-run -a npm run release:verify
+        run: npm run release:verify

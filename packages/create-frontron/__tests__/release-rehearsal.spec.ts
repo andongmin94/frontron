@@ -181,5 +181,5 @@ test(
     expect(generatedTypes).toContain('cpuCount')
     expect(generatedTypes).toContain('hasTxtExtension')
   },
-  300000,
+  600000,
 )

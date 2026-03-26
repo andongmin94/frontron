@@ -1,4 +1,10 @@
-import type { FrontronDeepLinkState, FrontronNativeStatus, FrontronWindowState } from './types'
+import type {
+  FrontronDeepLinkState,
+  FrontronNativeStatus,
+  FrontronWindowBounds,
+  FrontronWindowPosition,
+  FrontronWindowState,
+} from './types'
 
 export type BridgeHandler = (...args: unknown[]) => unknown
 type BridgeNamespace = Record<string, BridgeHandler>
@@ -22,21 +28,45 @@ export interface FrontronBuiltInBridge {
     consumePending(): Promise<string[]>
   }
   window: {
+    isVisible(): Promise<boolean>
+    isFocused(): Promise<boolean>
+    toggleVisibility(): Promise<null>
+    showInactive(): Promise<null>
     minimize(): Promise<null>
     toggleMaximize(): Promise<null>
     hide(): Promise<null>
+    getBounds(): Promise<FrontronWindowBounds | null>
+    setBounds(input: FrontronWindowBounds): Promise<null>
+    getPosition(): Promise<FrontronWindowPosition | null>
+    setPosition(input: FrontronWindowPosition): Promise<null>
+    getAlwaysOnTop(): Promise<boolean>
+    setAlwaysOnTop(input: { value: boolean }): Promise<null>
+    getOpacity(): Promise<number | null>
+    setOpacity(input: { value: number }): Promise<null>
     getState(): Promise<FrontronWindowState>
     onMaximizedChanged(listener: (isMaximized: boolean) => void): () => void
   }
   windows: {
     open(input: { name: string }): Promise<null>
+    isVisible(input: { name: string }): Promise<boolean>
+    isFocused(input: { name: string }): Promise<boolean>
     show(input: { name: string }): Promise<null>
+    showInactive(input: { name: string }): Promise<null>
+    toggleVisibility(input: { name: string }): Promise<null>
     hide(input: { name: string }): Promise<null>
     focus(input: { name: string }): Promise<null>
     close(input: { name: string }): Promise<null>
     minimize(input: { name: string }): Promise<null>
     toggleMaximize(input: { name: string }): Promise<null>
     exists(input: { name: string }): Promise<boolean>
+    getBounds(input: { name: string }): Promise<FrontronWindowBounds | null>
+    setBounds(input: { name: string } & FrontronWindowBounds): Promise<null>
+    getPosition(input: { name: string }): Promise<FrontronWindowPosition | null>
+    setPosition(input: { name: string } & FrontronWindowPosition): Promise<null>
+    getAlwaysOnTop(input: { name: string }): Promise<boolean | null>
+    setAlwaysOnTop(input: { name: string; value: boolean }): Promise<null>
+    getOpacity(input: { name: string }): Promise<number | null>
+    setOpacity(input: { name: string; value: number }): Promise<null>
     getState(input: { name: string }): Promise<FrontronWindowState | null>
     listConfigured(): Promise<string[]>
     listOpen(): Promise<string[]>

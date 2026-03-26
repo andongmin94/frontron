@@ -51,6 +51,7 @@ This keeps the web app and the app-layer configuration easy to separate.
 - named secondary window management from configured `windows`
 - preload bridge exposure
 - window state reading and window controls
+- tray-friendly hidden-window helpers such as `isVisible`, `isFocused`, and `toggleVisibility`
 - custom title bar wiring
 - desktop launch in dev and staged files for build
 - packaging flow

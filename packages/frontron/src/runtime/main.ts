@@ -125,6 +125,15 @@ function getOpenWindowNames() {
   return [...openWindows.keys()].sort()
 }
 
+function getOpenWindowUrls() {
+  return Object.fromEntries(
+    getOpenWindowNames().map((windowName) => [
+      windowName,
+      openWindows.get(windowName)?.webContents.getURL() ?? null,
+    ]),
+  )
+}
+
 function isPlainObjectRecord(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return false
@@ -1048,6 +1057,7 @@ async function bootstrap() {
           windowRoute: getPrimaryWindowConfig(manifest).route,
           configuredWindowNames: getConfiguredWindowNames(manifest),
           openWindowNames: getOpenWindowNames(),
+          openWindowUrls: getOpenWindowUrls(),
           loadedUrl: getPrimaryWindow()?.webContents.getURL(),
           zoomFactor: getPrimaryWindow()?.webContents.getZoomFactor(),
           renderState,
@@ -1094,8 +1104,10 @@ async function bootstrap() {
 
   app.on('activate', async () => {
     if (!getPrimaryWindow()) {
+      const nextPrimaryWindowName = primaryWindowName ?? getPrimaryWindowName(manifest)
+
       await openConfiguredWindow(
-        primaryWindowName,
+        nextPrimaryWindowName,
         manifest,
         manifestPath,
         desktopContext,

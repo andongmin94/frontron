@@ -2,6 +2,10 @@
 
 `frontron` is the framework-first desktop app layer for existing web projects.
 
+## Requirements
+
+- Node.js `22.15+`
+
 ## What It Owns
 
 - `defineConfig`
@@ -166,7 +170,7 @@ export default defineConfig({
 - `security.externalNavigation` and `security.newWindow` control what happens when renderer content tries to leave the app origin. They support `allow`, `deny`, and `openExternal`.
 - Frontron still keeps `preload`, `nodeIntegration`, `contextIsolation`, and raw session ownership inside the framework.
 - `create-frontron` is only a thin starter generator.
-- The architecture contract lives in [`../../specs/framework-first.md`](../../specs/framework-first.md).
+- The framework-first contract lives in the official guide: [Framework-First Contract](https://frontron.andongmin.com/guide/framework-first).
 
 Docs: [frontron.andongmin.com](https://frontron.andongmin.com)
 

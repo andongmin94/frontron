@@ -69,9 +69,25 @@ export type FrontronBridgeHandler = (...args: unknown[]) => unknown | Promise<un
 export type FrontronBridgeNamespace = Record<string, FrontronBridgeHandler>
 export type FrontronBridgeConfig = Record<string, FrontronBridgeNamespace>
 
+export interface FrontronWindowPosition {
+  x: number
+  y: number
+}
+
+export interface FrontronWindowBounds extends FrontronWindowPosition {
+  width: number
+  height: number
+}
+
 export interface FrontronWindowState {
   isMaximized: boolean
   isMinimized: boolean
+  isVisible: boolean
+  isFocused: boolean
+  alwaysOnTop: boolean
+  opacity: number | null
+  bounds: FrontronWindowBounds | null
+  position: FrontronWindowPosition | null
 }
 
 export interface FrontronDeepLinksConfig {
@@ -148,22 +164,46 @@ export interface FrontronDesktopContext {
     openExternal(input: string | { url: string }): Promise<void>
   }
   window: {
+    isVisible(): boolean
+    isFocused(): boolean
     show(): void
+    showInactive(): void
+    toggleVisibility(): void
     hide(): void
     focus(): void
     minimize(): void
     toggleMaximize(): void
+    getBounds(): FrontronWindowBounds | null
+    setBounds(bounds: FrontronWindowBounds): void
+    getPosition(): FrontronWindowPosition | null
+    setPosition(position: FrontronWindowPosition): void
+    getAlwaysOnTop(): boolean
+    setAlwaysOnTop(value: boolean): void
+    getOpacity(): number | null
+    setOpacity(value: number): void
     getState(): FrontronWindowState
   }
   windows: {
     open(name: string): Promise<void>
+    isVisible(name: string): boolean
+    isFocused(name: string): boolean
     show(name: string): Promise<void>
+    showInactive(name: string): Promise<void>
+    toggleVisibility(name: string): Promise<void>
     hide(name: string): void
     focus(name: string): void
     close(name: string): void
     minimize(name: string): void
     toggleMaximize(name: string): void
     exists(name: string): boolean
+    getBounds(name: string): FrontronWindowBounds | null
+    setBounds(name: string, bounds: FrontronWindowBounds): void
+    getPosition(name: string): FrontronWindowPosition | null
+    setPosition(name: string, position: FrontronWindowPosition): void
+    getAlwaysOnTop(name: string): boolean | null
+    setAlwaysOnTop(name: string, value: boolean): void
+    getOpacity(name: string): number | null
+    setOpacity(name: string, value: number): void
     getState(name: string): FrontronWindowState | null
     listConfigured(): string[]
     listOpen(): string[]

@@ -3,9 +3,17 @@ import fs from 'fs-extra'
 import { expect, test } from 'vitest'
 
 const repoRoot = join(__dirname, '..', '..', '..')
-const fixturesRoot = join(repoRoot, 'specs', 'fixtures', 'framework-first')
-const manualInstallDir = join(fixturesRoot, 'manual-install')
-const starterOutputDir = join(fixturesRoot, 'starter-output')
+const starterTemplateDir = join(repoRoot, 'packages', 'create-frontron', 'template')
+const manualInstallBaselineFiles = [
+  'frontron.config.ts',
+  'frontron/bridge/index.ts',
+  'frontron/config.ts',
+  'frontron/windows/index.ts',
+  'package.json',
+  'src/App.tsx',
+  'src/main.tsx',
+  'vite.config.ts',
+]
 
 const listFiles = (dir: string): string[] => {
   const files: string[] = []
@@ -29,25 +37,24 @@ const listFiles = (dir: string): string[] => {
   return files.sort()
 }
 
-test('framework-first fixtures keep the starter output compatible with manual install', () => {
-  const manualFiles = listFiles(manualInstallDir)
-  const starterFiles = listFiles(starterOutputDir)
+test('starter template keeps the manual-install baseline contract', () => {
+  const starterFiles = listFiles(starterTemplateDir)
 
-  expect(starterFiles.length).toBeGreaterThanOrEqual(manualFiles.length)
+  expect(starterFiles.length).toBeGreaterThanOrEqual(manualInstallBaselineFiles.length)
 
-  for (const file of manualFiles) {
+  for (const file of manualInstallBaselineFiles) {
     expect(starterFiles).toContain(file)
   }
 })
 
-test('framework-first fixtures declare canonical app scripts and config entrypoints', () => {
-  const pkg = fs.readJsonSync(join(manualInstallDir, 'package.json'))
+test('starter template declares canonical app scripts and config entrypoints', () => {
+  const pkg = fs.readJsonSync(join(starterTemplateDir, 'package.json'))
   const rootConfig = fs.readFileSync(
-    join(manualInstallDir, 'frontron.config.ts'),
+    join(starterTemplateDir, 'frontron.config.ts'),
     'utf-8',
   )
   const appConfig = fs.readFileSync(
-    join(manualInstallDir, 'frontron', 'config.ts'),
+    join(starterTemplateDir, 'frontron', 'config.ts'),
     'utf-8',
   )
 

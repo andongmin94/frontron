@@ -30,9 +30,21 @@ preload global 을 직접 읽지 마세요.
 
 ### `bridge.window`
 
+- `isVisible()`
+- `isFocused()`
+- `toggleVisibility()`
+- `showInactive()`
 - `minimize()`
 - `toggleMaximize()`
 - `hide()`
+- `getBounds()`
+- `setBounds({ x, y, width, height })`
+- `getPosition()`
+- `setPosition({ x, y })`
+- `getAlwaysOnTop()`
+- `setAlwaysOnTop({ value })`
+- `getOpacity()`
+- `setOpacity({ value })`
 - `getState()`
 - `onMaximizedChanged(listener)`
 
@@ -41,18 +53,32 @@ preload global 을 직접 읽지 마세요.
 ### `bridge.windows`
 
 - `open({ name })`
+- `isVisible({ name })`
+- `isFocused({ name })`
 - `show({ name })`
+- `showInactive({ name })`
+- `toggleVisibility({ name })`
 - `hide({ name })`
 - `focus({ name })`
 - `close({ name })`
 - `minimize({ name })`
 - `toggleMaximize({ name })`
 - `exists({ name })`
+- `getBounds({ name })`
+- `setBounds({ name, x, y, width, height })`
+- `getPosition({ name })`
+- `setPosition({ name, x, y })`
+- `getAlwaysOnTop({ name })`
+- `setAlwaysOnTop({ name, value })`
+- `getOpacity({ name })`
+- `setOpacity({ name, value })`
 - `getState({ name })`
 - `listConfigured()`
 - `listOpen()`
 
 config 에 window 를 여러 개 정의했다면 이 namespace 를 사용하세요.
+
+현재 window 모델은 여전히 named, route-based, lazy-singleton 구조입니다. `bridge.windows` 는 configured window 이름만 다루며, 임의의 runtime window instance 나 parent/modal window graph 를 만들지는 않습니다.
 
 ### `bridge.native`
 
@@ -67,8 +93,15 @@ import { bridge } from 'frontron/client'
 
 const version = await bridge.system.getVersion()
 const state = await bridge.window.getState()
+const bounds = await bridge.window.getBounds()
+const mainVisible = await bridge.window.isVisible()
+const mainFocused = await bridge.window.isFocused()
 const nativeStatus = await bridge.native.getStatus()
-await bridge.windows.open({ name: 'settings' })
+await bridge.window.toggleVisibility()
+const settingsVisible = await bridge.windows.isVisible({ name: 'settings' })
+const settingsFocused = await bridge.windows.isFocused({ name: 'settings' })
+await bridge.windows.toggleVisibility({ name: 'settings' })
+await bridge.windows.setAlwaysOnTop({ name: 'settings', value: true })
 ```
 
 이 메서드는 프로젝트별 bridge 코드를 추가하지 않아도 동작합니다.

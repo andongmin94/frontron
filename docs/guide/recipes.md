@@ -6,6 +6,12 @@ The goal is not to show every option.
 
 The goal is to show when auto inference is enough and when you should write `web.dev` and `web.build` explicitly.
 
+## Evidence levels
+
+- `Verified`: backed by representative tests or smoke coverage in this repository
+- `Conditional`: supported with clear constraints, but still depends on your project shape
+- `Unsupported`: outside the current framework contract
+
 ## Vite
 
 Vite is the simplest path.
@@ -116,6 +122,51 @@ export default defineConfig({
 ```
 
 This is usually clearer than relying on inference in a workspace.
+
+## Named windows example
+
+Support level: `Verified`
+
+This is the representative Frontron multi-window pattern today: one primary window plus one named settings window, both loaded from app routes and reused as named singletons.
+
+```ts
+// frontron/windows/index.ts
+const windows = {
+  main: {
+    route: '/',
+    width: 1280,
+    height: 800,
+  },
+  settings: {
+    route: '/settings',
+    width: 960,
+    height: 720,
+    show: false,
+  },
+}
+
+export default windows
+```
+
+Open the settings window later from tray, menu, hooks, or the renderer bridge:
+
+```ts
+// frontron/tray.ts
+const tray = {
+  onClick: ({ windows }) => windows.toggleVisibility('settings'),
+}
+
+export default tray
+```
+
+```ts
+// renderer
+import { bridge } from 'frontron/client'
+
+await bridge.windows.toggleVisibility({ name: 'settings' })
+```
+
+This pattern is route-based, named, and lazy-singleton. It is not a dynamic multi-instance window model.
 
 ## Custom wrapper scripts
 

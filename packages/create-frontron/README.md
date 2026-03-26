@@ -8,7 +8,7 @@
 
 # create-frontron <a href="https://npmjs.com/package/create-frontron"><img src="https://img.shields.io/npm/v/create-frontron" alt="npm package"></a>
 
-`create-frontron` is the thin starter generator for `frontron`.
+`create-frontron` is the thin starter generator for Frontron, the framework-first desktop app layer for existing web projects.
 
 It generates the official framework-first app shape:
 
@@ -41,7 +41,7 @@ The generated starter keeps the framework-first contract and adds a richer web b
 
 ## Requirements
 
-- Node.js `22+`
+- Node.js `22.15+`
 
 ## Usage
 

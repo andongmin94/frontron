@@ -6,7 +6,7 @@ titleTemplate: Framework-First Desktop Apps
 
 hero:
   name: Frontron
-  text: Run an existing web app as a desktop app with a framework-first contract
+  text: Framework-first desktop app layer for existing web projects
   tagline: "Run `npx frontron init`, then run `app:dev` and `app:build`."
   image:
     src: /logo.svg
@@ -42,6 +42,8 @@ features:
 
 ---
 
+Frontron is the framework-first desktop app layer for existing web projects.
+
 ## Start with the path that matches you
 
 ## If the bridge feels confusing
@@ -75,6 +77,7 @@ Start here first:
 
 ## Good first manuals
 
+- [Official Contract](/guide/framework-first)
 - [Quick Start](/guide/)
 - [Install into an Existing Project](/guide/install-existing-project)
 - [Understand the Bridge Flow](/guide/understand-bridge-flow)

@@ -2,9 +2,11 @@
   "name": "docs",
   "type": "module",
   "scripts": {
+    "check:stale-refs": "node scripts/check-stale-refs.mjs",
     "docs": "vitepress dev",
     "docs-build": "vitepress build",
-    "docs-serve": "vitepress serve"
+    "docs-serve": "vitepress serve",
+    "validate": "npm run check:stale-refs && npm run docs-build"
   },
   "devDependencies": {
     "vitepress": "1.6.4"

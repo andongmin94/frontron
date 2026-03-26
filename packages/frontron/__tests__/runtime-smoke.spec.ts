@@ -504,6 +504,7 @@ test.sequential('staged build runtime boots in Electron smoke mode', async () =>
     windowRoute: string
     configuredWindowNames: string[]
     openWindowNames: string[]
+    openWindowUrls: Record<string, string | null>
     loadedUrl?: string
     zoomFactor?: number
     renderState: {
@@ -526,6 +527,10 @@ test.sequential('staged build runtime boots in Electron smoke mode', async () =>
   expect(smokePayload.windowRoute).toBe('/settings/profile')
   expect(smokePayload.configuredWindowNames).toEqual(['main', 'settings'])
   expect(smokePayload.openWindowNames).toEqual(['main', 'settings'])
+  expect(smokePayload.openWindowUrls).toEqual({
+    main: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/settings\/profile$/),
+    settings: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/settings$/),
+  })
   expect(smokePayload.loadedUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/settings\/profile$/)
   expect(smokePayload.zoomFactor).toBeCloseTo(1.25)
   expect(smokePayload.renderState?.bodyText).toContain('fixture')

@@ -385,6 +385,120 @@ test('runCli check prints a monorepo and custom-script hint when the project use
   ).toBe(true)
 })
 
+test('runCli check reports unsupported raw Electron migration blockers early', async () => {
+  const fixtureDir = createFixtureProject()
+  fixtureDirs.push(fixtureDir)
+
+  mkdirSync(join(fixtureDir, 'src', 'electron'), { recursive: true })
+
+  writeFileSync(
+    join(fixtureDir, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'fixture-app',
+        private: true,
+        type: 'module',
+        scripts: {
+          dev: 'vite --port 4123',
+          build: 'vite build',
+          'app:dev': 'frontron dev',
+          'app:build': 'frontron build',
+        },
+      },
+      null,
+      2,
+    ),
+  )
+  writeFileSync(
+    join(fixtureDir, 'src', 'legacy-renderer.ts'),
+    [
+      'export function closeWindow() {',
+      '  return window.electron?.window?.close?.()',
+      '}',
+      '',
+    ].join('\n'),
+  )
+  writeFileSync(
+    join(fixtureDir, 'src', 'embedded-view.tsx'),
+    [
+      'export function EmbeddedView() {',
+      '  return <webview src="https://example.com" />',
+      '}',
+      '',
+    ].join('\n'),
+  )
+  writeFileSync(
+    join(fixtureDir, 'src', 'electron', 'main.ts'),
+    [
+      "import { BrowserWindow } from 'electron'",
+      '',
+      'export function openLegacyWindows(mainWindow) {',
+      '  const modalWindow = new BrowserWindow({',
+      '    parent: mainWindow,',
+      '    modal: true,',
+      '    webPreferences: {',
+      "      preload: 'preload.js',",
+      '      nodeIntegration: true,',
+      '      contextIsolation: false,',
+      '      webviewTag: true,',
+      '    },',
+      '  })',
+      "  modalWindow.loadURL('https://example.com')",
+      '  modalWindow.setIgnoreMouseEvents(true)',
+      '  return modalWindow',
+      '}',
+      '',
+    ].join('\n'),
+  )
+
+  const info: string[] = []
+  const error: string[] = []
+  const exitCode = await runCli(
+    ['check', '--cwd', fixtureDir],
+    {
+      info(message) {
+        info.push(message)
+      },
+      error(message) {
+        error.push(message)
+      },
+    },
+  )
+
+  expect(exitCode).toBe(1)
+  expect(info.some((message) => message.includes('Loaded config:'))).toBe(true)
+  expect(
+    error.some((message) => message.includes('legacy raw-Electron project files were found under src/electron')),
+  ).toBe(true)
+  expect(
+    error.some((message) => message.includes('legacy renderer globals were found in src/legacy-renderer.ts')),
+  ).toBe(true)
+  expect(
+    error.some((message) =>
+      message.includes('raw BrowserWindow security/runtime options were found in src/electron/main.ts'),
+    ),
+  ).toBe(true)
+  expect(
+    error.some((message) => message.includes('Electron <webview> usage was found in src/embedded-view.tsx')),
+  ).toBe(true)
+  expect(
+    error.some((message) =>
+      message.includes('overlay or click-through APIs were found in src/electron/main.ts'),
+    ),
+  ).toBe(true)
+  expect(
+    error.some((message) =>
+      message.includes('parent/modal BrowserWindow relationships were found in src/electron/main.ts'),
+    ),
+  ).toBe(true)
+  expect(
+    error.some((message) =>
+      message.includes('remote URL or file-backed window content was found in src/electron/main.ts'),
+    ),
+  ).toBe(true)
+  expect(error.some((message) => message.includes('Check found problems.'))).toBe(true)
+})
+
 test('runCli check reports missing official config and scripts', async () => {
   const fixtureDir = createFixtureProject()
   fixtureDirs.push(fixtureDir)

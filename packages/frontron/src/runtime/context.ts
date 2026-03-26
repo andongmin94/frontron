@@ -1,6 +1,12 @@
 import { createRequire } from 'node:module'
 
-import type { FrontronDesktopContext, FrontronUpdateState } from '../types'
+import type {
+  FrontronDesktopContext,
+  FrontronUpdateState,
+  FrontronWindowBounds,
+  FrontronWindowPosition,
+  FrontronWindowState,
+} from '../types'
 import type { RuntimeManifest } from './manifest'
 
 const require = createRequire(import.meta.url)
@@ -36,6 +42,77 @@ function createDisabledUpdateState(
     status,
     currentVersion: manifest.app.version,
   }
+}
+
+function readWindowBounds(targetWindow: ElectronBrowserWindow | null): FrontronWindowBounds | null {
+  if (!targetWindow) {
+    return null
+  }
+
+  const { x, y, width, height } = targetWindow.getBounds()
+  return { x, y, width, height }
+}
+
+function readWindowPosition(
+  targetWindow: ElectronBrowserWindow | null,
+): FrontronWindowPosition | null {
+  if (!targetWindow) {
+    return null
+  }
+
+  const [x, y] = targetWindow.getPosition()
+  return { x, y }
+}
+
+function createWindowState(targetWindow: ElectronBrowserWindow | null): FrontronWindowState {
+  return {
+    isMaximized: targetWindow?.isMaximized() ?? false,
+    isMinimized: targetWindow?.isMinimized() ?? false,
+    isVisible: targetWindow?.isVisible() ?? false,
+    isFocused: targetWindow?.isFocused() ?? false,
+    alwaysOnTop: targetWindow?.isAlwaysOnTop() ?? false,
+    opacity: targetWindow?.getOpacity() ?? null,
+    bounds: readWindowBounds(targetWindow),
+    position: readWindowPosition(targetWindow),
+  }
+}
+
+function revealWindow(targetWindow: ElectronBrowserWindow | null) {
+  if (!targetWindow) {
+    return
+  }
+
+  if (targetWindow.isMinimized()) {
+    targetWindow.restore()
+  }
+
+  targetWindow.show()
+  targetWindow.focus()
+}
+
+function revealWindowInactive(targetWindow: ElectronBrowserWindow | null) {
+  if (!targetWindow) {
+    return
+  }
+
+  if (targetWindow.isMinimized()) {
+    targetWindow.restore()
+  }
+
+  targetWindow.showInactive()
+}
+
+function toggleWindowVisibility(targetWindow: ElectronBrowserWindow | null) {
+  if (!targetWindow) {
+    return
+  }
+
+  if (!targetWindow.isVisible() || targetWindow.isMinimized()) {
+    revealWindow(targetWindow)
+    return
+  }
+
+  targetWindow.hide()
 }
 
 export function createDesktopContext(
@@ -95,19 +172,20 @@ export function createDesktopContext(
       },
     },
     window: {
+      isVisible() {
+        return windowController.getPrimaryWindow()?.isVisible() ?? false
+      },
+      isFocused() {
+        return windowController.getPrimaryWindow()?.isFocused() ?? false
+      },
       show() {
-        const mainWindow = windowController.getPrimaryWindow()
-
-        if (!mainWindow) {
-          return
-        }
-
-        if (mainWindow.isMinimized()) {
-          mainWindow.restore()
-        }
-
-        mainWindow.show()
-        mainWindow.focus()
+        revealWindow(windowController.getPrimaryWindow())
+      },
+      showInactive() {
+        revealWindowInactive(windowController.getPrimaryWindow())
+      },
+      toggleVisibility() {
+        toggleWindowVisibility(windowController.getPrimaryWindow())
       },
       hide() {
         windowController.getPrimaryWindow()?.hide()
@@ -133,13 +211,32 @@ export function createDesktopContext(
 
         onWindowStateChanged?.()
       },
+      getBounds() {
+        return readWindowBounds(windowController.getPrimaryWindow())
+      },
+      setBounds(bounds) {
+        windowController.getPrimaryWindow()?.setBounds(bounds)
+      },
+      getPosition() {
+        return readWindowPosition(windowController.getPrimaryWindow())
+      },
+      setPosition(position) {
+        windowController.getPrimaryWindow()?.setPosition(position.x, position.y)
+      },
+      getAlwaysOnTop() {
+        return windowController.getPrimaryWindow()?.isAlwaysOnTop() ?? false
+      },
+      setAlwaysOnTop(value) {
+        windowController.getPrimaryWindow()?.setAlwaysOnTop(value)
+      },
+      getOpacity() {
+        return windowController.getPrimaryWindow()?.getOpacity() ?? null
+      },
+      setOpacity(value) {
+        windowController.getPrimaryWindow()?.setOpacity(value)
+      },
       getState() {
-        const mainWindow = windowController.getPrimaryWindow()
-
-        return {
-          isMaximized: mainWindow?.isMaximized() ?? false,
-          isMinimized: mainWindow?.isMinimized() ?? false,
-        }
+        return createWindowState(windowController.getPrimaryWindow())
       },
     },
     windows: {
@@ -148,21 +245,47 @@ export function createDesktopContext(
           ensureConfiguredWindowName(name, 'desktopContext.windows.open'),
         )
       },
-      async show(name) {
-        const targetWindow = await windowController.openConfiguredWindow(
-          ensureConfiguredWindowName(name, 'desktopContext.windows.show'),
+      isVisible(name) {
+        return (
+          windowController.getConfiguredWindow(
+            ensureConfiguredWindowName(name, 'desktopContext.windows.isVisible'),
+          )?.isVisible() ?? false
         )
+      },
+      isFocused(name) {
+        return (
+          windowController.getConfiguredWindow(
+            ensureConfiguredWindowName(name, 'desktopContext.windows.isFocused'),
+          )?.isFocused() ?? false
+        )
+      },
+      async show(name) {
+        revealWindow(
+          await windowController.openConfiguredWindow(
+            ensureConfiguredWindowName(name, 'desktopContext.windows.show'),
+          ),
+        )
+      },
+      async showInactive(name) {
+        revealWindowInactive(
+          await windowController.openConfiguredWindow(
+            ensureConfiguredWindowName(name, 'desktopContext.windows.showInactive'),
+          ),
+        )
+      },
+      async toggleVisibility(name) {
+        const configuredName = ensureConfiguredWindowName(
+          name,
+          'desktopContext.windows.toggleVisibility',
+        )
+        const targetWindow = windowController.getConfiguredWindow(configuredName)
 
         if (!targetWindow) {
+          revealWindow(await windowController.openConfiguredWindow(configuredName))
           return
         }
 
-        if (targetWindow.isMinimized()) {
-          targetWindow.restore()
-        }
-
-        targetWindow.show()
-        targetWindow.focus()
+        toggleWindowVisibility(targetWindow)
       },
       hide(name) {
         windowController.getConfiguredWindow(
@@ -170,19 +293,11 @@ export function createDesktopContext(
         )?.hide()
       },
       focus(name) {
-        const targetWindow = windowController.getConfiguredWindow(
-          ensureConfiguredWindowName(name, 'desktopContext.windows.focus'),
+        revealWindow(
+          windowController.getConfiguredWindow(
+            ensureConfiguredWindowName(name, 'desktopContext.windows.focus'),
+          ),
         )
-
-        if (!targetWindow) {
-          return
-        }
-
-        if (targetWindow.isMinimized()) {
-          targetWindow.restore()
-        }
-
-        targetWindow.focus()
       },
       close(name) {
         windowController.getConfiguredWindow(
@@ -216,6 +331,54 @@ export function createDesktopContext(
           ) !== null
         )
       },
+      getBounds(name) {
+        return readWindowBounds(
+          windowController.getConfiguredWindow(
+            ensureConfiguredWindowName(name, 'desktopContext.windows.getBounds'),
+          ),
+        )
+      },
+      setBounds(name, bounds) {
+        windowController.getConfiguredWindow(
+          ensureConfiguredWindowName(name, 'desktopContext.windows.setBounds'),
+        )?.setBounds(bounds)
+      },
+      getPosition(name) {
+        return readWindowPosition(
+          windowController.getConfiguredWindow(
+            ensureConfiguredWindowName(name, 'desktopContext.windows.getPosition'),
+          ),
+        )
+      },
+      setPosition(name, position) {
+        windowController.getConfiguredWindow(
+          ensureConfiguredWindowName(name, 'desktopContext.windows.setPosition'),
+        )?.setPosition(position.x, position.y)
+      },
+      getAlwaysOnTop(name) {
+        return (
+          windowController.getConfiguredWindow(
+            ensureConfiguredWindowName(name, 'desktopContext.windows.getAlwaysOnTop'),
+          )?.isAlwaysOnTop() ?? null
+        )
+      },
+      setAlwaysOnTop(name, value) {
+        windowController.getConfiguredWindow(
+          ensureConfiguredWindowName(name, 'desktopContext.windows.setAlwaysOnTop'),
+        )?.setAlwaysOnTop(value)
+      },
+      getOpacity(name) {
+        return (
+          windowController.getConfiguredWindow(
+            ensureConfiguredWindowName(name, 'desktopContext.windows.getOpacity'),
+          )?.getOpacity() ?? null
+        )
+      },
+      setOpacity(name, value) {
+        windowController.getConfiguredWindow(
+          ensureConfiguredWindowName(name, 'desktopContext.windows.setOpacity'),
+        )?.setOpacity(value)
+      },
       getState(name) {
         const targetWindow = windowController.getConfiguredWindow(
           ensureConfiguredWindowName(name, 'desktopContext.windows.getState'),
@@ -225,10 +388,7 @@ export function createDesktopContext(
           return null
         }
 
-        return {
-          isMaximized: targetWindow.isMaximized(),
-          isMinimized: targetWindow.isMinimized(),
-        }
+        return createWindowState(targetWindow)
       },
       listConfigured() {
         return windowController.listConfiguredWindows()

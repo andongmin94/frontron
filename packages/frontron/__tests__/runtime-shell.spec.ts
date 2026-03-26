@@ -14,21 +14,59 @@ function createDesktopContext(): FrontronDesktopContext {
       async openExternal() {},
     },
     window: {
+      isVisible() {
+        return false
+      },
+      isFocused() {
+        return false
+      },
       show() {},
+      showInactive() {},
+      toggleVisibility() {},
       hide() {},
       focus() {},
       minimize() {},
       toggleMaximize() {},
+      getBounds() {
+        return null
+      },
+      setBounds() {},
+      getPosition() {
+        return null
+      },
+      setPosition() {},
+      getAlwaysOnTop() {
+        return false
+      },
+      setAlwaysOnTop() {},
+      getOpacity() {
+        return null
+      },
+      setOpacity() {},
       getState() {
         return {
           isMaximized: false,
           isMinimized: false,
+          isVisible: false,
+          isFocused: false,
+          alwaysOnTop: false,
+          opacity: null,
+          bounds: null,
+          position: null,
         }
       },
     },
     windows: {
       async open() {},
+      isVisible() {
+        return false
+      },
+      isFocused() {
+        return false
+      },
       async show() {},
+      async showInactive() {},
+      async toggleVisibility() {},
       hide() {},
       focus() {},
       close() {},
@@ -37,6 +75,22 @@ function createDesktopContext(): FrontronDesktopContext {
       exists() {
         return false
       },
+      getBounds() {
+        return null
+      },
+      setBounds() {},
+      getPosition() {
+        return null
+      },
+      setPosition() {},
+      getAlwaysOnTop() {
+        return null
+      },
+      setAlwaysOnTop() {},
+      getOpacity() {
+        return null
+      },
+      setOpacity() {},
       getState() {
         return null
       },

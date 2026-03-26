@@ -10,7 +10,7 @@ Before you start, make sure the project already runs as a normal web app.
 
 You should have:
 
-- Node.js `22+`
+- Node.js `22.15+`
 - a working web project
 - a root `package.json`
 

@@ -197,6 +197,18 @@ Common window fields you can now change from `frontron.config.ts` or `frontron/w
 
 Use `show: false` when your app should start hidden and open later from your tray or bridge logic.
 
+For tray-style apps, pair hidden startup with the built-in toggle helpers:
+
+```ts
+onClick: ({ window }) => window.toggleVisibility()
+```
+
+```ts
+onClick: ({ windows }) => windows.toggleVisibility('settings')
+```
+
+If your tray menu, click handler, or hotkey path needs to branch on current visibility or focus, use `window.isVisible()`, `window.isFocused()`, `windows.isVisible('settings')`, or `windows.isFocused('settings')` from the main-process desktop context.
+
 `windows.*.advanced` is intentionally limited. Frontron still owns `webPreferences`, icon wiring, and the common typed window fields above.
 
 The safe web preference subset is intentionally small. Use `zoomFactor`, `sandbox`, `spellcheck`, and `webSecurity` here, but keep `preload`, `contextIsolation`, `nodeIntegration`, and raw session ownership inside Frontron.

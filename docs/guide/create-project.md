@@ -10,7 +10,7 @@ If you already have a web app, skip this page and start with [Install into an Ex
 
 Before you start, make sure you have:
 
-- Node.js `22+`
+- Node.js `22.15+`
 - npm, yarn, pnpm, or bun
 
 ## 2. The simplest create command

@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.15.0
+      - name: Install docs dependencies
+        working-directory: docs
+        run: npm install
+      - name: Validate docs
+        working-directory: docs
+        run: npm run validate
+
+  frontron:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.15.0
+          cache: npm
+          cache-dependency-path: packages/frontron/package-lock.json
+      - name: Install frontron dependencies
+        working-directory: packages/frontron
+        run: npm ci
+      - name: Build frontron
+        working-directory: packages/frontron
+        run: npm run build
+      - name: Typecheck frontron
+        working-directory: packages/frontron
+        run: npm run typecheck
+      - name: Test frontron
+        working-directory: packages/frontron
+        run: npm test
+      - name: Package smoke
+        working-directory: packages/frontron
+        run: npm run test:package-smoke
+
+  create-frontron:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.15.0
+          cache: npm
+          cache-dependency-path: packages/create-frontron/package-lock.json
+      - name: Install create-frontron dependencies
+        working-directory: packages/create-frontron
+        run: npm ci
+      - name: Build create-frontron
+        working-directory: packages/create-frontron
+        run: npm run build
+      - name: Typecheck create-frontron
+        working-directory: packages/create-frontron
+        run: npm run typecheck
+      - name: Test create-frontron
+        working-directory: packages/create-frontron
+        run: npm test
+
+  release-confidence:
+    runs-on: ubuntu-latest
+    needs:
+      - frontron
+      - create-frontron
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.15.0
+      - name: Install frontron dependencies
+        working-directory: packages/frontron
+        run: npm ci
+      - name: Install create-frontron dependencies
+        working-directory: packages/create-frontron
+        run: npm ci
+      - name: Run release confidence checks
+        working-directory: packages/create-frontron
+        run: npm run release:verify

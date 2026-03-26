@@ -6,7 +6,7 @@ titleTemplate: Framework-First 데스크톱 앱
 
 hero:
   name: Frontron
-  text: 기존 웹앱을 framework-first 계약으로 데스크톱 앱처럼 실행하세요
+  text: 기존 웹 프로젝트를 위한 framework-first 데스크톱 앱 레이어
   tagline: "`npx frontron init` 을 실행한 뒤 `app:dev` 와 `app:build` 를 실행하세요."
   image:
     src: /logo.svg
@@ -42,6 +42,8 @@ features:
 
 ---
 
+Frontron은 기존 웹 프로젝트를 위한 framework-first 데스크톱 앱 레이어입니다.
+
 ## 자신에게 맞는 시작 경로를 고르세요
 
 ## 브리지가 어렵게 느껴진다면
@@ -75,6 +77,7 @@ features:
 
 ## 먼저 보기 좋은 매뉴얼
 
+- [공식 계약](/ko/guide/framework-first)
 - [빠른 시작](/ko/guide/)
 - [기존 프로젝트에 설치하기](/ko/guide/install-existing-project)
 - [브리지 흐름 이해하기](/ko/guide/understand-bridge-flow)

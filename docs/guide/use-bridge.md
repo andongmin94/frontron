@@ -30,9 +30,21 @@ These namespaces are built into Frontron.
 
 ### `bridge.window`
 
+- `isVisible()`
+- `isFocused()`
+- `toggleVisibility()`
+- `showInactive()`
 - `minimize()`
 - `toggleMaximize()`
 - `hide()`
+- `getBounds()`
+- `setBounds({ x, y, width, height })`
+- `getPosition()`
+- `setPosition({ x, y })`
+- `getAlwaysOnTop()`
+- `setAlwaysOnTop({ value })`
+- `getOpacity()`
+- `setOpacity({ value })`
 - `getState()`
 - `onMaximizedChanged(listener)`
 
@@ -41,18 +53,32 @@ These namespaces are built into Frontron.
 ### `bridge.windows`
 
 - `open({ name })`
+- `isVisible({ name })`
+- `isFocused({ name })`
 - `show({ name })`
+- `showInactive({ name })`
+- `toggleVisibility({ name })`
 - `hide({ name })`
 - `focus({ name })`
 - `close({ name })`
 - `minimize({ name })`
 - `toggleMaximize({ name })`
 - `exists({ name })`
+- `getBounds({ name })`
+- `setBounds({ name, x, y, width, height })`
+- `getPosition({ name })`
+- `setPosition({ name, x, y })`
+- `getAlwaysOnTop({ name })`
+- `setAlwaysOnTop({ name, value })`
+- `getOpacity({ name })`
+- `setOpacity({ name, value })`
 - `getState({ name })`
 - `listConfigured()`
 - `listOpen()`
 
 Use this namespace when your config defines more than one named window.
+
+The current window model is still named, route-based, and lazy-singleton. `bridge.windows` addresses configured window names only. It does not create arbitrary runtime window instances or parent/modal window graphs.
 
 ### `bridge.native`
 
@@ -67,8 +93,15 @@ import { bridge } from 'frontron/client'
 
 const version = await bridge.system.getVersion()
 const state = await bridge.window.getState()
+const bounds = await bridge.window.getBounds()
+const mainVisible = await bridge.window.isVisible()
+const mainFocused = await bridge.window.isFocused()
 const nativeStatus = await bridge.native.getStatus()
-await bridge.windows.open({ name: 'settings' })
+await bridge.window.toggleVisibility()
+const settingsVisible = await bridge.windows.isVisible({ name: 'settings' })
+const settingsFocused = await bridge.windows.isFocused({ name: 'settings' })
+await bridge.windows.toggleVisibility({ name: 'settings' })
+await bridge.windows.setAlwaysOnTop({ name: 'settings', value: true })
 ```
 
 These methods work without project-specific bridge code.

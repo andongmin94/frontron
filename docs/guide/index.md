@@ -2,6 +2,8 @@
 
 This page is the fastest way to understand how to start and which guide to read next.
 
+Frontron is the framework-first desktop app layer for existing web projects.
+
 Frontron supports two normal entry paths: install it into an existing web project, or generate a new starter.
 
 If the desktop bridge feels abstract, read [Understand the Bridge Flow](/guide/understand-bridge-flow) before the API guide.
@@ -10,7 +12,7 @@ If the desktop bridge feels abstract, read [Understand the Bridge Flow](/guide/u
 
 You only need these two things to get started.
 
-- Node.js `22+`
+- Node.js `22.15+`
 - npm, yarn, pnpm, or bun
 
 ::: tip

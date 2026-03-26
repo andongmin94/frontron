@@ -22,6 +22,7 @@ It checks the first-run contract:
 - frontend build output, `.frontron/`, and packaged output state
 - Rust toolchain presence when `rust.enabled` is true
 - monorepo and custom-script hints when inference is likely ambiguous
+- legacy renderer globals and unsupported raw Electron migration blockers
 
 ## If the app does not start
 
@@ -30,7 +31,7 @@ Check these things first:
 - `npx frontron check` already showed the first failing item
 - `npm install` finished successfully
 - `npm run app:dev` does not already show a terminal error
-- your Node.js version is `22+`
+- your Node.js version is `22.15+`
 - the root `frontron.config.ts` exists
 
 ## If you see a blank page
@@ -73,6 +74,28 @@ The first things to check are:
 1. the renderer import comes from `frontron/client`
 2. direct preload-global reads are gone
 3. window and system calls go through `bridge.window.*` and `bridge.system.*`
+
+## If `check` reports migration blockers from an older Electron app
+
+`frontron check` now scans for a small set of raw Electron patterns that usually block migration.
+
+Common blockers are:
+
+- `window.electron` or a leftover `src/electron/*` / `electron/` runtime contract
+- raw `BrowserWindow` security fields such as `preload`, `webPreferences`, `nodeIntegration`, `contextIsolation`, or `webviewTag`
+- overlay or click-through APIs such as `setIgnoreMouseEvents`
+- parent/modal window graphs
+- remote `loadURL()` / `loadFile()` window content modes
+- renderer `<webview>` usage
+
+When one of these appears, stop and compare the app requirements against the [support matrix](./support-matrix.md).
+
+In most cases the fix is one of these:
+
+- move renderer calls to `frontron/client`
+- move desktop logic into the official `frontron/` app layer
+- remove unsupported raw Electron assumptions
+- or decide that raw Electron is still the better fit for this app
 
 ## If the icon does not change
 

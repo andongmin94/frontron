@@ -2,6 +2,8 @@
 
 이 페이지는 Frontron이 따르는 공식 구조와 책임 분리를 설명합니다.
 
+Frontron은 기존 웹 프로젝트를 위한 framework-first 데스크톱 앱 레이어입니다.
+
 ## 목표
 
 실제 제품 표면은 `frontron` 패키지여야 합니다.

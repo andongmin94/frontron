@@ -11,7 +11,7 @@ export default defineBuildConfig({
     },
   },
   alias: {
-    // We can use the non-transpiled entry because Node 22+ is required.
+    // We can use the non-transpiled entry because Node 22.15+ is required.
     prompts: 'prompts/lib/index.js',
   },
 })

@@ -51,6 +51,7 @@ package.json
 - config 에 정의한 named secondary window 관리
 - preload bridge 노출
 - 창 상태 조회와 창 제어
+- `isVisible`, `isFocused`, `toggleVisibility` 같은 tray-friendly hidden-window helper
 - 커스텀 타이틀바 연결
 - 개발 모드 실행과 빌드용 staged 파일 준비
 - 패키징 흐름

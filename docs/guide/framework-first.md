@@ -2,6 +2,8 @@
 
 This page describes the official structure and responsibility split that Frontron is built around.
 
+Frontron is the framework-first desktop app layer for existing web projects.
+
 ## Goal
 
 `frontron` must be the real product surface.

@@ -18,6 +18,11 @@ npx frontron check
 - 루트 `frontron.config.ts`
 - `app:dev`, `app:build`
 - 명시되었거나 자동 추론된 `web.dev`, `web.build`
+- dev 포트 충돌
+- 프론트엔드 빌드 산출물, `.frontron/`, 패키징 출력 상태
+- `rust.enabled`가 켜졌을 때 Rust toolchain 존재 여부
+- 모노레포나 wrapper script 때문에 추론이 애매해 보이는지
+- legacy renderer global 과 unsupported raw Electron migration blocker
 
 ## 앱이 시작되지 않을 때
 
@@ -26,7 +31,7 @@ npx frontron check
 - `npx frontron check` 가 가장 먼저 실패한 항목을 이미 보여 주는지
 - `npm install` 이 정상적으로 끝났는지
 - `npm run app:dev` 실행 중 터미널에 에러가 없는지
-- Node.js 버전이 `22+` 인지
+- Node.js 버전이 `22.15+` 인지
 - 루트에 `frontron.config.ts` 가 있는지
 
 ## 흰 화면이 보일 때
@@ -64,6 +69,28 @@ npx frontron check
 1. 렌더러 import 가 `frontron/client` 인지
 2. preload global 을 직접 읽는 코드가 사라졌는지
 3. 창/시스템 호출이 `bridge.window.*`, `bridge.system.*` 를 통하는지
+
+## `check`가 예전 Electron 앱의 migration blocker를 잡을 때
+
+`frontron check` 는 이제 마이그레이션을 자주 막는 raw Electron 패턴 몇 가지를 직접 스캔합니다.
+
+대표 blocker 는 아래와 같습니다.
+
+- `window.electron` 또는 남아 있는 `src/electron/*`, `electron/` 런타임 구조
+- `preload`, `webPreferences`, `nodeIntegration`, `contextIsolation`, `webviewTag` 같은 raw `BrowserWindow` 보안 필드
+- `setIgnoreMouseEvents` 같은 overlay / click-through API
+- parent / modal window graph
+- remote `loadURL()` / `loadFile()` 기반 window content mode
+- renderer의 `<webview>` 사용
+
+이런 항목이 잡히면, 더 깊게 연결하기 전에 먼저 [지원 범위 표](./support-matrix.md)와 요구사항을 맞춰 보세요.
+
+대부분의 대응은 아래 넷 중 하나입니다.
+
+- renderer 호출을 `frontron/client` 로 옮기기
+- 데스크톱 로직을 공식 `frontron/` 앱 레이어로 옮기기
+- 현재 지원하지 않는 raw Electron 가정을 제거하기
+- 아니면 이 앱에는 raw Electron 이 더 맞다는 판단을 내리기
 
 ## 아이콘이 바뀌지 않을 때
 

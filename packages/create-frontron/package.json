@@ -2,6 +2,7 @@
   "name": "create-frontron",
   "version": "0.11.2",
   "type": "module",
+  "description": "Thin starter generator for Frontron, the framework-first desktop app layer for existing web projects",
   "license": "MIT",
   "author": "안동민",
   "bin": {
@@ -24,7 +25,7 @@
     "release": "npm run release:verify && cd ../frontron && npm publish && cd ../create-frontron && npm publish"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.15.0"
   },
   "repository": {
     "type": "git",

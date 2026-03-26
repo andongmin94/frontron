@@ -25,6 +25,66 @@ function readFiniteNumber(value: unknown, owner: string) {
   return value
 }
 
+function readBooleanValueInput(input: unknown, owner: string) {
+  if (
+    !input ||
+    typeof input !== 'object' ||
+    !('value' in input) ||
+    typeof (input as { value?: unknown }).value !== 'boolean'
+  ) {
+    throw new Error(`[Frontron] "${owner}" requires a \`{ value: boolean }\` object.`)
+  }
+
+  return (input as { value: boolean }).value
+}
+
+function readOpacityValueInput(input: unknown, owner: string) {
+  if (
+    !input ||
+    typeof input !== 'object' ||
+    !('value' in input)
+  ) {
+    throw new Error(`[Frontron] "${owner}" requires a \`{ value: number }\` object.`)
+  }
+
+  const value = readFiniteNumber((input as { value: unknown }).value, `${owner}.value`)
+
+  if (value < 0 || value > 1) {
+    throw new Error(`[Frontron] "${owner}" requires \`value\` to be between 0 and 1.`)
+  }
+
+  return value
+}
+
+function readWindowPositionInput(input: unknown, owner: string) {
+  if (!input || typeof input !== 'object') {
+    throw new Error(`[Frontron] "${owner}" requires a \`{ x, y }\` object.`)
+  }
+
+  return {
+    x: readFiniteNumber((input as { x?: unknown }).x, `${owner}.x`),
+    y: readFiniteNumber((input as { y?: unknown }).y, `${owner}.y`),
+  }
+}
+
+function readWindowBoundsInput(input: unknown, owner: string) {
+  if (!input || typeof input !== 'object') {
+    throw new Error(`[Frontron] "${owner}" requires a \`{ x, y, width, height }\` object.`)
+  }
+
+  const bounds = {
+    ...readWindowPositionInput(input, owner),
+    width: readFiniteNumber((input as { width?: unknown }).width, `${owner}.width`),
+    height: readFiniteNumber((input as { height?: unknown }).height, `${owner}.height`),
+  }
+
+  if (bounds.width <= 0 || bounds.height <= 0) {
+    throw new Error(`[Frontron] "${owner}" requires \`width\` and \`height\` to be greater than 0.`)
+  }
+
+  return bounds
+}
+
 function readWindowNameInput(
   input: unknown,
   owner: string,
@@ -96,6 +156,16 @@ export function createBuiltInBridge(
       consumePending: () => context.deepLinks.consumePending(),
     },
     window: {
+      isVisible: () => context.window.isVisible(),
+      isFocused: () => context.window.isFocused(),
+      toggleVisibility: () => {
+        context.window.toggleVisibility()
+        return null
+      },
+      showInactive: () => {
+        context.window.showInactive()
+        return null
+      },
       minimize: () => {
         context.window.minimize()
         return null
@@ -106,6 +176,26 @@ export function createBuiltInBridge(
       },
       hide: () => {
         context.window.hide()
+        return null
+      },
+      getBounds: () => context.window.getBounds(),
+      setBounds: (input: unknown) => {
+        context.window.setBounds(readWindowBoundsInput(input, 'window.setBounds'))
+        return null
+      },
+      getPosition: () => context.window.getPosition(),
+      setPosition: (input: unknown) => {
+        context.window.setPosition(readWindowPositionInput(input, 'window.setPosition'))
+        return null
+      },
+      getAlwaysOnTop: () => context.window.getAlwaysOnTop(),
+      setAlwaysOnTop: (input: unknown) => {
+        context.window.setAlwaysOnTop(readBooleanValueInput(input, 'window.setAlwaysOnTop'))
+        return null
+      },
+      getOpacity: () => context.window.getOpacity(),
+      setOpacity: (input: unknown) => {
+        context.window.setOpacity(readOpacityValueInput(input, 'window.setOpacity'))
         return null
       },
       getState: () => context.window.getState(),
@@ -120,6 +210,22 @@ export function createBuiltInBridge(
         await context.windows.open(name)
         return null
       },
+      isVisible: (input: unknown) => {
+        const name = ensureConfiguredWindowName(
+          context,
+          readWindowNameInput(input, 'windows.isVisible'),
+          'windows.isVisible',
+        )
+        return context.windows.isVisible(name)
+      },
+      isFocused: (input: unknown) => {
+        const name = ensureConfiguredWindowName(
+          context,
+          readWindowNameInput(input, 'windows.isFocused'),
+          'windows.isFocused',
+        )
+        return context.windows.isFocused(name)
+      },
       show: async (input: unknown) => {
         const name = ensureConfiguredWindowName(
           context,
@@ -127,6 +233,24 @@ export function createBuiltInBridge(
           'windows.show',
         )
         await context.windows.show(name)
+        return null
+      },
+      showInactive: async (input: unknown) => {
+        const name = ensureConfiguredWindowName(
+          context,
+          readWindowNameInput(input, 'windows.showInactive'),
+          'windows.showInactive',
+        )
+        await context.windows.showInactive(name)
+        return null
+      },
+      toggleVisibility: async (input: unknown) => {
+        const name = ensureConfiguredWindowName(
+          context,
+          readWindowNameInput(input, 'windows.toggleVisibility'),
+          'windows.toggleVisibility',
+        )
+        await context.windows.toggleVisibility(name)
         return null
       },
       hide: (input: unknown) => {
@@ -181,6 +305,77 @@ export function createBuiltInBridge(
           'windows.exists',
         )
         return context.windows.exists(name)
+      },
+      getBounds: (input: unknown) => {
+        const name = ensureConfiguredWindowName(
+          context,
+          readWindowNameInput(input, 'windows.getBounds'),
+          'windows.getBounds',
+        )
+        return context.windows.getBounds(name)
+      },
+      setBounds: (input: unknown) => {
+        const name = ensureConfiguredWindowName(
+          context,
+          readWindowNameInput(input, 'windows.setBounds'),
+          'windows.setBounds',
+        )
+        context.windows.setBounds(name, readWindowBoundsInput(input, 'windows.setBounds'))
+        return null
+      },
+      getPosition: (input: unknown) => {
+        const name = ensureConfiguredWindowName(
+          context,
+          readWindowNameInput(input, 'windows.getPosition'),
+          'windows.getPosition',
+        )
+        return context.windows.getPosition(name)
+      },
+      setPosition: (input: unknown) => {
+        const name = ensureConfiguredWindowName(
+          context,
+          readWindowNameInput(input, 'windows.setPosition'),
+          'windows.setPosition',
+        )
+        context.windows.setPosition(name, readWindowPositionInput(input, 'windows.setPosition'))
+        return null
+      },
+      getAlwaysOnTop: (input: unknown) => {
+        const name = ensureConfiguredWindowName(
+          context,
+          readWindowNameInput(input, 'windows.getAlwaysOnTop'),
+          'windows.getAlwaysOnTop',
+        )
+        return context.windows.getAlwaysOnTop(name)
+      },
+      setAlwaysOnTop: (input: unknown) => {
+        const name = ensureConfiguredWindowName(
+          context,
+          readWindowNameInput(input, 'windows.setAlwaysOnTop'),
+          'windows.setAlwaysOnTop',
+        )
+        context.windows.setAlwaysOnTop(
+          name,
+          readBooleanValueInput(input, 'windows.setAlwaysOnTop'),
+        )
+        return null
+      },
+      getOpacity: (input: unknown) => {
+        const name = ensureConfiguredWindowName(
+          context,
+          readWindowNameInput(input, 'windows.getOpacity'),
+          'windows.getOpacity',
+        )
+        return context.windows.getOpacity(name)
+      },
+      setOpacity: (input: unknown) => {
+        const name = ensureConfiguredWindowName(
+          context,
+          readWindowNameInput(input, 'windows.setOpacity'),
+          'windows.setOpacity',
+        )
+        context.windows.setOpacity(name, readOpacityValueInput(input, 'windows.setOpacity'))
+        return null
       },
       getState: (input: unknown) => {
         const name = ensureConfiguredWindowName(

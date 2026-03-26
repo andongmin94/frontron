@@ -6,6 +6,12 @@
 
 자동 추론이 충분한지, 아니면 `web.dev`, `web.build` 를 직접 적어야 하는지만 빠르게 판단할 수 있게 하는 것이 목적입니다.
 
+## 검증 수준
+
+- `Verified`: 이 저장소 안의 대표 테스트나 smoke coverage로 뒷받침되는 상태
+- `Conditional`: 명확한 제약 안에서는 지원하지만 프로젝트 구조에 따라 달라질 수 있는 상태
+- `Unsupported`: 현재 프레임워크 계약 밖의 상태
+
 ## Vite
 
 Vite는 가장 단순한 경로입니다.
@@ -117,6 +123,51 @@ export default defineConfig({
 ```
 
 워크스페이스에서는 자동 추론보다 이 방식이 보통 더 명확합니다.
+
+## Named window 예제
+
+지원 수준: `Verified`
+
+이 예제가 현재 Frontron multi-window 패턴의 대표 형태입니다. primary window 하나와 named settings window 하나를 같은 앱 route에서 열고, 이름 기준 singleton으로 재사용하는 방식입니다.
+
+```ts
+// frontron/windows/index.ts
+const windows = {
+  main: {
+    route: '/',
+    width: 1280,
+    height: 800,
+  },
+  settings: {
+    route: '/settings',
+    width: 960,
+    height: 720,
+    show: false,
+  },
+}
+
+export default windows
+```
+
+그 뒤 settings window 는 tray, menu, hook, 또는 renderer bridge 에서 나중에 열면 됩니다.
+
+```ts
+// frontron/tray.ts
+const tray = {
+  onClick: ({ windows }) => windows.toggleVisibility('settings'),
+}
+
+export default tray
+```
+
+```ts
+// renderer
+import { bridge } from 'frontron/client'
+
+await bridge.windows.toggleVisibility({ name: 'settings' })
+```
+
+이 패턴은 route 기반, named, lazy-singleton 구조입니다. 동적으로 여러 인스턴스를 생성하는 multi-window 모델은 아닙니다.
 
 ## 커스텀 래퍼 스크립트
 

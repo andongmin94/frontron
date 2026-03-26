@@ -2,7 +2,6 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
-  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -15,6 +14,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 
 import { findConfigPath, loadConfig } from './config'
 import { writeBridgeTypes } from './bridge-types'
+import { formatDoctorPath, readDirectoryEntries, scanDoctorMigrationBlockers } from './doctor'
 import { runHook, type HookOutput } from './hooks'
 import { getRustTask } from './rust'
 import type { RuntimeManifest } from './runtime/manifest'
@@ -2254,28 +2254,6 @@ function outputConfiguredCommandSummary(
   output.info(`[Frontron] Web ${configuredCommand.mode} target: ${configuredCommand.target}`)
 }
 
-function formatDoctorPath(rootDir: string, targetPath: string) {
-  const relativePath = relative(rootDir, targetPath).replace(/\\/g, '/')
-
-  if (!relativePath) {
-    return '.'
-  }
-
-  return relativePath.startsWith('..') ? targetPath : relativePath
-}
-
-function readDirectoryEntries(targetDir: string) {
-  if (!existsSync(targetDir)) {
-    return []
-  }
-
-  try {
-    return readdirSync(targetDir)
-  } catch {
-    return []
-  }
-}
-
 function looksLikeWorkspaceProject(rootDir: string) {
   const packageJson = readProjectPackageJson(rootDir) as
     | (ProjectPackageJson & { workspaces?: unknown })
@@ -2601,6 +2579,16 @@ async function runDoctor(
   output.info(
     `[Frontron] App: ${loadedConfig.config.app.name} (${loadedConfig.config.app.id})`,
   )
+
+  const migrationBlockers = scanDoctorMigrationBlockers(loadedConfig.rootDir)
+
+  if (migrationBlockers.length > 0) {
+    hasIssues = true
+
+    for (const blocker of migrationBlockers) {
+      output.error(blocker.message)
+    }
+  }
 
   const configuredCommands = new Map<CommandName, ConfiguredCommand>()
 

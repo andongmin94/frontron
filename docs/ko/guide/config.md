@@ -187,6 +187,18 @@ const windows = {
 
 트레이 앱처럼 처음에는 창을 숨겨 두고 싶다면 `show: false` 를 사용하면 됩니다.
 
+트레이 스타일 앱에서는 hidden startup 뒤에 내장 toggle helper 를 붙이면 됩니다.
+
+```ts
+onClick: ({ window }) => window.toggleVisibility()
+```
+
+```ts
+onClick: ({ windows }) => windows.toggleVisibility('settings')
+```
+
+트레이 메뉴, 클릭 핸들러, 또는 hotkey 경로에서 현재 표시 상태나 focus 상태에 따라 분기해야 한다면, main-process desktop context 의 `window.isVisible()`, `window.isFocused()`, `windows.isVisible('settings')`, `windows.isFocused('settings')` 를 사용하면 됩니다.
+
 ## 5. 개발 서버 맞추기
 
 `web.dev.url` 을 직접 적는다면 `vite.config.ts` 의 개발 포트와 그 값이 맞아야 합니다.

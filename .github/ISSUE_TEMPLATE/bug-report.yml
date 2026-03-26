@@ -1,0 +1,44 @@
+name: Bug report
+description: Report a reproducible Frontron problem.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the failure and the expected result.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: List the exact steps, scripts, and project shape needed to reproduce the problem.
+      placeholder: |
+        1. Run `npx frontron check`
+        2. Run `npm run app:dev`
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: check-output
+    attributes:
+      label: `frontron check` output
+      description: Paste the full output from `npx frontron check`.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include Frontron version, Node.js version, OS, frontend stack, and whether this is an existing-project install or starter project.
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional notes
+      description: Add relevant config snippets, screenshots, or logs if needed.

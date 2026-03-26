@@ -26,8 +26,9 @@
   },
   "scripts": {
     "build": "unbuild",
-    "test": "vitest run --no-file-parallelism --exclude __tests__/package-smoke.spec.ts",
+    "test": "vitest run --no-file-parallelism --exclude __tests__/package-smoke.spec.ts --exclude __tests__/runtime-smoke.spec.ts",
     "test:package-smoke": "vitest run --no-file-parallelism __tests__/package-smoke.spec.ts",
+    "test:runtime-smoke": "vitest run --no-file-parallelism __tests__/runtime-smoke.spec.ts",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },

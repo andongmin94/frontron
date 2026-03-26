@@ -27,11 +27,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.15.0
-          cache: npm
-          cache-dependency-path: packages/frontron/package-lock.json
       - name: Install frontron dependencies
         working-directory: packages/frontron
-        run: npm ci
+        run: npm install
       - name: Build frontron
         working-directory: packages/frontron
         run: npm run build
@@ -52,11 +50,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.15.0
-          cache: npm
-          cache-dependency-path: packages/create-frontron/package-lock.json
       - name: Install create-frontron dependencies
         working-directory: packages/create-frontron
-        run: npm ci
+        run: npm install
       - name: Build create-frontron
         working-directory: packages/create-frontron
         run: npm run build
@@ -79,10 +75,10 @@ jobs:
           node-version: 22.15.0
       - name: Install frontron dependencies
         working-directory: packages/frontron
-        run: npm ci
+        run: npm install
       - name: Install create-frontron dependencies
         working-directory: packages/create-frontron
-        run: npm ci
+        run: npm install
       - name: Run release confidence checks
         working-directory: packages/create-frontron
         run: npm run release:verify

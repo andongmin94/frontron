@@ -173,8 +173,14 @@ function dependencyCandidate(): TemplateCandidate | null {
   }
 }
 
-function repoCandidate(): TemplateCandidate {
+function repoCandidate(): TemplateCandidate | null {
   const moduleDir = path.dirname(fileURLToPath(import.meta.url))
+  const sourceLayout =
+    path.basename(moduleDir) === 'runtime' &&
+    path.basename(path.dirname(moduleDir)) === 'init' &&
+    path.basename(path.dirname(path.dirname(moduleDir))) === 'src'
+
+  if (!sourceLayout) return null
 
   return {
     packageJsonPath: path.resolve(moduleDir, '../../../../create-frontron/package.json'),
@@ -227,7 +233,7 @@ function resolveTemplate(): ResolvedTemplate {
     }
   }
 
-  const candidates = [dependencyCandidate(), repoCandidate()].filter(
+  const candidates = [repoCandidate(), dependencyCandidate()].filter(
     (candidate): candidate is TemplateCandidate => candidate !== null,
   )
   const problems: string[] = []

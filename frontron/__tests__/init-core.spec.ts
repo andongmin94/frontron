@@ -13,7 +13,7 @@ import {
 import * as fixtures from './helpers/frontron-cli-fixtures'
 
 describe('frontron init core flow', () => {
-  test('template reader exposes the matching create-frontron Electron source', () => {
+  test('template reader exposes the matching repository Electron source', () => {
     const info = getInitTemplateInfo()
     const files = listCreateFrontronElectronFiles()
     const mainSource = readCreateFrontronTemplateFile('src/electron/main.ts')
@@ -22,8 +22,8 @@ describe('frontron init core flow', () => {
       source: 'create-frontron',
       packageName: 'create-frontron',
       packageVersion: expect.stringMatching(/^\d+\.\d+\.\d+$/),
+      resolvedFrom: 'repo',
     })
-    expect(['repo', 'dependency']).toContain(info.resolvedFrom)
     expect(files).toEqual([...new Set(files)].sort())
     expect(files).toEqual(
       expect.arrayContaining(['dev.ts', 'ipc.ts', 'main.ts', 'preload.ts', 'window.ts']),

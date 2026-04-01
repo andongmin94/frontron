@@ -8,9 +8,9 @@ import { ThemeProvider } from "@/components/theme-provider.tsx"
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <ThemeProvider defaultTheme="system" storageKey="frontron-theme">
+    <ThemeProvider defaultTheme="system" storageKey="desktop-template-theme">
       <TitleBar />
       <App />
     </ThemeProvider>
-  </StrictMode>,
+  </StrictMode>
 )

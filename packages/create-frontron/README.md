@@ -8,40 +8,15 @@
 
 # create-frontron <a href="https://npmjs.com/package/create-frontron"><img src="https://img.shields.io/npm/v/create-frontron" alt="npm package"></a>
 
-`create-frontron` is the thin starter generator for `frontron`.
+`create-frontron` scaffolds the default Electron + React + Vite starter.
 
-It generates the official framework-first app shape:
+It generates the default starter shape:
 
-- root `frontron.config.ts`
-- `frontron/` app-layer modules
-- `app:dev` and `app:build` scripts that call the `frontron` CLI
-- the official `frontron/rust` slot scaffold
-- a React + Vite starter with a prewired component base under `src/components/ui`
-
-`create-frontron` does not own desktop runtime or packaging behavior.
-
-Those responsibilities stay in `frontron`:
-
-- Electron runtime logic
-- packaging and build ownership
-- bridge runtime
-- copied `main` or preload boilerplate
-- template-only special desktop structure
-
-## Current Starter
-
-The generated starter keeps the framework-first contract and adds a richer web base:
-
-- `frontron.config.ts` re-exports the app-layer config
-- `frontron/bridge`, `frontron/menu`, `frontron/tray`, and `frontron/hooks` are scaffolded
-- `frontron/rust` is scaffolded with `enabled: false`
-- `.frontron/types/frontron-client.d.ts` is prepared for generated bridge types
-- desktop UI uses `frontron/client` instead of a custom Electron preload API
-- `src/components/ui` ships with the component base from the starter template
-
-## Requirements
-
-- Node.js `22+`
+- `src/electron/` for main, preload, tray, splash, and window wiring
+- `window.electron` preload bridge
+- an `app` script for Electron development
+- a `build` script for web build + Electron packaging
+- a React + Vite starter with a small UI/component base
 
 ## Usage
 
@@ -50,33 +25,26 @@ npm create frontron@latest
 npx create-frontron@latest my-app
 ```
 
-Options:
-
-- `--overwrite <yes|no|ignore>`
-
-## After Generation
+## After generation
 
 ```bash
 cd my-app
 npm install
-npm run app:dev
+npm run app
 ```
 
 - `npm run dev`: web preview only
-- `npm run app:dev`: Frontron desktop runtime + web dev server
+- `npm run app`: Electron runtime + web dev server
 
-## Output Shape
-
-Starter output shares the same official Frontron structure as manual install, while adding the starter web files and component base.
+## Output shape
 
 ```text
 my-app/
   src/
+    electron/
   public/
   package.json
   vite.config.ts
-  frontron.config.ts
-  frontron/
 ```
 
 ## License

@@ -1,8 +1,8 @@
 # Install into an Existing Project
 
-This page is for the main Frontron workflow.
+This page describes the manual or retrofit path.
 
-Use it when you already have a web frontend project and want to add the desktop app layer without switching to the starter.
+Use it when you already have a compatible web frontend project and want to add the desktop app layer without switching to the starter.
 
 ## 1. What you need first
 
@@ -14,9 +14,9 @@ You should have:
 - a working web project
 - a root `package.json`
 
-## 2. Fastest bootstrap
+## 2. Fastest manual bootstrap
 
-For the shortest setup, run:
+For the shortest retrofit setup, run:
 
 ```bash
 npx frontron init
@@ -77,15 +77,6 @@ export default defineConfig({
   app: {
     name: 'My App',
     id: 'com.example.myapp',
-    description: 'My desktop app',
-    author: 'My Team',
-  },
-  build: {
-    outputDir: 'release',
-    artifactName: '${productName}-${version}-${target}.${ext}',
-    windows: {
-      targets: ['portable', 'dir'],
-    },
   },
   windows: {
     main: {
@@ -97,20 +88,9 @@ export default defineConfig({
 })
 ```
 
-For a standard Vite project, Frontron can infer these values from your project:
+If your web setup is standard, Frontron can infer common `web.dev` and `web.build` values.
 
-- the web dev command from `package.json`
-- the web dev port from `vite.config.*`, `--port`, `PORT=`, or the Vite default
-- the build command from `package.json`
-- the build output folder from `vite.config.*` or the Vite default
-
-It can also follow common frontend defaults such as React Scripts, Astro, Angular CLI, Vue CLI, standard VitePress `docs:dev` / `docs:build` scripts, and well-known namespaced scripts such as `frontend:dev`, `frontend:build`, `client:dev`, `client:build`, `ui:dev`, and `renderer:build`.
-
-For Next.js, Frontron can infer the packaged build output when `next.config.*` uses `output: 'export'`.
-
-For Nuxt, Frontron can infer the packaged build output when your project uses a static `nuxt generate` / `nuxi generate` flow or another prerendered static output.
-
-If your project uses a custom or non-standard setup, add `web.dev` and `web.build` explicitly.
+If your project is custom, add them explicitly:
 
 ```ts
 export default defineConfig({
@@ -133,8 +113,6 @@ export default defineConfig({
 
 ## 6. Run the desktop app
 
-Start desktop mode:
-
 ```bash
 npm run app:dev
 ```
@@ -145,58 +123,13 @@ If you only run `npm run dev`, you only get the web preview.
 
 ## 7. Build the desktop app
 
-Package the app with:
-
 ```bash
 npm run app:build
 ```
 
 Frontron stages the runtime under `.frontron/` and writes packaged output under `output/` by default.
 
-In packaged production, Frontron serves the built frontend through its own local loopback server instead of `file://`.
-
-If `app.icon` is not set, Frontron uses its default icon automatically.
-
-You can move or reshape the packaged output from `frontron.config.ts`.
-
-Common user-owned build settings are:
-
-- `app.description`
-- `app.author`
-- `app.copyright`
-- `build.outputDir`
-- `build.artifactName`
-- `build.windows.targets`
-
-## 8. Common product settings
-
-Use `app` for normal product metadata, and the top-level `build` block for packaged output policy.
-
-`web.build` is still the frontend build step.
-
-The top-level `build` block is for desktop packaging decisions such as output folder, artifact naming, publish mode, and Windows targets.
-
-```ts
-export default defineConfig({
-  app: {
-    name: 'My App',
-    id: 'com.example.myapp',
-    description: 'Desktop shell for My App',
-    author: 'Example Team',
-    copyright: 'Copyright (c) 2026 Example Team',
-  },
-  build: {
-    outputDir: 'artifacts',
-    artifactName: '${productName}-${version}.${ext}',
-    publish: 'onTag',
-    windows: {
-      targets: ['nsis', 'portable', 'dir'],
-    },
-  },
-})
-```
-
-## 9. What you do not need to create by hand
+## 8. What you do not need to create by hand
 
 With this flow, you do not need to add:
 
@@ -207,17 +140,14 @@ With this flow, you do not need to add:
 
 Frontron owns those parts.
 
-## 10. What to do next
+## 9. What to do next
 
 After the first run, the most useful next pages are:
 
-1. [Understand the Bridge Flow](/guide/understand-bridge-flow)
-2. [Run in Development](/guide/run-development)
-3. [Use the Desktop Bridge](/guide/use-bridge)
-4. [Build and Package](/guide/build-and-package)
+1. [Run in Development](/guide/run-development)
+2. [Use the Desktop Bridge](/guide/use-bridge)
+3. [Build and Package](/guide/build-and-package)
 
 ::: tip
-You can stay with only `frontron.config.ts` at first.
-
-Create `frontron/` later when your app-layer code grows.
+If you are starting a brand-new app, `npm create frontron@latest` is still the default recommendation.
 :::

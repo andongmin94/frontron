@@ -1,17 +1,15 @@
 {
-  "name": "frontron",
+  "name": "desktop-app",
   "version": "0.0.0",
   "type": "module",
-  "author": "안동민",
-  "description": "Frontron framework-first starter with component base",
+  "author": "Template Maintainers",
+  "description": "Electron desktop app template with React and Vite",
+  "productName": "Desktop App",
   "scripts": {
     "dev": "vite",
-    "web:dev": "vite",
-    "build": "tsc -b && vite build",
-    "web:build": "tsc -b && vite build",
-    "app:dev": "frontron dev",
-    "app:build": "frontron build",
-    "lint": "oxlint . --fix && oxfmt --config .oxfmtrc.json --write ."
+    "app": "node src/electron/serve.ts --dev-app",
+    "build": "tsc -b && vite build && tsc -p tsconfig.electron.json && electron-builder",
+    "lint": "oxlint --fix src vite.config.ts && oxfmt ."
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
@@ -22,7 +20,6 @@
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
     "embla-carousel-react": "^8.6.0",
-    "frontron": "latest",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.577.0",
     "next-themes": "^0.4.6",
@@ -42,9 +39,37 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
-    "oxfmt": "^0.41.0",
-    "oxlint": "^1.56.0",
-    "typescript": "~5.9.3",
+    "electron": "^40.1.0",
+    "electron-builder": "^26.0.12",
+    "oxfmt": "^0.42.0",
+    "oxlint": "^1.57.0",
+    "typescript": "~6.0.2",
     "vite": "^8.0.1"
+  },
+  "main": "dist/electron/main.js",
+  "build": {
+    "appId": "com.example.desktopapp",
+    "productName": "Desktop App",
+    "copyright": "Copyright (c) Template Maintainers",
+    "icon": "public/icon.ico",
+    "win": {
+      "target": [
+        "msi",
+        "portable"
+      ]
+    },
+    "msi": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}.${ext}"
+    },
+    "files": [
+      "dist{,/**/*}",
+      "public{,/**/*}"
+    ],
+    "directories": {
+      "output": "output"
+    }
   }
 }

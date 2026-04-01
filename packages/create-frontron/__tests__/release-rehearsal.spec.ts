@@ -6,8 +6,6 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, expect, test } from 'vitest'
 
 const createPackageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
-const repoRoot = dirname(dirname(createPackageRoot))
-const frontronPackageRoot = join(repoRoot, 'packages', 'frontron')
 const tempDirs: string[] = []
 
 function getNpmExecutable() {
@@ -69,7 +67,6 @@ function packPackageForReal(packageRoot: string, tempPrefix: string) {
 
 function stabilizeGeneratedStarterDevPort(appRoot: string, port: number) {
   const packageJsonPath = join(appRoot, 'package.json')
-  const frontronConfigPath = join(appRoot, 'frontron', 'config.ts')
   const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
     scripts?: Record<string, string>
   }
@@ -77,17 +74,9 @@ function stabilizeGeneratedStarterDevPort(appRoot: string, port: number) {
   packageJson.scripts = {
     ...packageJson.scripts,
     dev: `vite --port ${port}`,
-    'web:dev': `vite --port ${port}`,
   }
 
   writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
-  writeFileSync(
-    frontronConfigPath,
-    readFileSync(frontronConfigPath, 'utf8').replace(
-      "url: 'http://localhost:3000'",
-      `url: 'http://localhost:${port}'`,
-    ),
-  )
 }
 
 afterEach(() => {
@@ -96,31 +85,10 @@ afterEach(() => {
   }
 }, 60000)
 
-test('package versions stay in sync between create-frontron and frontron', () => {
-  const createPackage = JSON.parse(
-    readFileSync(join(createPackageRoot, 'package.json'), 'utf8'),
-  ) as {
-    version: string
-  }
-  const frontronPackage = JSON.parse(
-    readFileSync(join(frontronPackageRoot, 'package.json'), 'utf8'),
-  ) as {
-    version: string
-  }
-
-  expect(createPackage.version).toBe(frontronPackage.version)
-})
-
 test(
-  'packed create-frontron can generate an app that passes packed frontron dev check',
+  'packed create-frontron can generate the restored template-owned electron starter',
   async () => {
-    const createPackage = JSON.parse(
-      readFileSync(join(createPackageRoot, 'package.json'), 'utf8'),
-    ) as {
-      version: string
-    }
     const createTarball = packPackageForReal(createPackageRoot, 'create-frontron-release-')
-    const frontronTarball = packPackageForReal(frontronPackageRoot, 'frontron-release-')
     const rehearsalRoot = mkdtempSync(join(tmpdir(), 'frontron-release-rehearsal-'))
     const generatedAppName = 'release-smoke-app'
     const generatedAppRoot = join(rehearsalRoot, generatedAppName)
@@ -128,7 +96,7 @@ test(
     tempDirs.push(rehearsalRoot)
 
     runNpm(['init', '-y'], rehearsalRoot)
-    runNpm(['install', '--ignore-scripts', createTarball, frontronTarball], rehearsalRoot)
+    runNpm(['install', '--ignore-scripts', createTarball], rehearsalRoot)
 
     const createCliPath = join(
       rehearsalRoot,
@@ -138,48 +106,46 @@ test(
     )
 
     runNode([createCliPath, generatedAppName, '--overwrite', 'yes'], rehearsalRoot)
-    stabilizeGeneratedStarterDevPort(generatedAppRoot, 4311)
 
     const generatedPackage = JSON.parse(
       readFileSync(join(generatedAppRoot, 'package.json'), 'utf8'),
     ) as {
       scripts: Record<string, string>
       dependencies: Record<string, string>
+      devDependencies: Record<string, string>
+      main?: string
+      build?: {
+        productName?: string
+        appId?: string
+      }
     }
 
-    expect(generatedPackage.dependencies.frontron).toBe(`^${createPackage.version}`)
-    expect(generatedPackage.scripts['app:dev']).toBe('frontron dev')
-    expect(generatedPackage.scripts['app:build']).toBe('frontron build')
-    expect(existsSync(join(generatedAppRoot, 'frontron.config.ts'))).toBe(true)
-    expect(existsSync(join(generatedAppRoot, 'frontron', 'config.ts'))).toBe(true)
-    expect(existsSync(join(generatedAppRoot, 'frontron', 'rust', 'Cargo.toml'))).toBe(true)
+    expect(generatedPackage.scripts.app).toContain('electron')
+    expect(generatedPackage.scripts.build).toContain('electron-builder')
+    expect(generatedPackage.dependencies).not.toHaveProperty('frontron')
+    expect(generatedPackage.dependencies).toHaveProperty('express')
+    expect(generatedPackage.devDependencies).toHaveProperty('electron')
+    expect(generatedPackage.devDependencies).toHaveProperty('electron-builder')
+    expect(generatedPackage.main).toBe('dist/electron/main.js')
+    expect(generatedPackage.build?.productName).toBe(generatedAppName)
+    expect(generatedPackage.build?.appId).toContain(generatedAppName)
+    expect(existsSync(join(generatedAppRoot, 'src', 'electron', 'main.ts'))).toBe(true)
+    expect(existsSync(join(generatedAppRoot, 'src', 'electron', 'preload.ts'))).toBe(true)
+    expect(existsSync(join(generatedAppRoot, 'src', 'types', 'electron.d.ts'))).toBe(true)
+    expect(existsSync(join(generatedAppRoot, 'tsconfig.electron.json'))).toBe(true)
+    expect(existsSync(join(generatedAppRoot, 'frontron.config.ts'))).toBe(false)
 
-    const frontronCliPath = join(rehearsalRoot, 'node_modules', 'frontron', 'index.js')
-    runNode([frontronCliPath, 'dev', '--cwd', generatedAppRoot, '--check'], rehearsalRoot)
-    runNpm(['install', '--ignore-scripts', frontronTarball], generatedAppRoot)
-    runNpm(['install'], generatedAppRoot)
-    runNode([frontronCliPath, 'check', '--cwd', generatedAppRoot], generatedAppRoot)
-    runNode([frontronCliPath, 'build', '--cwd', generatedAppRoot, '--check'], generatedAppRoot)
-    runNpm(['run', 'web:build'], generatedAppRoot)
-    runNpm(['run', 'lint'], generatedAppRoot)
-    runNpm(['run', 'app:build'], generatedAppRoot)
+    runNpm(['install', '--ignore-scripts'], generatedAppRoot)
+    stabilizeGeneratedStarterDevPort(generatedAppRoot, 4311)
 
-    expect(existsSync(join(generatedAppRoot, '.frontron', 'types', 'frontron-client.d.ts'))).toBe(
-      true,
-    )
-    expect(existsSync(join(generatedAppRoot, 'output', `${generatedAppName} Setup 0.0.0.exe`))).toBe(
-      true,
-    )
+    const packageAfterInstall = JSON.parse(
+      readFileSync(join(generatedAppRoot, 'package.json'), 'utf8'),
+    ) as {
+      scripts: Record<string, string>
+    }
 
-    const generatedTypes = readFileSync(
-      join(generatedAppRoot, '.frontron', 'types', 'frontron-client.d.ts'),
-      'utf8',
-    )
-
-    expect(generatedTypes).toContain('export {}')
-    expect(generatedTypes).toContain("declare module 'frontron/client'")
-    expect(generatedTypes).toContain('cpuCount')
-    expect(generatedTypes).toContain('hasTxtExtension')
+    expect(packageAfterInstall.scripts.dev).toBe('vite --port 4311')
+    expect(packageAfterInstall.scripts.app).toContain('npm run dev')
   },
-  300000,
+  120000,
 )

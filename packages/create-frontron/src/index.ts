@@ -17,7 +17,7 @@ const renameFiles: Record<string, string | undefined> = {
   _gitignore: '.gitignore',
 }
 
-const defaultTargetDir = 'frontron'
+const defaultTargetDir = 'desktop-app'
 const TEMPLATE_DIR = 'template'
 
 function ensureRemovedTemplateOption(
@@ -127,11 +127,6 @@ async function init() {
 
   const pkgInfo = pkgFromUserAgent(process.env.npm_config_user_agent)
   const pkgManager = pkgInfo ? pkgInfo.name : 'npm'
-  const createPackage = JSON.parse(
-    fs.readFileSync(path.join(templateDirRoot(), 'package.json'), 'utf-8'),
-  ) as {
-    version: string
-  }
 
   console.log(`\nScaffolding project in ${root}...`)
 
@@ -159,35 +154,20 @@ async function init() {
     fs.readFileSync(path.join(templateDir, 'package.json'), 'utf-8'),
   )
 
-  pkg.name = packageName || getProjectName()
-  if (pkg.dependencies?.frontron) {
-    pkg.dependencies.frontron = `^${createPackage.version}`
+  const projectDisplayName = getProjectName()
+  const projectPackageName = packageName || getProjectName()
+
+  pkg.name = projectPackageName
+
+  if (pkg.build?.productName === '__CREATE_APP_NAME__') {
+    pkg.build.productName = projectDisplayName
+  }
+
+  if (pkg.build?.appId === '__CREATE_APP_ID__') {
+    pkg.build.appId = toDefaultAppId(projectPackageName)
   }
 
   write('package.json', JSON.stringify(pkg, null, 2) + '\n')
-
-  const appConfigPath = path.join(root, 'frontron', 'config.ts')
-  if (fs.existsSync(appConfigPath)) {
-    const projectDisplayName = getProjectName()
-    const projectAppId = packageName || getProjectName()
-    const appConfig = fs.readFileSync(appConfigPath, 'utf-8')
-    fs.writeFileSync(
-      appConfigPath,
-      appConfig
-        .replace(/__FRONTRON_APP_NAME__/g, projectDisplayName)
-        .replace(/__FRONTRON_APP_ID__/g, projectAppId),
-    )
-  }
-
-  const rustCargoTomlPath = path.join(root, 'frontron', 'rust', 'Cargo.toml')
-  if (fs.existsSync(rustCargoTomlPath)) {
-    const rustCargoToml = fs.readFileSync(rustCargoTomlPath, 'utf-8')
-    const rustPackageName = `${toValidRustPackageName(packageName || getProjectName())}_native`
-    fs.writeFileSync(
-      rustCargoTomlPath,
-      rustCargoToml.replace(/__FRONTRON_APP_SLUG__/g, rustPackageName),
-    )
-  }
 
   const cdProjectName = path.relative(cwd, root)
   console.log(`\nDone. Now run:\n`)
@@ -201,11 +181,11 @@ async function init() {
   switch (pkgManager) {
     case 'yarn':
       console.log('  yarn')
-      console.log('  yarn app:dev')
+      console.log('  yarn app')
       break
     default:
       console.log(`  ${pkgManager} install`)
-      console.log(`  ${pkgManager} run app:dev`)
+      console.log(`  ${pkgManager} run app`)
       break
   }
   console.log()
@@ -243,14 +223,12 @@ function toValidPackageName(projectName: string) {
     .replace(/[^a-z\d\-~]+/g, '-')
 }
 
-function toValidRustPackageName(projectName: string) {
-  return projectName
-    .trim()
-    .toLowerCase()
-    .replace(/^@[^/]+\//, '')
-    .replace(/[^a-z\d]+/g, '_')
-    .replace(/^_+/, '')
-    .replace(/_+$/, '') || 'frontron'
+function toDefaultAppId(projectName: string) {
+  const slug = toValidPackageName(projectName)
+    .replace(/^@/, '')
+    .replace(/\//g, '-')
+
+  return `com.example.${slug || 'desktop-app'}`
 }
 
 function copyDir(srcDir: string, destDir: string) {

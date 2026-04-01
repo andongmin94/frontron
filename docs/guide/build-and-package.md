@@ -1,8 +1,8 @@
 # Build and Package
 
-If development mode works, the next step is to create distributable output.
+If starter development mode works, or if your retrofitted frontend already runs through `npm run app:dev`, the next step is to create distributable output.
 
-This page explains what `npm run app:build` does, which product decisions stay configurable, and where the results appear.
+This page explains what `npm run app:build` does, which packaging decisions still stay configurable, and where the results appear.
 
 ## 1. Command
 
@@ -16,7 +16,7 @@ That runs:
 frontron build
 ```
 
-In many starters, `npm run build` forwards to `npm run app:build`.
+In many generated starters, `npm run build` forwards to `npm run app:build`.
 
 ## 2. What happens during the build?
 
@@ -36,7 +36,7 @@ The runtime and packaging pipeline are still owned by `frontron`, not by copied 
 
 ## 4. Common packaging decisions in `frontron.config.ts`
 
-Normal product decisions stay in config:
+Normal packaged-app decisions stay in config:
 
 ```ts
 import { defineConfig } from 'frontron'
@@ -137,7 +137,7 @@ Path-based resource settings such as `build.extraResources`, `build.extraFiles`,
 
 `build.files` is different. It filters the staged packaged app contents, so keep those patterns relative to the staged app root.
 
-`build.advanced.electronBuilder` is the guarded last-mile override block. Use it only for edge cases. Frontron still blocks framework-owned fields such as staged app paths, package entry wiring, and the common typed packaging fields.
+`build.advanced.electronBuilder` is the guarded last-mile override block. Use it only for edge cases. `frontron` still blocks the staged app paths, package entry wiring, and the common packaging fields it already owns.
 
 The typed signing fields describe product policy, not secret material. Certificates, signing secrets, and keychain access still come from the local machine or CI environment.
 
@@ -156,7 +156,7 @@ Deep links also have a first typed config slice:
 - `deepLinks.name`
 - `deepLinks.schemes`
 
-Frontron stages those schemes into packaged build metadata and captures incoming URLs at runtime. Renderer code can then read them through `bridge.deepLink.getState()` and `bridge.deepLink.consumePending()`.
+`frontron` stages those schemes into packaged build metadata and captures incoming URLs at runtime. Renderer code can then read them through `bridge.deepLink.getState()` and `bridge.deepLink.consumePending()`.
 
 File associations now also have a first typed config slice:
 
@@ -169,7 +169,7 @@ File associations now also have a first typed config slice:
 - `build.fileAssociations[].isPackage`
 - `build.fileAssociations[].rank`
 
-Frontron maps those associations into packaged build metadata and still blocks raw `fileAssociations` overrides inside `build.advanced.electronBuilder`.
+`frontron` maps those associations into packaged build metadata and still blocks raw `fileAssociations` overrides inside `build.advanced.electronBuilder`.
 
 Target support is still limited by electron-builder itself. In practice, Windows associations depend on NSIS packaging and require `build.nsis.perMachine: true`.
 
@@ -205,7 +205,7 @@ output/
 ```
 
 - `dist/`: the built web frontend
-- `.frontron/`: Frontron staging and generated files
+- `.frontron/`: `frontron` staging and generated files
 - `output/`: the default packaged desktop output
 
 If you configured `build.outputDir`, replace `output/` with that folder when you inspect results.

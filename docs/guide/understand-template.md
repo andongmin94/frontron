@@ -2,7 +2,7 @@
 
 At the beginning, you do not need to read every file.
 
-When you first open a Frontron project, it is enough to understand which folders own which responsibilities.
+When you first open a generated Frontron starter, it is enough to understand which folders own which responsibilities.
 
 ## 1. The first files to look at
 
@@ -23,7 +23,7 @@ At first, it is enough to know that it can be a thin entrypoint that re-exports 
 
 ## 3. `frontron/`
 
-This folder is the app-layer area.
+This folder is the app-layer area that the starter prepares for desktop-side code.
 
 Start by learning these names:
 
@@ -56,7 +56,7 @@ The most important starter file here is usually `icon.ico`.
 
 This file matters for two reasons:
 
-- it shows how the app is started and built
+- it shows how the starter app is started and built
 - it shows which scripts wire the project to `frontron`
 
 For most people, the important scripts are:

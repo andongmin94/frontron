@@ -1,6 +1,8 @@
 # Use the Desktop Bridge
 
-This page explains the actual bridge API after you understand the basic flow.
+This page is the bridge reference for the `frontron` support package.
+
+If you created your app with `create-frontron`, this is the bridge API the starter is already wired for. If you retrofitted an existing frontend, this is the same supported renderer contract you should target.
 
 If you are new to Electron-style apps, read [Understand the Bridge Flow](/guide/understand-bridge-flow) first.
 
@@ -18,7 +20,7 @@ Do not use `window.electron`.
 
 ## 2. Built-in bridge APIs
 
-These namespaces are built into Frontron.
+These namespaces are built into `frontron`.
 
 ### `bridge.system`
 
@@ -52,7 +54,7 @@ These namespaces are built into Frontron.
 - `listConfigured()`
 - `listOpen()`
 
-Use this namespace when your config defines more than one named window.
+Use this namespace when your starter or manual config defines more than one named window.
 
 ### `bridge.native`
 
@@ -150,7 +152,7 @@ const sum = await bridge.math.add(2, 3)
 
 ## 6. Built-ins versus starter examples
 
-Some bridge methods shown in the starter are examples, not built-in framework APIs.
+Some bridge methods shown in the starter are examples, not built-in package APIs.
 
 For example:
 
@@ -162,7 +164,7 @@ Those methods exist only if your project config registers them.
 
 ## 7. Generated types
 
-Frontron writes `.frontron/types/frontron-client.d.ts` during:
+`frontron` writes `.frontron/types/frontron-client.d.ts` during:
 
 - `frontron dev`
 - `frontron build`

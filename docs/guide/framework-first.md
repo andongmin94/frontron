@@ -1,28 +1,26 @@
-# Framework-First Contract
+# CLI And Starter Contract
 
-This page describes the official structure and responsibility split that Frontron is built around.
+This page describes the current Frontron contract after restoring the 0.8.4 / 0.8.5 style product story.
 
 ## Goal
 
-`frontron` must be the real product surface.
+Frontron now centers on this split:
 
-- You must be able to install `frontron` into an existing web project.
-- The root `frontron.config.ts` must be the official entrypoint.
-- `create-frontron` must stay a thin starter generator.
+- `create-frontron` is the main starter/template entrypoint
+- `frontron` is the support CLI/runtime package behind that starter
 
 ## Official start flow
 
-The supported start flow is:
+The default supported flow is:
 
-1. Prepare an existing web frontend project
-2. Install `frontron`
-3. Add a root `frontron.config.ts`
-4. Run `app:dev`
-5. Run `app:build`
+1. run `npm create frontron@latest`
+2. install dependencies
+3. run `npm run app:dev`
+4. later run `npm run app:build`
 
 ## Official structure
 
-The important shape is:
+The generated starter still uses the same official shape:
 
 ```text
 my-app/
@@ -34,54 +32,45 @@ my-app/
   frontron/
 ```
 
-`frontron/` is the dedicated app-layer area.
-
-- `bridge/`
-- `windows/`
-- `tray.ts`
-- `menu.ts`
-- `hooks/`
-- `rust/`
+`frontron/` stays the dedicated app-layer area.
 
 ## Responsibility split
 
-The web project owns:
+`create-frontron` owns:
 
-- pages
-- components
-- state management
-- routing
-- API calls
+- starter generation
+- starter defaults and template files
+- the first-run developer experience
 
 `frontron` owns:
 
-- Electron runtime ownership
-- preload and main wiring
-- packaging and build ownership
-- typed bridge runtime
-- native loading
-
-`create-frontron` owns:
-
-- starter generation for the official shape
-- `frontron` dependency wiring
-- example `frontron.config.ts`
+- config discovery
+- CLI commands
+- runtime/build support
+- bridge/runtime helpers
+- `frontron/client`
+- Rust slot support
 
 ## Current state
 
-The repository already implements this structure.
+The repository already implements this split.
 
-- `frontron` owns config discovery, the CLI, and runtime/build staging.
-- `create-frontron` generates the official starter shape instead of a template-owned runtime.
-- The public renderer API is now only `frontron/client`.
-- The official Rust slot is now `frontron/rust`.
+- starter users begin with `create-frontron`
+- generated projects depend on `frontron`
+- `frontron` still provides `frontron dev`, `frontron build`, `frontron check`, and `defineConfig`
+- compatible manual installs can still use the same config structure
 
-## Older apps
+## Manual path
 
-Older `window.electron` renderer code is no longer supported.
+Manual setup is still valid, but it is now secondary:
 
-Older apps must move to this rule set:
+1. install `frontron`
+2. add `frontron.config.ts`
+3. add `app:dev` and `app:build`
+4. run through the CLI
 
-- use only `frontron/client` in renderer code
-- do not depend on preload globals or internal bridge wiring
-- do not restore the old `src/electron/*` structure
+## Renderer contract
+
+Renderer code should still use only `frontron/client`.
+
+The product direction changed, but the renderer-facing API did not.

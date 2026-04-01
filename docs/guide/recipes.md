@@ -1,6 +1,8 @@
 # Recipes
 
-This page shows the smallest Frontron setups for common frontend stacks.
+This page shows the smallest `frontron` setups for common frontend stacks.
+
+Use it when you start from a generated starter and want to compare script shapes, or when you are retrofitting an existing frontend and want a minimal explicit example.
 
 The goal is not to show every option.
 
@@ -8,7 +10,7 @@ The goal is to show when auto inference is enough and when you should write `web
 
 ## Vite
 
-Vite is the simplest path.
+Vite is the simplest path and the closest match to the default starter layout.
 
 ```json
 {
@@ -115,7 +117,7 @@ export default defineConfig({
 })
 ```
 
-This is usually clearer than relying on inference in a workspace.
+This is usually clearer than relying on inference in a workspace retrofit.
 
 ## Custom wrapper scripts
 
@@ -158,4 +160,4 @@ Use `npx frontron check` when:
 - the build output folder is unclear
 - you are wiring a workspace or wrapper script
 
-The check output is the fastest way to see what Frontron inferred and which values should become explicit.
+The check output is the fastest way to see what `frontron` inferred and which values should become explicit.

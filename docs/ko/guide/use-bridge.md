@@ -1,6 +1,8 @@
 # 데스크톱 브리지 사용하기
 
-이 페이지는 기본 개념을 이해한 다음 실제 브리지 API를 사용할 때 보는 문서입니다.
+이 페이지는 `frontron` support package가 노출하는 브리지 레퍼런스입니다.
+
+`create-frontron` 으로 앱을 만들었다면 스타터가 이미 이 브리지 구조에 맞게 잡혀 있고, 기존 프론트엔드를 수동으로 붙였다면 같은 렌더러 계약을 그대로 목표로 잡으면 됩니다.
 
 Electron 스타일 앱이 처음이라면 먼저 [브리지 흐름 이해하기](/ko/guide/understand-bridge-flow) 를 읽으세요.
 
@@ -18,7 +20,7 @@ preload global 을 직접 읽지 마세요.
 
 ## 2. 기본 내장 브리지 API
 
-아래 namespace 는 Frontron 에 기본으로 들어 있습니다.
+아래 namespace 는 `frontron` 에 기본으로 들어 있습니다.
 
 ### `bridge.system`
 
@@ -52,7 +54,7 @@ preload global 을 직접 읽지 마세요.
 - `listConfigured()`
 - `listOpen()`
 
-config 에 window 를 여러 개 정의했다면 이 namespace 를 사용하세요.
+스타터나 수동 config 에 window 를 여러 개 정의했다면 이 namespace 를 사용하세요.
 
 ### `bridge.native`
 
@@ -150,7 +152,7 @@ const sum = await bridge.math.add(2, 3)
 
 ## 6. 내장 API 와 스타터 예제 구분
 
-스타터에 들어 있는 몇몇 브리지 메서드는 예제일 뿐이고, 프레임워크 기본 내장 API 는 아닙니다.
+스타터에 들어 있는 몇몇 브리지 메서드는 예제일 뿐이고, 패키지 기본 내장 API 는 아닙니다.
 
 예를 들면:
 
@@ -162,7 +164,7 @@ const sum = await bridge.math.add(2, 3)
 
 ## 7. 생성 타입
 
-Frontron 은 아래 시점에 `.frontron/types/frontron-client.d.ts` 를 생성합니다.
+`frontron` 은 아래 시점에 `.frontron/types/frontron-client.d.ts` 를 생성합니다.
 
 - `frontron dev`
 - `frontron build`

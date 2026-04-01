@@ -2,7 +2,7 @@ import { defineConfig, type DefaultTheme } from "vitepress";
 
 const siteTitle = "Frontron";
 const siteDescription =
-  "Framework-first desktop app layer for existing web projects";
+  "CLI-assisted Electron starter workflow with Frontron desktop support";
 const siteUrl = "https://frontron.andongmin.com";
 const siteImage = "https://frontron.andongmin.com/logo.png";
 
@@ -288,7 +288,7 @@ export default defineConfig({
       lang: "ko-KR",
       link: "/ko/",
       title: koreanThemeText.title,
-      description: "기존 웹 프로젝트를 위한 framework-first desktop app layer",
+      description: "Frontron 데스크톱 support 가 연결된 CLI 기반 Electron 스타터",
       themeConfig: createThemeConfig("/ko", koreanThemeText),
     },
   },

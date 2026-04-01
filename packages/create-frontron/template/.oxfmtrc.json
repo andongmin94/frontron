@@ -12,6 +12,8 @@
   },
   "sortPackageJson": false,
   "ignorePatterns": [
+    "dist/",
+    "output/",
     "node_modules/",
     "coverage/",
     ".pnpm-store/",

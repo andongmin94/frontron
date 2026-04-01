@@ -72,17 +72,18 @@ afterEach(() => {
 })
 
 test(
-  'create-frontron npm pack output includes the thin starter generator contract',
+  'create-frontron npm pack output includes the starter generator contract',
   { timeout: 20_000 },
   () => {
   const packedFiles = readPackedFiles()
 
   expect(packedFiles.has('index.js')).toBe(true)
   expect(packedFiles.has('dist/index.mjs')).toBe(true)
-  expect(packedFiles.has('template/frontron.config.ts')).toBe(true)
-  expect(packedFiles.has('template/frontron/config.ts')).toBe(true)
-  expect(packedFiles.has('template/frontron/rust/Cargo.toml')).toBe(true)
-  expect(packedFiles.has('template/frontron/rust/src/lib.rs')).toBe(true)
+  expect(packedFiles.has('template/src/electron/main.ts')).toBe(true)
+  expect(packedFiles.has('template/src/electron/preload.ts')).toBe(true)
+  expect(packedFiles.has('template/src/electron/window.ts')).toBe(true)
+  expect(packedFiles.has('template/src/types/electron.d.ts')).toBe(true)
+  expect(packedFiles.has('template/tsconfig.electron.json')).toBe(true)
   expect(packedFiles.has('template/src/App.tsx')).toBe(true)
   expect(packedFiles.has('template/components.json')).toBe(true)
   expect(packedFiles.has('template/src/components/ui/button.tsx')).toBe(true)
@@ -93,9 +94,10 @@ test(
 
   expect(packedFiles.has('src/index.ts')).toBe(false)
   expect(packedFiles.has('__tests__/template-smoke.spec.ts')).toBe(false)
-  expect(packedFiles.has('template/src/electron/main.ts')).toBe(false)
   expect(packedFiles.has('template/src/lib/electron.ts')).toBe(false)
-  expect(packedFiles.has('template/src/types/electron.d.ts')).toBe(false)
+  expect(packedFiles.has('template/frontron.config.ts')).toBe(false)
+  expect(packedFiles.has('template/frontron/config.ts')).toBe(false)
+  expect(packedFiles.has('template/frontron/rust/Cargo.toml')).toBe(false)
   expect(packedFiles.has('PLANS.md')).toBe(false)
   },
 )

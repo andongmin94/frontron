@@ -12,6 +12,7 @@ type CliArguments = {
 type TemplatePackage = {
   name: string
   productName?: string
+  trustedDependencies?: string[]
   build?: {
     appId?: string
     productName?: string
@@ -125,10 +126,7 @@ function createPackageManagerFiles(packageManager: PackageManager) {
   }
 
   if (packageManager === 'yarn') {
-    return new Map([
-      ['.yarnrc.yml', 'nodeLinker: node-modules\n'],
-      ['yarn.lock', ''],
-    ])
+    return new Map([['.yarnrc.yml', 'nodeLinker: node-modules\n']])
   }
 
   return new Map<string, string>()
@@ -175,6 +173,7 @@ export async function runCreateFrontron(args = process.argv.slice(2)) {
   const projectPackageName = isValidPackageName(projectDisplayName)
     ? projectDisplayName
     : normalizedPackageName
+  const packageManager = packageManagerFromUserAgent(process.env.npm_config_user_agent)
 
   packageJson.name = projectPackageName
 
@@ -190,7 +189,11 @@ export async function runCreateFrontron(args = process.argv.slice(2)) {
     packageJson.build.appId = toDefaultAppId(projectPackageName)
   }
 
-  const packageManager = packageManagerFromUserAgent(process.env.npm_config_user_agent)
+  if (packageManager === 'bun') {
+    packageJson.trustedDependencies = ['electron', 'electron-winstaller']
+  } else {
+    delete packageJson.trustedDependencies
+  }
 
   console.log(`\nScaffolding project in ${root}...`)
   scaffoldProject(templateDir, root, packageJson, createPackageManagerFiles(packageManager))

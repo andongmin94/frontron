@@ -6,10 +6,10 @@
   "description": "Electron desktop app template with React and Vite",
   "productName": "__CREATE_APP_NAME__",
   "scripts": {
-    "dev"       : "node scripts/tasks.mjs dev",
-    "app"       : "node scripts/tasks.mjs app",
-    "typecheck" : "node scripts/tasks.mjs typecheck",
-    "build"     : "node scripts/tasks.mjs build",
+    "dev"          : "node scripts/tasks.mjs dev",
+    "app"          : "node scripts/tasks.mjs app",
+    "typecheck"    : "node scripts/tasks.mjs typecheck",
+    "build"        : "node scripts/tasks.mjs build",
     "lint"         : "node scripts/tasks.mjs lint",
     "format"       : "node scripts/tasks.mjs format",
     "format:check" : "node scripts/tasks.mjs format:check"
@@ -30,10 +30,6 @@
     "typescript"           : "~6.0.2",
     "vite"                 : "^8.0.1"
   },
-  "trustedDependencies": [
-    "electron",
-    "electron-winstaller"
-  ],
   "main": "dist/electron/main.js",
   "build": {
     "appId": "__CREATE_APP_ID__",

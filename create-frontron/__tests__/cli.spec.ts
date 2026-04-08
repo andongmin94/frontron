@@ -133,8 +133,8 @@ test('rejects filesystem roots and symlinked ancestors', async () => {
   expect(existsSync(join(externalRoot, 'app'))).toBe(false)
 })
 
-test('prints package-manager-specific next steps', async () => {
-  const workspace = createWorkspace('package-manager')
+test('writes only the Yarn linker setting for Yarn consumers', async () => {
+  const workspace = createWorkspace('yarn-config')
   process.chdir(workspace)
   process.env.npm_config_user_agent = 'yarn/4.9.2 npm/? node/v24.0.0 win32 x64'
 
@@ -145,7 +145,12 @@ test('prints package-manager-specific next steps', async () => {
   expect(readFileSync(join(workspace, 'app', '.yarnrc.yml'), 'utf8')).toBe(
     'nodeLinker: node-modules\n',
   )
-  expect(readFileSync(join(workspace, 'app', 'yarn.lock'), 'utf8')).toBe('')
+  expect(existsSync(join(workspace, 'app', 'yarn.lock'))).toBe(false)
+
+  const packageJson = JSON.parse(readFileSync(join(workspace, 'app', 'package.json'), 'utf8')) as {
+    trustedDependencies?: string[]
+  }
+  expect(packageJson.trustedDependencies).toBeUndefined()
 })
 
 test('writes pnpm Electron build approvals only for pnpm consumers', async () => {
@@ -158,5 +163,25 @@ test('writes pnpm Electron build approvals only for pnpm consumers', async () =>
   expect(readFileSync(join(workspace, 'app', 'pnpm-workspace.yaml'), 'utf8')).toBe(
     'allowBuilds:\n  electron: true\n  electron-winstaller: true\n',
   )
+  expect(existsSync(join(workspace, 'app', '.yarnrc.yml'))).toBe(false)
+
+  const packageJson = JSON.parse(readFileSync(join(workspace, 'app', 'package.json'), 'utf8')) as {
+    trustedDependencies?: string[]
+  }
+  expect(packageJson.trustedDependencies).toBeUndefined()
+})
+
+test('writes Bun trust metadata only for Bun consumers', async () => {
+  const workspace = createWorkspace('bun-config')
+  process.chdir(workspace)
+  process.env.npm_config_user_agent = 'bun/1.3.14 npm/? node/v24.0.0 linux x64'
+
+  await runCreateFrontron(['app'])
+
+  const packageJson = JSON.parse(readFileSync(join(workspace, 'app', 'package.json'), 'utf8')) as {
+    trustedDependencies?: string[]
+  }
+  expect(packageJson.trustedDependencies).toEqual(['electron', 'electron-winstaller'])
+  expect(existsSync(join(workspace, 'app', 'pnpm-workspace.yaml'))).toBe(false)
   expect(existsSync(join(workspace, 'app', '.yarnrc.yml'))).toBe(false)
 })

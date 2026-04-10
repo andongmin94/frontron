@@ -64,7 +64,7 @@ test('starter template exposes the supported Electron and React contract', async
   expect(packageJson.devDependencies).toHaveProperty('electron-builder')
   expect(packageJson.devDependencies).not.toHaveProperty('tailwindcss')
   expect(packageJson.devDependencies).not.toHaveProperty('@tailwindcss/vite')
-  expect(packageJson.trustedDependencies).toEqual(['electron', 'electron-winstaller'])
+  expect(packageJson.trustedDependencies).toBeUndefined()
   expect(packageJson.main).toBe('dist/electron/main.js')
   expect(packageJson.build.productName).toBe(projectName)
   expect(packageJson.build.appId).toBe(`com.example.${projectName}`)

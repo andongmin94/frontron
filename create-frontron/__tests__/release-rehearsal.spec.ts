@@ -212,7 +212,7 @@ test('packed create-frontron generates a buildable template-owned Electron start
   expect(generatedPackage.dependencies).not.toHaveProperty('frontron')
   expect(generatedPackage.devDependencies).toHaveProperty('electron')
   expect(generatedPackage.devDependencies).toHaveProperty('electron-builder')
-  expect(generatedPackage.trustedDependencies).toEqual(['electron', 'electron-winstaller'])
+  expect(generatedPackage.trustedDependencies).toBeUndefined()
   expect(generatedPackage.main).toBe('dist/electron/main.js')
   expect(generatedPackage.build?.productName).toBe(generatedAppName)
   expect(generatedPackage.build?.appId).toContain(generatedAppName)

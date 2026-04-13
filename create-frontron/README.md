@@ -1,7 +1,7 @@
 <div align="center">
 
-<a href="https://frontron.andongmin.com">
-<img src="/docs/public/logo.svg" alt="logo" height="200" />
+<a href="https://andongmin.com/frontron/">
+<img src="https://andongmin.com/frontron/logo.svg" alt="logo" height="200" />
 </a>
 
 </div>
@@ -51,4 +51,4 @@ my-app/
 
 MIT
 
-Docs: https://frontron.andongmin.com
+Docs: https://andongmin.com/frontron/

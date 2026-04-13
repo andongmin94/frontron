@@ -4,7 +4,7 @@
   "type": "module",
   "author": "Template Maintainers",
   "description": "Electron desktop app template with React and Vite",
-  "productName": "Desktop App",
+  "productName": "__CREATE_APP_NAME__",
   "scripts": {
     "dev": "vite",
     "app": "node src/electron/serve.ts --dev-app",
@@ -20,6 +20,7 @@
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
     "embla-carousel-react": "^8.6.0",
+    "express": "^5.1.0",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.577.0",
     "next-themes": "^0.4.6",
@@ -48,8 +49,8 @@
   },
   "main": "dist/electron/main.js",
   "build": {
-    "appId": "com.example.desktopapp",
-    "productName": "Desktop App",
+    "appId": "__CREATE_APP_ID__",
+    "productName": "__CREATE_APP_NAME__",
     "copyright": "Copyright (c) Template Maintainers",
     "icon": "public/icon.ico",
     "win": {

@@ -5,22 +5,19 @@
 
 ## Product direction
 - `create-frontron` is the primary starter/template entrypoint for users.
-- `frontron` is the CLI/runtime support package used by generated starters and compatible manual setups.
-- Keep the project starter-driven, CLI-assisted, and config-driven.
+- `frontron` is a placeholder/init-shell package reserved for the future existing-project retrofit flow.
+- Keep the project starter-driven first. Treat retrofit work as planned, not as the main shipped story.
 
 ## Architecture rules
-- Prefer the starter flow first: `npm create frontron@latest` -> `npm run app:dev` / `npm run app:build`.
-- Keep `frontron.config.ts` as the official config entrypoint.
-- Keep `frontron/` as the expansion area for app-layer modules.
-- Manual install into an existing project may stay supported, but it is no longer the headline story.
-- Do not move raw Electron core back into copied template files unless the task explicitly requires it.
-- Do not reintroduce public `window.electron` style renderer globals as the main contract.
-- Keep `frontron/client` as the supported renderer-facing desktop API.
+- Prefer the starter flow first: `npm create frontron@latest` -> `npm run app` / `npm run build`.
+- Keep the starter template Electron-owned: `src/electron/*`, preload bridge on `window.electron`, and packaging in the template app itself.
+- `frontron` should not present a stable runtime/build framework contract while it is in placeholder mode.
+- Manual install into an existing project is currently a planned retrofit path, not the headline story.
+- Do not add new framework-owned runtime surfaces to `frontron` while it is being reduced to an init shell.
 
 ## Native strategy
-- Native integration stays Rust-first.
-- Treat `frontron/rust` as the first-class Rust slot.
-- Web code must not directly load native modules; go through the Frontron bridge.
+- Native integration for the shipped starter may stay Rust-first when it is part of starter-owned source.
+- Keep web/native boundaries explicit in generated starter code.
 
 ## Working style
 - Keep changes small and reviewable.

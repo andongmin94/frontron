@@ -11,7 +11,6 @@ node_modules
 dist
 dist-ssr
 output
-.frontron
 *.local
 
 # Editor directories and files

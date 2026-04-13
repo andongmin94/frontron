@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
-const repoRoot = dirname(dirname(packageRoot))
-const frontronPackageRoot = join(repoRoot, 'packages', 'frontron')
+const repoRoot = dirname(packageRoot)
+const frontronPackageRoot = join(repoRoot, 'frontron')
 const scratchRoot = join(repoRoot, '.tmp', 'release-matrix-smoke')
 const tempRoots = []
 
@@ -162,8 +162,7 @@ function runStarterCase(createTarball, frontronTarball) {
   stabilizeGeneratedStarterDevPort(appRoot, 4312)
   runNpm(['install', '--ignore-scripts', frontronTarball], appRoot)
   runNpm(['install'], appRoot)
-  runNode([frontronCliPath, 'check', '--cwd', appRoot], appRoot)
-  runNode([frontronCliPath, 'build', '--cwd', appRoot, '--check'], appRoot)
+  runNode([frontronCliPath, 'init', '--cwd', appRoot, '--yes', '--force'], appRoot)
   runNpm(['run', 'app:build'], appRoot)
 }
 
@@ -181,9 +180,7 @@ function runViteCase(frontronTarball) {
 
   const frontronCliPath = join(appRoot, 'node_modules', 'frontron', 'index.js')
 
-  runNode([frontronCliPath, 'init', '--cwd', appRoot], appRoot)
-  runNode([frontronCliPath, 'check', '--cwd', appRoot], appRoot)
-  runNode([frontronCliPath, 'build', '--cwd', appRoot, '--check'], appRoot)
+  runNode([frontronCliPath, 'init', '--cwd', appRoot, '--yes'], appRoot)
   runNpm(['run', 'app:build'], appRoot)
 }
 
@@ -198,9 +195,7 @@ function runVitePressCase(frontronTarball) {
 
   const frontronCliPath = join(appRoot, 'node_modules', 'frontron', 'index.js')
 
-  runNode([frontronCliPath, 'init', '--cwd', appRoot, '--skip-install'], appRoot)
-  runNode([frontronCliPath, 'check', '--cwd', appRoot], appRoot)
-  runNode([frontronCliPath, 'build', '--cwd', appRoot, '--check'], appRoot)
+  runNode([frontronCliPath, 'init', '--cwd', appRoot, '--yes'], appRoot)
   runNpm(['run', 'app:build'], appRoot)
 }
 

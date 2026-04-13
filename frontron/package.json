@@ -2,7 +2,7 @@
   "name": "frontron",
   "version": "0.11.2",
   "type": "module",
-  "description": "CLI and runtime support package for Frontron starters and compatible apps",
+  "description": "Experimental init-shell package for existing-project Electron retrofit",
   "license": "MIT",
   "author": "andongmin",
   "bin": {
@@ -11,16 +11,12 @@
   "files": [
     "index.js",
     "dist",
-    "assets"
+    "README.md"
   ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs"
-    },
-    "./client": {
-      "types": "./dist/client.d.ts",
-      "import": "./dist/client.mjs"
     },
     "./package.json": "./package.json"
   },
@@ -41,16 +37,11 @@
   "bugs": {
     "url": "https://github.com/andongmin94/frontron/issues"
   },
-  "homepage": "https://frontron.andongmin.com",
+  "homepage": "https://andongmin.com/frontron/",
   "devDependencies": {
     "@types/node": "^24.10.13",
     "typescript": "^5.9.3",
     "unbuild": "^3.6.1",
     "vitest": "^4.0.7"
-  },
-  "dependencies": {
-    "electron": "^40.1.0",
-    "electron-builder": "^26.4.0",
-    "koffi": "^2.15.2"
   }
 }

@@ -127,15 +127,15 @@ test(
   },
 )
 
-test('package exports allow metadata and template files while blocking implementation internals', () => {
+test('package exports expose metadata while keeping the template and implementation internal', () => {
   ensureBuildOutput()
   const packageRequire = createRequire(join(packageRoot, 'package.json'))
 
   expect(packageRequire.resolve('create-frontron/package.json')).toBe(
     join(packageRoot, 'package.json'),
   )
-  expect(packageRequire.resolve('create-frontron/template/src/electron/main.ts')).toBe(
-    join(packageRoot, 'template', 'src', 'electron', 'main.ts'),
+  expect(() => packageRequire.resolve('create-frontron/template/src/electron/main.ts')).toThrow(
+    /Package subpath .* is not defined by "exports"/,
   )
   expect(() => packageRequire.resolve('create-frontron/dist/index.mjs')).toThrow(
     /Package subpath .* is not defined by "exports"/,

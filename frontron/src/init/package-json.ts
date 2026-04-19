@@ -14,6 +14,7 @@ const SEMVER_PATTERN =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
 
 const ROOT_RUNTIME_DEPENDENCY_ADAPTERS = new Set(['generic-node-server', 'sveltekit-node'])
+const BUN_TRUSTED_DEPENDENCIES = ['electron', 'electron-winstaller']
 
 export function isValidAppVersion(value: unknown): value is string {
   return typeof value === 'string' && SEMVER_PATTERN.test(value)
@@ -156,6 +157,12 @@ function createPackageJsonPatchChanges(before: PackageJson, after: PackageJson) 
   addRecordChanges(changes, before.scripts, after.scripts, 'scripts')
   addRecordChanges(changes, before.dependencies, after.dependencies, 'dependencies')
   addRecordChanges(changes, before.devDependencies, after.devDependencies, 'devDependencies')
+  addArrayValueChanges(
+    changes,
+    before.trustedDependencies,
+    after.trustedDependencies,
+    'trustedDependencies',
+  )
   addScalarChange(changes, before.version, after.version, 'version')
   addScalarChange(changes, before.build?.appId, after.build?.appId, 'build.appId')
   addScalarChange(changes, before.build?.productName, after.build?.productName, 'build.productName')
@@ -261,6 +268,7 @@ function createPackageJsonOwnershipClaims(before: PackageJson, after: PackageJso
     addOwnershipClaim(claims, before, after, path)
   }
 
+  addArrayValueOwnershipClaims(claims, before, after, 'trustedDependencies')
   addArrayValueOwnershipClaims(claims, before, after, 'build.files')
   addArrayValueOwnershipClaims(claims, before, after, 'build.asarUnpack')
 
@@ -380,6 +388,21 @@ export function patchPackageJson(config: InitConfig) {
 
   if (!packageJson.dependencies?.typescript && shouldUseFrontronTypescriptVersion(packageJson)) {
     devDependencies.typescript = templateDependencies.typescript
+  }
+
+  if (config.packageManager === 'bun') {
+    const trustedDependencies = ensureArray(
+      packageJson.trustedDependencies,
+      'trustedDependencies',
+    )
+
+    for (const dependencyName of BUN_TRUSTED_DEPENDENCIES) {
+      if (!trustedDependencies.includes(dependencyName)) {
+        trustedDependencies.push(dependencyName)
+      }
+    }
+
+    packageJson.trustedDependencies = trustedDependencies
   }
 
   if (

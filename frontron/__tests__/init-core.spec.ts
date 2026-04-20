@@ -107,6 +107,51 @@ describe('frontron init core flow', () => {
     expect(report).toContain('npm run frontron:build')
   })
 
+  test('Bun init adds only the required trust entries and clean restores the previous array', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      packageManager?: string
+      trustedDependencies?: string[]
+    }
+    packageJson.packageManager = 'bun@1.3.14'
+    packageJson.trustedDependencies = ['existing-native-tool']
+    writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const initialized = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      trustedDependencies?: string[]
+    }
+    expect(initialized.trustedDependencies).toEqual([
+      'existing-native-tool',
+      'electron',
+      'electron-winstaller',
+    ])
+
+    const manifest = JSON.parse(
+      readFileSync(join(projectRoot, '.frontron', 'manifest.json'), 'utf8'),
+    ) as {
+      packageJsonClaims: Array<{ path: string; value?: string }>
+    }
+    expect(
+      manifest.packageJsonClaims.filter((claim) => claim.path === 'trustedDependencies'),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ value: 'electron' }),
+        expect.objectContaining({ value: 'electron-winstaller' }),
+      ]),
+    )
+
+    expect(await runCli(['clean', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const cleaned = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      trustedDependencies?: string[]
+    }
+    expect(cleaned.trustedDependencies).toEqual(['existing-native-tool'])
+  })
+
   test('clean restores a package version that init had to add', async () => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)

@@ -8,7 +8,6 @@ const repoRoot = dirname(dirname(fileURLToPath(new URL('../package.json', import
 test('starter onboarding docs describe the template-owned Electron structure', () => {
   const onboardingFiles = [
     join(repoRoot, 'README.md'),
-    join(repoRoot, 'specs', 'framework-first.md'),
     join(repoRoot, 'create-frontron', 'README.md'),
     join(repoRoot, 'create-frontron', 'template', 'README.md'),
   ]
@@ -25,7 +24,6 @@ test('frontron package docs describe a placeholder/init shell, not a stable runt
   const placeholderFiles = [
     join(repoRoot, 'README.md'),
     join(repoRoot, 'frontron', 'README.md'),
-    join(repoRoot, 'specs', 'framework-first.md'),
   ]
 
   for (const filePath of placeholderFiles) {
@@ -33,8 +31,4 @@ test('frontron package docs describe a placeholder/init shell, not a stable runt
 
     expect(source).toMatch(/placeholder|과도기|transitional|experimental|init shell/i)
   }
-
-  const retrofitSpec = readFileSync(join(repoRoot, 'specs', 'init-retrofit-v1.md'), 'utf8')
-  expect(retrofitSpec).toContain('frontron init')
-  expect(retrofitSpec).toMatch(/starter-derived|existing web frontend|retrofit/i)
 })

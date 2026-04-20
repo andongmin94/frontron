@@ -25,7 +25,7 @@ const PLACEHOLDER_LINES = [
   '[Frontron] `frontron` is now an experimental init shell.',
   '[Frontron] The existing-project retrofit flow is still starter-derived and conservative.',
   '[Frontron] Start new apps with `npm create frontron@latest`.',
-  '[Frontron] `frontron init` can now seed the first minimal Electron source into compatible web frontend projects.',
+  '[Frontron] `frontron init` can now seed an app-owned Electron layer into compatible web frontend projects.',
 ] as const
 
 function printHelp(output: CliOutput) {

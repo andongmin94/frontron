@@ -8,12 +8,12 @@
 
 # Frontron
 
-Electron starter generator plus a transitional init shell for retrofitting existing web frontend projects.
+Electron tooling for two paths: a starter generator for new apps and an init-focused retrofit CLI for existing web frontend projects.
 
 ## Packages
 
-- `create-frontron`: the primary starter generator. Use this first when you want a ready-to-run desktop starter.
-- `frontron`: a transitional placeholder/init shell for the existing-project retrofit path.
+- `create-frontron`: the primary starter generator for new Electron desktop apps.
+- `frontron`: the init-focused retrofit CLI for compatible existing web frontend projects.
 
 ## Quick Start
 
@@ -32,18 +32,21 @@ Build the packaged desktop app with:
 npm run build
 ```
 
-If you already have a compatible web project, note that the retrofit path is being redesigned:
+Retrofit an existing compatible web project with:
 
 ```bash
-npm install frontron
-npx frontron --help
+npm install -D frontron
+npx frontron init
 ```
+
+`frontron init` is the active retrofit flow today. It adds a conservative, app-owned Electron layer without replacing the app's existing frontend structure unless you explicitly choose starter-like additions.
 
 ## Product Shape
 
 - `create-frontron` generates a template-owned Electron + React + Vite starter.
 - The generated starter keeps its Electron files under `src/electron/` and exposes a preload bridge on `window.electron`.
-- `frontron` is not the main product story anymore. Treat it as the placeholder/init package name reserved for the retrofit path while that flow is being redesigned.
+- `frontron init` retrofits compatible existing web frontend projects with an app-owned Electron layer while preserving existing web scripts by default.
+- The current `frontron` CLI surface is intentionally narrow: `init` is the supported command.
 
 ## Requirements
 
@@ -54,7 +57,19 @@ npx frontron --help
 ```text
 frontron/
   create-frontron/             # starter generator and template
-  frontron/                    # placeholder/init package reserved for retrofit work
+  frontron/                    # init-focused retrofit CLI for existing web projects
+  release.mjs                  # shared release tooling for both packages
+```
+
+## Release
+
+Run shared release tasks from the repo root:
+
+```bash
+node release.mjs sync-version
+node release.mjs verify
+node release.mjs matrix-smoke
+node release.mjs publish
 ```
 
 ## Docs

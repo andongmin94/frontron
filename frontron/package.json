@@ -1,8 +1,8 @@
 {
   "name": "frontron",
-  "version": "0.11.2",
+  "version": "0.12.0",
   "type": "module",
-  "description": "Experimental init-shell package for existing-project Electron retrofit",
+  "description": "Init-focused Electron retrofit CLI for existing web frontend projects",
   "license": "MIT",
   "author": "andongmin",
   "bin": {
@@ -13,13 +13,6 @@
     "dist",
     "README.md"
   ],
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs"
-    },
-    "./package.json": "./package.json"
-  },
   "scripts": {
     "build": "unbuild",
     "test": "vitest run --no-file-parallelism --exclude __tests__/package-smoke.spec.ts",

@@ -20,15 +20,19 @@ test('starter onboarding docs describe the template-owned Electron structure', (
   }
 })
 
-test('frontron package docs describe a placeholder/init shell, not a stable runtime contract', () => {
-  const placeholderFiles = [
-    join(repoRoot, 'README.md'),
-    join(repoRoot, 'frontron', 'README.md'),
-  ]
+test('frontron package docs position init as the active retrofit command', () => {
+  const source = readFileSync(join(repoRoot, 'frontron', 'README.md'), 'utf8')
 
-  for (const filePath of placeholderFiles) {
-    const source = readFileSync(filePath, 'utf8')
-
-    expect(source).toMatch(/placeholder|과도기|transitional|experimental|init shell/i)
-  }
+  expect(source).toContain('frontron init')
+  expect(source).toContain('active command')
+  expect(source).toContain('existing web frontend')
+  expect(source).toContain('app-owned Electron layer')
+  expect(source).toContain('create-frontron')
+  expect(source).toContain('next-export')
+  expect(source).toContain('next-standalone')
+  expect(source).toContain('nuxt-node-server')
+  expect(source).toContain('remix-node-server')
+  expect(source).toContain('sveltekit-static')
+  expect(source).toContain('sveltekit-node')
+  expect(source).toContain('generic-node-server')
 })

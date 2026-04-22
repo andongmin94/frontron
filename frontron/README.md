@@ -1,15 +1,16 @@
 # Frontron <a href="https://npmjs.com/package/frontron"><img src="https://img.shields.io/npm/v/frontron" alt="npm package"></a>
 
-`frontron` is now an experimental init shell for the existing-project retrofit path.
+`frontron` is the init-focused retrofit CLI for existing web frontend projects.
 
-It is not the main product anymore, and it still does not ship a stable desktop runtime contract.
+Use `create-frontron` for new apps. Use `frontron init` when you already have a compatible frontend project and want to add an app-owned Electron layer without replacing the app's existing structure.
 
 ## Current state
 
 - new apps should start with `create-frontron`
-- `frontron` keeps the retrofit package name and CLI entrypoint reserved
+- `frontron init` is the active command in this package
 - `init` can now seed a conservative `minimal` or `starter-like` Electron layer into a compatible existing web frontend project
-- `check`, `dev`, and `build` still report the placeholder transition
+- the generated Electron files stay app-owned instead of introducing a starter-owned runtime contract
+- the current CLI surface is intentionally narrow: only `init` is supported
 - the retrofit flow is still starter-derived and intentionally conservative
 
 ## Recommended start path
@@ -22,11 +23,39 @@ That starter owns its Electron files directly under `src/electron/` and uses `wi
 
 ## Retrofit path
 
-The retrofit path is still being redesigned.
+If you already have a compatible web frontend project, start with:
 
-Today, `frontron init` is the only active retrofit command.
+```bash
+npm install -D frontron
+npx frontron init
+```
 
-Its current shape is:
+`frontron init` is the only active retrofit command today.
+
+It auto-detects the current runtime adapter when possible:
+
+- `generic-static` for Vite-style static frontend builds
+- `next-export` for Next.js static export projects
+- `next-standalone` for Next.js standalone server builds (`output: 'standalone'`)
+- `nuxt-node-server` for Nuxt server builds
+- `remix-node-server` for Remix node server builds
+- `sveltekit-static` for SvelteKit static exports
+- `sveltekit-node` for SvelteKit node adapter builds
+- `generic-node-server` when you want to wire a custom Node runtime manually
+
+You can override that detection when needed:
+
+```bash
+npx frontron init --adapter next-export
+npx frontron init --adapter next-standalone
+npx frontron init --adapter nuxt-node-server
+npx frontron init --adapter remix-node-server
+npx frontron init --adapter sveltekit-static
+npx frontron init --adapter sveltekit-node
+npx frontron init --adapter generic-node-server --server-root build --server-entry server/index.js
+```
+
+It currently walks through:
 
 - infer the current web frontend scripts first
 - ask where the Electron files should live

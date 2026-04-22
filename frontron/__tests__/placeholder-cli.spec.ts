@@ -49,6 +49,9 @@ function createTempProject() {
 function createTempProjectWithScripts(
   scripts: Record<string, string>,
   options?: {
+    dependencies?: Record<string, string>
+    devDependencies?: Record<string, string>
+    extraFiles?: Record<string, string>
     viteConfigSource?: string
   },
 ) {
@@ -61,7 +64,8 @@ function createTempProjectWithScripts(
         name: 'sample-web-app',
         version: '0.0.1',
         scripts,
-        devDependencies: {
+        dependencies: options?.dependencies ?? {},
+        devDependencies: options?.devDependencies ?? {
           vite: '^8.0.1',
         },
       },
@@ -72,6 +76,10 @@ function createTempProjectWithScripts(
 
   if (options?.viteConfigSource) {
     writeFileSync(join(projectRoot, 'vite.config.ts'), options.viteConfigSource)
+  }
+
+  for (const [filePath, source] of Object.entries(options?.extraFiles ?? {})) {
+    writeFileSync(join(projectRoot, filePath), source)
   }
 
   return projectRoot
@@ -92,6 +100,27 @@ function createPromptAnswers(answers: string[], confirms: boolean[] = []): CliCo
   }
 }
 
+function expectEmbeddedString(source: string, name: string, value: string) {
+  expect(source).toContain(
+    `const ${name} = readEmbeddedJson<string>(${JSON.stringify(JSON.stringify(value))})`,
+  )
+}
+
+function expectEmbeddedNullableString(source: string, name: string, value: string | null) {
+  expect(source).toContain(
+    `const ${name} = readEmbeddedJson<string | null>(${JSON.stringify(JSON.stringify(value))})`,
+  )
+}
+
+function expectEmbeddedRuntimeStrategy(
+  source: string,
+  value: 'static-export' | 'node-server',
+) {
+  expect(source).toContain(
+    `const RUNTIME_STRATEGY = readEmbeddedJson<'static-export' | 'node-server'>(${JSON.stringify(JSON.stringify(value))})`,
+  )
+}
+
 const tempDirs: string[] = []
 
 afterEach(() => {
@@ -101,15 +130,22 @@ afterEach(() => {
 })
 
 describe('frontron CLI', () => {
-  test('prints help when no command is given', async () => {
+  test('prints init-focused help when no command is given', async () => {
     const output = createOutput()
 
     const exitCode = await runCli([], output)
     const combined = output.info.mock.calls.flat().join('\n')
 
     expect(exitCode).toBe(0)
-    expect(combined).toContain('experimental init shell')
+    expect(combined).toContain('Usage: frontron init [options]')
+    expect(combined).toContain('frontron init')
     expect(combined).toContain('npm create frontron@latest')
+    expect(combined).toContain('app-owned')
+    expect(combined).toContain(
+      '--adapter <generic-static|next-export|next-standalone|nuxt-node-server|remix-node-server|sveltekit-static|sveltekit-node|generic-node-server>',
+    )
+    expect(combined).toContain('--server-root <path>')
+    expect(combined).toContain('--server-entry <path>')
   })
 
   test('init seeds the minimal Electron layer with defaults', async () => {
@@ -140,17 +176,14 @@ describe('frontron CLI', () => {
     expect(readFileSync(join(projectRoot, 'electron', 'window.ts'), 'utf8')).toContain('BrowserWindow')
     expect(readFileSync(join(projectRoot, 'electron', 'window.ts'), 'utf8')).toContain('Content-Security-Policy')
     expect(readFileSync(join(projectRoot, 'electron', 'window.ts'), 'utf8')).toContain("mainWindow.webContents.on('context-menu'")
-    expect(readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')).toContain('const WEB_DEV_SCRIPT = "dev"')
-    expect(readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')).toContain(
-      'const DEV_URL = "http://127.0.0.1:5180"',
-    )
-    expect(readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')).toContain(
-      'const WEB_OUT_DIR = "dist-web"',
-    )
-    expect(readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')).toContain(
+    const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
+    expectEmbeddedString(serveSource, 'WEB_DEV_SCRIPT', 'dev')
+    expectEmbeddedString(serveSource, 'DEV_URL', 'http://127.0.0.1:5180')
+    expectEmbeddedString(serveSource, 'WEB_OUT_DIR', 'dist-web')
+    expect(serveSource).toContain(
       "createRequire(import.meta.url)",
     )
-    expect(readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')).toContain(
+    expect(serveSource).toContain(
       `JSON.stringify({ type: 'module' }, null, 2)`,
     )
     expect(readFileSync(join(projectRoot, 'tsconfig.electron.json'), 'utf8')).toContain('"rootDir": "./electron"')
@@ -293,10 +326,409 @@ describe('frontron CLI', () => {
     }
     const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
 
-    expect(serveSource).toContain('const WEB_DEV_SCRIPT = "web:dev"')
-    expect(serveSource).toContain('const DEV_URL = "http://127.0.0.1:4200"')
-    expect(serveSource).toContain('const WEB_OUT_DIR = "build/client"')
+    expectEmbeddedString(serveSource, 'WEB_DEV_SCRIPT', 'web:dev')
+    expectEmbeddedString(serveSource, 'DEV_URL', 'http://127.0.0.1:4200')
+    expectEmbeddedString(serveSource, 'WEB_OUT_DIR', 'build/client')
     expect(packageJson.build.files).toContain('build/client{,/**/*}')
+  })
+
+  test('init auto-detects Next.js static export projects and composes the desktop build command', async () => {
+    const projectRoot = createTempProjectWithScripts(
+      {
+        dev: 'next dev --hostname 127.0.0.1 --port 3300',
+        build: 'next build',
+        export: 'next export -o static-out',
+      },
+      {
+        dependencies: {
+          next: '^16.0.0',
+          react: '^19.0.0',
+          'react-dom': '^19.0.0',
+        },
+      },
+    )
+    tempDirs.push(projectRoot)
+    const output = createOutput()
+
+    const exitCode = await runCli(['init', '--yes'], output, {
+      cwd: projectRoot,
+    })
+
+    expect(exitCode).toBe(0)
+
+    const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>
+      build: {
+        files: string[]
+      }
+    }
+    const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expectEmbeddedString(serveSource, 'WEB_DEV_SCRIPT', 'dev')
+    expectEmbeddedString(serveSource, 'DEV_URL', 'http://127.0.0.1:3300')
+    expectEmbeddedString(serveSource, 'WEB_OUT_DIR', 'static-out')
+    expect(packageJson.scripts['app:build']).toContain('next build && next export -o static-out')
+    expect(packageJson.build.files).toContain('static-out{,/**/*}')
+    expect(combined).toContain('- adapter: next-export')
+  })
+
+  test('init detects next.config export mode and falls back to the default out directory', async () => {
+    const projectRoot = createTempProjectWithScripts(
+      {
+        dev: 'next dev --port 3000',
+        build: 'next build',
+      },
+      {
+        dependencies: {
+          next: '^16.0.0',
+          react: '^19.0.0',
+          'react-dom': '^19.0.0',
+        },
+        extraFiles: {
+          'next.config.ts': `export default {
+  output: 'export',
+}
+`,
+        },
+      },
+    )
+    tempDirs.push(projectRoot)
+    const output = createOutput()
+
+    const exitCode = await runCli(['init', '--yes'], output, {
+      cwd: projectRoot,
+    })
+
+    expect(exitCode).toBe(0)
+
+    const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>
+      build: {
+        files: string[]
+      }
+    }
+    const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expectEmbeddedString(serveSource, 'WEB_OUT_DIR', 'out')
+    expect(packageJson.scripts['app:build']).toContain('next build')
+    expect(packageJson.build.files).toContain('out{,/**/*}')
+    expect(combined).toContain('- adapter: next-export')
+  })
+
+  test('init detects Next.js standalone output and stages a packaged node-server runtime', async () => {
+    const projectRoot = createTempProjectWithScripts(
+      {
+        dev: 'next dev --port 3400',
+        build: 'next build',
+      },
+      {
+        dependencies: {
+          next: '^16.0.0',
+          react: '^19.0.0',
+          'react-dom': '^19.0.0',
+        },
+        extraFiles: {
+          'next.config.ts': `export default {
+  output: 'standalone',
+}
+`,
+        },
+      },
+    )
+    tempDirs.push(projectRoot)
+    const output = createOutput()
+
+    const exitCode = await runCli(['init', '--yes'], output, {
+      cwd: projectRoot,
+    })
+
+    expect(exitCode).toBe(0)
+
+    const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>
+      build: {
+        files: string[]
+        asarUnpack: string[]
+      }
+    }
+    const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expectEmbeddedRuntimeStrategy(serveSource, 'node-server')
+    expectEmbeddedString(serveSource, 'WEB_OUT_DIR', '.frontron/runtime/next-standalone')
+    expectEmbeddedNullableString(serveSource, 'NODE_SERVER_SOURCE_ROOT', '.next/standalone')
+    expect(serveSource).toContain("ELECTRON_RUN_AS_NODE: '1'")
+    expect(serveSource).toContain('Node server entry not found')
+    expect(packageJson.scripts['app:build']).toContain('next build')
+    expect(packageJson.build.files).toContain('.frontron/runtime/next-standalone{,/**/*}')
+    expect(packageJson.build.asarUnpack).toContain('.frontron/runtime/next-standalone{,/**/*}')
+    expect(combined).toContain('- adapter: next-standalone')
+    expect(combined).toContain('- runtime strategy: node-server')
+    expect(combined).toContain('- server runtime root: .next/standalone')
+    expect(combined).toContain('- server entry: server.js')
+  })
+
+  test('init auto-detects Nuxt node-server projects', async () => {
+    const projectRoot = createTempProjectWithScripts(
+      {
+        dev: 'nuxt dev --host 127.0.0.1 --port 3500',
+        build: 'nuxt build',
+      },
+      {
+        dependencies: {
+          nuxt: '^4.0.0',
+        },
+        extraFiles: {
+          'nuxt.config.ts': `export default defineNuxtConfig({})
+`,
+        },
+      },
+    )
+    tempDirs.push(projectRoot)
+    const output = createOutput()
+
+    const exitCode = await runCli(['init', '--yes'], output, {
+      cwd: projectRoot,
+    })
+
+    expect(exitCode).toBe(0)
+
+    const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')) as {
+      build: {
+        files: string[]
+        asarUnpack: string[]
+      }
+    }
+    const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expectEmbeddedString(serveSource, 'DEV_URL', 'http://127.0.0.1:3500')
+    expectEmbeddedString(serveSource, 'WEB_OUT_DIR', '.frontron/runtime/nuxt-node-server')
+    expectEmbeddedNullableString(serveSource, 'NODE_SERVER_SOURCE_ROOT', '.output')
+    expectEmbeddedNullableString(serveSource, 'NODE_SERVER_ENTRY', 'server/index.mjs')
+    expect(packageJson.build.files).toContain('.frontron/runtime/nuxt-node-server{,/**/*}')
+    expect(packageJson.build.asarUnpack).toContain('.frontron/runtime/nuxt-node-server{,/**/*}')
+    expect(combined).toContain('- adapter: nuxt-node-server')
+    expect(combined).toContain('- server runtime root: .output')
+    expect(combined).toContain('- server entry: server/index.mjs')
+  })
+
+  test('init auto-detects Remix node-server projects', async () => {
+    const projectRoot = createTempProjectWithScripts(
+      {
+        dev: 'remix dev --host 127.0.0.1 --port 8002',
+        build: 'remix build',
+      },
+      {
+        dependencies: {
+          '@remix-run/node': '^2.0.0',
+        },
+        devDependencies: {
+          '@remix-run/dev': '^2.0.0',
+        },
+        extraFiles: {
+          'remix.config.js': `module.exports = {}
+`,
+        },
+      },
+    )
+    tempDirs.push(projectRoot)
+    const output = createOutput()
+
+    const exitCode = await runCli(['init', '--yes'], output, {
+      cwd: projectRoot,
+    })
+
+    expect(exitCode).toBe(0)
+
+    const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')) as {
+      build: {
+        files: string[]
+        asarUnpack: string[]
+      }
+    }
+    const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expectEmbeddedString(serveSource, 'DEV_URL', 'http://127.0.0.1:8002')
+    expectEmbeddedString(serveSource, 'WEB_OUT_DIR', '.frontron/runtime/remix-node-server')
+    expectEmbeddedNullableString(serveSource, 'NODE_SERVER_SOURCE_ROOT', 'build')
+    expectEmbeddedNullableString(serveSource, 'NODE_SERVER_ENTRY', 'server/index.js')
+    expect(packageJson.build.files).toContain('.frontron/runtime/remix-node-server{,/**/*}')
+    expect(packageJson.build.asarUnpack).toContain('.frontron/runtime/remix-node-server{,/**/*}')
+    expect(combined).toContain('- adapter: remix-node-server')
+    expect(combined).toContain('- server runtime root: build')
+    expect(combined).toContain('- server entry: server/index.js')
+  })
+
+  test('init auto-detects SvelteKit static projects', async () => {
+    const projectRoot = createTempProjectWithScripts(
+      {
+        dev: 'vite --host 127.0.0.1 --port 4173',
+        build: 'vite build',
+      },
+      {
+        devDependencies: {
+          vite: '^8.0.1',
+          '@sveltejs/kit': '^2.0.0',
+          '@sveltejs/adapter-static': '^3.0.0',
+        },
+        extraFiles: {
+          'svelte.config.js': `import adapter from '@sveltejs/adapter-static'
+
+export default {
+  kit: {
+    adapter: adapter(),
+  },
+}
+`,
+        },
+      },
+    )
+    tempDirs.push(projectRoot)
+    const output = createOutput()
+
+    const exitCode = await runCli(['init', '--yes'], output, {
+      cwd: projectRoot,
+    })
+
+    expect(exitCode).toBe(0)
+
+    const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')) as {
+      build: {
+        files: string[]
+      }
+    }
+    const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expectEmbeddedString(serveSource, 'WEB_OUT_DIR', 'build')
+    expect(packageJson.build.files).toContain('build{,/**/*}')
+    expect(combined).toContain('- adapter: sveltekit-static')
+    expect(combined).toContain('- runtime strategy: static-export')
+  })
+
+  test('init auto-detects SvelteKit node adapter projects', async () => {
+    const projectRoot = createTempProjectWithScripts(
+      {
+        dev: 'vite --host 127.0.0.1 --port 4173',
+        build: 'vite build',
+      },
+      {
+        devDependencies: {
+          vite: '^8.0.1',
+          '@sveltejs/kit': '^2.0.0',
+          '@sveltejs/adapter-node': '^5.0.0',
+        },
+        extraFiles: {
+          'svelte.config.js': `import adapter from '@sveltejs/adapter-node'
+
+export default {
+  kit: {
+    adapter: adapter(),
+  },
+}
+`,
+        },
+      },
+    )
+    tempDirs.push(projectRoot)
+    const output = createOutput()
+
+    const exitCode = await runCli(['init', '--yes'], output, {
+      cwd: projectRoot,
+    })
+
+    expect(exitCode).toBe(0)
+
+    const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')) as {
+      build: {
+        files: string[]
+        asarUnpack: string[]
+      }
+    }
+    const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expectEmbeddedString(serveSource, 'WEB_OUT_DIR', '.frontron/runtime/sveltekit-node')
+    expectEmbeddedNullableString(serveSource, 'NODE_SERVER_SOURCE_ROOT', 'build')
+    expectEmbeddedNullableString(serveSource, 'NODE_SERVER_ENTRY', 'index.js')
+    expect(packageJson.build.files).toContain('.frontron/runtime/sveltekit-node{,/**/*}')
+    expect(packageJson.build.asarUnpack).toContain('.frontron/runtime/sveltekit-node{,/**/*}')
+    expect(combined).toContain('- adapter: sveltekit-node')
+    expect(combined).toContain('- server entry: index.js')
+  })
+
+  test('init supports a manual generic node-server adapter', async () => {
+    const projectRoot = createTempProjectWithScripts({
+      dev: 'node server/dev.js',
+      build: 'node scripts/build.js',
+    })
+    tempDirs.push(projectRoot)
+    const output = createOutput()
+
+    const exitCode = await runCli(
+      [
+        'init',
+        '--yes',
+        '--adapter',
+        'generic-node-server',
+        '--web-dev',
+        'dev',
+        '--web-build',
+        'build',
+        '--out-dir',
+        '.frontron/runtime/custom-node-server',
+        '--server-root',
+        'build',
+        '--server-entry',
+        'server/index.js',
+      ],
+      output,
+      {
+        cwd: projectRoot,
+      },
+    )
+
+    expect(exitCode).toBe(0)
+
+    const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')) as {
+      build: {
+        files: string[]
+        asarUnpack: string[]
+      }
+    }
+    const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expectEmbeddedRuntimeStrategy(serveSource, 'node-server')
+    expectEmbeddedString(serveSource, 'WEB_OUT_DIR', '.frontron/runtime/custom-node-server')
+    expectEmbeddedNullableString(serveSource, 'NODE_SERVER_SOURCE_ROOT', 'build')
+    expectEmbeddedNullableString(serveSource, 'NODE_SERVER_ENTRY', 'server/index.js')
+    expect(packageJson.build.files).toContain('.frontron/runtime/custom-node-server{,/**/*}')
+    expect(packageJson.build.asarUnpack).toContain('.frontron/runtime/custom-node-server{,/**/*}')
+    expect(combined).toContain('- adapter: generic-node-server')
+    expect(combined).toContain('- server runtime root: build')
+    expect(combined).toContain('- server entry: server/index.js')
+  })
+
+  test('init requires node-server metadata for the generic adapter in --yes mode', async () => {
+    const projectRoot = createTempProjectWithScripts({
+      dev: 'node server/dev.js',
+      build: 'node scripts/build.js',
+    })
+    tempDirs.push(projectRoot)
+    const output = createOutput()
+
+    const exitCode = await runCli(['init', '--yes', '--adapter', 'generic-node-server'], output, {
+      cwd: projectRoot,
+    })
+    const combined = output.error.mock.calls.flat().join('\n')
+
+    expect(exitCode).toBe(1)
+    expect(combined).toContain('Unable to infer the node server runtime root')
   })
 
   test('init requires an explicit output directory when it cannot infer a non-Vite build output in --yes mode', async () => {

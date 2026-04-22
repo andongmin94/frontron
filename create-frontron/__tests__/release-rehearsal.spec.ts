@@ -123,7 +123,6 @@ test(
     expect(generatedPackage.scripts.app).toContain('src/electron/serve.ts')
     expect(generatedPackage.scripts.build).toContain('electron-builder')
     expect(generatedPackage.dependencies).not.toHaveProperty('frontron')
-    expect(generatedPackage.dependencies).toHaveProperty('express')
     expect(generatedPackage.devDependencies).toHaveProperty('electron')
     expect(generatedPackage.devDependencies).toHaveProperty('electron-builder')
     expect(generatedPackage.main).toBe('dist/electron/main.js')

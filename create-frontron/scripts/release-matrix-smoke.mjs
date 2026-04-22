@@ -1,4 +1,12 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
@@ -6,6 +14,7 @@ import { spawnSync } from 'node:child_process'
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const repoRoot = dirname(packageRoot)
 const frontronPackageRoot = join(repoRoot, 'frontron')
+const tempRoot = join(repoRoot, '.tmp')
 const scratchRoot = join(repoRoot, '.tmp', 'release-matrix-smoke')
 const tempRoots = []
 
@@ -92,23 +101,15 @@ function writeJson(path, value) {
 
 function stabilizeGeneratedStarterDevPort(appRoot, port) {
   const packageJsonPath = join(appRoot, 'package.json')
-  const frontronConfigPath = join(appRoot, 'frontron', 'config.ts')
   const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'))
 
   packageJson.scripts = {
     ...packageJson.scripts,
     dev: `vite --port ${port}`,
-    'web:dev': `vite --port ${port}`,
+    'build:web': 'tsc -b && vite build',
   }
 
   writeJson(packageJsonPath, packageJson)
-  writeFileSync(
-    frontronConfigPath,
-    readFileSync(frontronConfigPath, 'utf8').replace(
-      "url: 'http://localhost:3000'",
-      `url: 'http://localhost:${port}'`,
-    ),
-  )
 }
 
 function createVitePressProject(appRoot) {
@@ -162,7 +163,23 @@ function runStarterCase(createTarball, frontronTarball) {
   stabilizeGeneratedStarterDevPort(appRoot, 4312)
   runNpm(['install', '--ignore-scripts', frontronTarball], appRoot)
   runNpm(['install'], appRoot)
-  runNode([frontronCliPath, 'init', '--cwd', appRoot, '--yes', '--force'], appRoot)
+  runNode(
+    [
+      frontronCliPath,
+      'init',
+      '--yes',
+      '--force',
+      '--app-script',
+      'app:retrofit',
+      '--build-script',
+      'app:build',
+      '--web-build',
+      'build:web',
+      '--out-dir',
+      'dist',
+    ],
+    appRoot,
+  )
   runNpm(['run', 'app:build'], appRoot)
 }
 
@@ -180,7 +197,7 @@ function runViteCase(frontronTarball) {
 
   const frontronCliPath = join(appRoot, 'node_modules', 'frontron', 'index.js')
 
-  runNode([frontronCliPath, 'init', '--cwd', appRoot, '--yes'], appRoot)
+  runNode([frontronCliPath, 'init', '--yes'], appRoot)
   runNpm(['run', 'app:build'], appRoot)
 }
 
@@ -195,7 +212,7 @@ function runVitePressCase(frontronTarball) {
 
   const frontronCliPath = join(appRoot, 'node_modules', 'frontron', 'index.js')
 
-  runNode([frontronCliPath, 'init', '--cwd', appRoot, '--yes'], appRoot)
+  runNode([frontronCliPath, 'init', '--yes'], appRoot)
   runNpm(['run', 'app:build'], appRoot)
 }
 
@@ -228,5 +245,11 @@ try {
 } finally {
   for (const tempRoot of tempRoots.splice(0)) {
     rmSync(resolve(tempRoot), { recursive: true, force: true })
+  }
+
+  rmSync(scratchRoot, { recursive: true, force: true })
+
+  if (existsSync(tempRoot) && readdirSync(tempRoot).length === 0) {
+    rmSync(tempRoot, { recursive: true, force: true })
   }
 }

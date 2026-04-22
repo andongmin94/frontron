@@ -1,6 +1,6 @@
 {
   "name": "create-frontron",
-  "version": "0.11.2",
+  "version": "0.12.0",
   "type": "module",
   "description": "Electron starter generator with React and Vite",
   "license": "MIT",
@@ -17,12 +17,12 @@
     "build": "unbuild",
     "test": "vitest run --exclude __tests__/release-rehearsal.spec.ts",
     "test:release-smoke": "vitest run __tests__/release-rehearsal.spec.ts",
-    "release:verify": "cd ../frontron && npm run test:package-smoke && cd ../create-frontron && npm run test:release-smoke",
-    "release:matrix-smoke": "node scripts/release-matrix-smoke.mjs",
+    "release:verify": "node ../release.mjs verify",
+    "release:matrix-smoke": "node ../release.mjs matrix-smoke",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build",
-    "version": "node sync-version.js",
-    "release": "npm run release:verify && cd ../frontron && npm publish && cd ../create-frontron && npm publish"
+    "version": "node ../release.mjs sync-version",
+    "release": "node ../release.mjs publish"
   },
   "engines": {
     "node": ">=22.0.0"

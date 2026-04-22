@@ -100,17 +100,19 @@ afterEach(() => {
 })
 
 test(
-  'frontron npm pack output includes only placeholder package files',
+  'frontron npm pack output includes only the init-focused package files',
   { timeout: 60_000 },
   () => {
     const packedFiles = readPackedFiles()
 
     expect(packedFiles.has('index.js')).toBe(true)
-    expect(packedFiles.has('dist/index.mjs')).toBe(true)
     expect(packedFiles.has('dist/cli.mjs')).toBe(true)
+    expect(packedFiles.has('dist/cli.d.ts')).toBe(true)
+    expect(packedFiles.has('dist/cli.d.mts')).toBe(true)
     expect(packedFiles.has('package.json')).toBe(true)
     expect(packedFiles.has('README.md')).toBe(true)
 
+    expect(packedFiles.has('dist/index.mjs')).toBe(false)
     expect(packedFiles.has('dist/client.mjs')).toBe(false)
     expect(packedFiles.has('dist/runtime/main.mjs')).toBe(false)
     expect(packedFiles.has('dist/runtime/preload.mjs')).toBe(false)

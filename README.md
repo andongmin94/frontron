@@ -26,7 +26,7 @@ npm install
 npm run app
 ```
 
-Build the packaged desktop app with:
+For starter apps, build the packaged desktop app with:
 
 ```bash
 npm run build
@@ -37,9 +37,12 @@ Retrofit an existing compatible web project with:
 ```bash
 npm install -D frontron
 npx frontron init
+npm install
+npm run frontron:dev
 ```
 
 `frontron init` is the active retrofit flow today. It adds a conservative, app-owned Electron layer without replacing the app's existing frontend structure unless you explicitly choose starter-like additions.
+Use `npm run frontron:package` when you are ready to create a packaged desktop build from a retrofit project.
 After init, `npx frontron doctor` checks the generated Electron layer and reports missing files, scripts, and packaging metadata. Before init, it reports the project as not initialized instead of listing generated Electron files as missing.
 Use `npx frontron clean --dry-run` to preview removal of manifest-owned files, scripts, dependencies, and Electron build metadata; generated file hashes and ownership records guard local edits by default.
 Use `npx frontron update --dry-run` to preview a manifest-owned refresh before applying it.
@@ -53,7 +56,7 @@ Use `npx frontron update --dry-run` to preview a manifest-owned refresh before a
 
 ## Requirements
 
-- Node.js `22+`
+- Node.js `22.15+`
 
 ## Repo Layout
 

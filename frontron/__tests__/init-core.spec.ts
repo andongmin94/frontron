@@ -85,8 +85,11 @@ describe('frontron init core flow', () => {
     expect(combined).toContain('Next steps:')
     expect(combined).toContain('1. Run "npm install" to install the new desktop dependencies.')
     expect(combined).toContain('2. Run "npm run frontron:dev" to start the desktop app.')
+    expect(combined).toContain('   The dev runner waits for http://localhost:5180.')
     expect(combined).toContain('3. Run "npm run frontron:build" to prepare the desktop build.')
-    expect(combined).toContain('4. Run "npm run frontron:package" to create a packaged build.')
+    expect(combined).toContain(
+      '4. Run "npm run frontron:package" to create a packaged build when you are ready to distribute.',
+    )
     expect(manifest.adapter).toBe('generic-static')
     expect(manifest.adapterConfidence).toBe('low')
     expect(manifest.adapterReasons).toContain('No specific framework adapter matched; using generic static fallback.')
@@ -352,7 +355,9 @@ describe('frontron init core flow', () => {
     )
     expect(combined).toContain('2. Run "npm run frontron:dev:electron" to start the desktop app.')
     expect(combined).toContain('3. Run "npm run frontron:build:electron" to prepare the desktop build.')
-    expect(combined).toContain('4. Run "npm run frontron:package:electron" to create a packaged build.')
+    expect(combined).toContain(
+      '4. Run "npm run frontron:package:electron" to create a packaged build when you are ready to distribute.',
+    )
   })
 
   test('init treats existing target files as blockers even with --force', async () => {

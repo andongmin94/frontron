@@ -41,6 +41,7 @@ import {
   renderIpcSource,
   renderMainSource,
   renderPreloadSource,
+  resolveDevServerUrl,
   renderServeSource,
   renderTsconfigSource,
   renderWindowSource,
@@ -522,8 +523,9 @@ export async function runInit(options: InitOptions, context: InitContext) {
     context.output.info('Next steps:')
     context.output.info(`1. Run "${formatInstallCommand(config.packageManager)}" to install the new desktop dependencies.`)
     context.output.info(`2. Run "${formatRunScriptCommand(config.packageManager, appScript)}" to start the desktop app.`)
+    context.output.info(`   The dev runner waits for ${resolveDevServerUrl(config)}.`)
     context.output.info(`3. Run "${formatRunScriptCommand(config.packageManager, buildScript)}" to prepare the desktop build.`)
-    context.output.info(`4. Run "${formatRunScriptCommand(config.packageManager, packageScript)}" to create a packaged build.`)
+    context.output.info(`4. Run "${formatRunScriptCommand(config.packageManager, packageScript)}" to create a packaged build when you are ready to distribute.`)
 
     return 0
   } finally {

@@ -160,42 +160,24 @@ test('packed frontron CLI can seed the minimal Electron layer', { timeout: 120_0
 
   runNpm(['install', '--ignore-scripts', tarballPath], appRoot)
 
-  const cliPath = join(appRoot, 'node_modules', 'frontron', 'index.js')
-  const result = spawnSync(process.execPath, [cliPath, 'init', '--yes'], {
-    cwd: appRoot,
-    encoding: 'utf8',
-  })
-
-  expect(result.status).toBe(0)
+  runNpm(['exec', '--', 'frontron', 'init', '--yes'], appRoot)
   expect(existsSync(join(appRoot, 'electron', 'main.ts'))).toBe(true)
   expect(existsSync(join(appRoot, 'electron', 'window.ts'))).toBe(true)
   expect(existsSync(join(appRoot, 'electron', 'serve.ts'))).toBe(true)
   expect(existsSync(join(appRoot, '.frontron', 'manifest.json'))).toBe(true)
   expect(existsSync(join(appRoot, 'tsconfig.electron.json'))).toBe(true)
 
-  const doctorResult = spawnSync(process.execPath, [cliPath, 'doctor'], {
-    cwd: appRoot,
-    encoding: 'utf8',
-  })
+  const doctorOutput = runNpm(['exec', '--', 'frontron', 'doctor'], appRoot)
 
-  expect(doctorResult.status).toBe(0)
-  expect(doctorResult.stdout).toContain('No blockers found.')
+  expect(doctorOutput).toContain('No blockers found.')
 
-  const cleanResult = spawnSync(process.execPath, [cliPath, 'clean', '--dry-run'], {
-    cwd: appRoot,
-    encoding: 'utf8',
-  })
+  const cleanOutput = runNpm(['exec', '--', 'frontron', 'clean', '--dry-run'], appRoot)
 
-  expect(cleanResult.status).toBe(0)
-  expect(cleanResult.stdout).toContain('Frontron Clean')
-  expect(cleanResult.stdout).toContain('No changes were written because --dry-run was used.')
+  expect(cleanOutput).toContain('Frontron Clean')
+  expect(cleanOutput).toContain('No changes were written because --dry-run was used.')
 
-  const updateResult = spawnSync(process.execPath, [cliPath, 'update', '--dry-run'], {
-    cwd: appRoot,
-    encoding: 'utf8',
-  })
+  const updateOutput = runNpm(['exec', '--', 'frontron', 'update', '--dry-run'], appRoot)
 
-  expect(updateResult.status).toBe(0)
-  expect(updateResult.stdout).toContain('Files to overwrite:')
-  expect(updateResult.stdout).toContain('Run "frontron update --yes" to apply this plan.')
+  expect(updateOutput).toContain('Files to overwrite:')
+  expect(updateOutput).toContain('Run "frontron update --yes" to apply this plan.')
 })

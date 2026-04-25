@@ -362,16 +362,30 @@ declare global {
 `
 }
 
-export function renderServeSource(config: InitConfig) {
+function getDefaultDevPort(adapter: InitConfig['adapter']) {
+  return adapter === 'next-export' ||
+    adapter === 'next-standalone' ||
+    adapter === 'nuxt-node-server'
+    ? 3000
+    : 5173
+}
+
+export function resolveDevServerUrl(config: InitConfig) {
   const devHost =
     inferHost(config.packageJson, config.webDevScript) ??
     normalizeLoopbackHost(inferViteServerValue(config.cwd, 'host')) ??
     'localhost'
-  const devPort =
+  const inferredPort =
     inferPort(config.packageJson, config.webDevScript) ??
-    Number.parseInt(inferViteServerValue(config.cwd, 'port') ?? '', 10) ??
-    5173
-  const devUrl = `http://${devHost}:${Number.isInteger(devPort) ? devPort : 5173}`
+    Number.parseInt(inferViteServerValue(config.cwd, 'port') ?? '', 10)
+  const defaultDevPort = getDefaultDevPort(config.adapter)
+  const devPort = Number.isInteger(inferredPort) ? inferredPort : defaultDevPort
+
+  return `http://${devHost}:${devPort}`
+}
+
+export function renderServeSource(config: InitConfig) {
+  const devUrl = resolveDevServerUrl(config)
 
   return `import { spawn, type ChildProcess } from 'node:child_process'
 import { cpSync, createReadStream, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'

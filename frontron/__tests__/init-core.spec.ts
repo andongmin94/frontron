@@ -36,7 +36,7 @@ describe('frontron init core flow', () => {
     expect(readFileSync(join(projectRoot, 'electron', 'window.ts'), 'utf8')).toContain("mainWindow.webContents.on('context-menu'")
     const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
     fixtures.expectEmbeddedString(serveSource, 'WEB_DEV_SCRIPT', 'dev')
-    fixtures.expectEmbeddedString(serveSource, 'DEV_URL', 'http://127.0.0.1:5180')
+    fixtures.expectEmbeddedString(serveSource, 'DEV_URL', 'http://localhost:5180')
     fixtures.expectEmbeddedString(serveSource, 'WEB_OUT_DIR', 'dist-web')
     expect(serveSource).toContain(
       "createRequire(import.meta.url)",

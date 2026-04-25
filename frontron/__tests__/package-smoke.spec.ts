@@ -170,5 +170,32 @@ test('packed frontron CLI can seed the minimal Electron layer', { timeout: 120_0
   expect(existsSync(join(appRoot, 'electron', 'main.ts'))).toBe(true)
   expect(existsSync(join(appRoot, 'electron', 'window.ts'))).toBe(true)
   expect(existsSync(join(appRoot, 'electron', 'serve.ts'))).toBe(true)
+  expect(existsSync(join(appRoot, '.frontron', 'manifest.json'))).toBe(true)
   expect(existsSync(join(appRoot, 'tsconfig.electron.json'))).toBe(true)
+
+  const doctorResult = spawnSync(process.execPath, [cliPath, 'doctor'], {
+    cwd: appRoot,
+    encoding: 'utf8',
+  })
+
+  expect(doctorResult.status).toBe(0)
+  expect(doctorResult.stdout).toContain('No blockers found.')
+
+  const cleanResult = spawnSync(process.execPath, [cliPath, 'clean', '--dry-run'], {
+    cwd: appRoot,
+    encoding: 'utf8',
+  })
+
+  expect(cleanResult.status).toBe(0)
+  expect(cleanResult.stdout).toContain('Frontron Clean')
+  expect(cleanResult.stdout).toContain('No changes were written because --dry-run was used.')
+
+  const updateResult = spawnSync(process.execPath, [cliPath, 'update', '--dry-run'], {
+    cwd: appRoot,
+    encoding: 'utf8',
+  })
+
+  expect(updateResult.status).toBe(0)
+  expect(updateResult.stdout).toContain('Files to overwrite:')
+  expect(updateResult.stdout).toContain('Run "frontron update --yes" to apply this plan.')
 })

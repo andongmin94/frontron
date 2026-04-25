@@ -40,10 +40,12 @@ export interface InitContext {
 export interface InitOptions {
   yes: boolean
   force: boolean
+  dryRun?: boolean
   adapter?: string
   desktopDir?: string
   appScript?: string
   buildScript?: string
+  packageScript?: string
   webDevScript?: string
   webBuildScript?: string
   outDir?: string
@@ -66,6 +68,14 @@ export type InitAdapterId =
   | 'generic-node-server'
 
 export type RuntimeStrategy = 'static-export' | 'node-server'
+export type AdapterConfidence = 'high' | 'medium' | 'low'
+
+export type AdapterDetectionResult = {
+  matched: boolean
+  confidence: AdapterConfidence
+  reasons: string[]
+  warnings: string[]
+}
 
 export type CopyTarget = {
   from: string
@@ -84,7 +94,7 @@ export type AdapterDefaults = {
 export type InitAdapter = {
   id: InitAdapterId
   runtimeStrategy: RuntimeStrategy
-  detect(cwd: string, packageJson: PackageJson): boolean
+  detect(cwd: string, packageJson: PackageJson): AdapterDetectionResult
   inferDefaults(cwd: string, packageJson: PackageJson): AdapterDefaults
   resolveBuildCommand(packageJson: PackageJson, webBuildScript: string): string
 }
@@ -94,10 +104,13 @@ export interface InitConfig {
   packageJson: PackageJson
   packageManager: 'npm' | 'pnpm' | 'yarn' | 'bun'
   adapter: InitAdapterId
+  adapterConfidence: AdapterConfidence
+  adapterReasons: string[]
   runtimeStrategy: RuntimeStrategy
   desktopDir: string
   appScript: string
   buildScript: string
+  packageScript: string
   webDevScript: string
   webBuildScript: string
   webBuildCommand: string

@@ -24,6 +24,9 @@ test('frontron package docs position init as the active retrofit command', () =>
   const source = readFileSync(join(repoRoot, 'frontron', 'README.md'), 'utf8')
 
   expect(source).toContain('frontron init')
+  expect(source).toContain('frontron doctor')
+  expect(source).toContain('frontron clean')
+  expect(source).toContain('frontron update')
   expect(source).toContain('active command')
   expect(source).toContain('existing web frontend')
   expect(source).toContain('app-owned Electron layer')

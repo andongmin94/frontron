@@ -169,6 +169,19 @@ function createSummary(config: Parameters<typeof previewPackageJsonPatch>[0]) {
   return lines.join('\n')
 }
 
+function formatInstallCommand(packageManager: ReturnType<typeof inferPackageManager>) {
+  return `${packageManager} install`
+}
+
+function formatRunScriptCommand(
+  packageManager: ReturnType<typeof inferPackageManager>,
+  scriptName: string,
+) {
+  return packageManager === 'yarn'
+    ? `yarn ${scriptName}`
+    : `${packageManager} run ${scriptName}`
+}
+
 function mergePackageJsonClaims(
   existingClaims: PackageJsonOwnershipClaim[] = [],
   nextClaims: PackageJsonOwnershipClaim[] = [],
@@ -395,7 +408,7 @@ export async function runInit(options: InitOptions, context: InitContext) {
     const config = {
       cwd: context.cwd,
       packageJson,
-      packageManager: inferPackageManager(context.cwd),
+      packageManager: inferPackageManager(context.cwd, packageJson),
       adapter: adapter.id,
       adapterConfidence: adapterSelection.confidence,
       adapterReasons: adapterSelection.reasons,
@@ -506,9 +519,11 @@ export async function runInit(options: InitOptions, context: InitContext) {
       }
     }
     context.output.info('')
-    context.output.info(`Run "${appScript}" to start the desktop app after installing dependencies.`)
-    context.output.info(`Run "${buildScript}" to prepare the desktop build.`)
-    context.output.info(`Run "${packageScript}" to create a packaged build.`)
+    context.output.info('Next steps:')
+    context.output.info(`1. Run "${formatInstallCommand(config.packageManager)}" to install the new desktop dependencies.`)
+    context.output.info(`2. Run "${formatRunScriptCommand(config.packageManager, appScript)}" to start the desktop app.`)
+    context.output.info(`3. Run "${formatRunScriptCommand(config.packageManager, buildScript)}" to prepare the desktop build.`)
+    context.output.info(`4. Run "${formatRunScriptCommand(config.packageManager, packageScript)}" to create a packaged build.`)
 
     return 0
   } finally {

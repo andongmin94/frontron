@@ -15,6 +15,7 @@ import {
 import {
   findScriptByCommand,
   getScriptCommand,
+  hasViteBuildCommand,
   hasNextConfigOutput,
   hasNuxtConfig,
   hasPackageDependency,
@@ -24,6 +25,7 @@ import {
   inferOutDir,
   inferOutDirFromScript,
   inferScriptName,
+  inferViteConfigPathFromScript,
 } from '../detect'
 
 function detected(
@@ -48,6 +50,22 @@ function notDetected(reason: string): AdapterDetectionResult {
   }
 }
 
+function inferGenericViteOutDir(cwd: string, packageJson: PackageJson, webBuildScript: string) {
+  const command = getScriptCommand(packageJson, webBuildScript)
+  const configPath = inferViteConfigPathFromScript(packageJson, webBuildScript)
+  const configuredOutDir = configPath ? inferOutDir(cwd, [configPath]) : inferOutDir(cwd)
+
+  if (configuredOutDir) {
+    return configuredOutDir
+  }
+
+  if (configPath) {
+    return null
+  }
+
+  return hasViteBuildCommand(command) && hasPackageDependency(packageJson, 'vite') ? 'dist' : null
+}
+
 const genericStaticAdapter: InitAdapter = {
   id: 'generic-static',
   runtimeStrategy: 'static-export',
@@ -60,7 +78,9 @@ const genericStaticAdapter: InitAdapter = {
     return {
       webDevScript: inferScriptName(packageJson, 'dev'),
       webBuildScript,
-      outDir: inferOutDirFromScript(packageJson, webBuildScript) ?? inferOutDir(cwd),
+      outDir:
+        inferOutDirFromScript(packageJson, webBuildScript) ??
+        inferGenericViteOutDir(cwd, packageJson, webBuildScript),
     }
   },
   resolveBuildCommand(packageJson, webBuildScript) {

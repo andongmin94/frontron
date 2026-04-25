@@ -1,12 +1,14 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 import type { PackageJson } from './shared'
 import { normalizePathValue } from './shared'
 
-export function inferOutDir(cwd: string) {
-  for (const fileName of ['vite.config.ts', 'vite.config.mts', 'vite.config.js', 'vite.config.mjs']) {
-    const filePath = join(cwd, fileName)
+const VITE_CONFIG_FILE_NAMES = ['vite.config.ts', 'vite.config.mts', 'vite.config.js', 'vite.config.mjs']
+
+export function inferOutDir(cwd: string, fileNames = VITE_CONFIG_FILE_NAMES) {
+  for (const fileName of fileNames) {
+    const filePath = resolve(cwd, fileName)
 
     if (!existsSync(filePath)) {
       continue
@@ -147,8 +149,12 @@ export function inferScriptName(packageJson: PackageJson, kind: 'dev' | 'build')
   return viteCandidates.length === 1 ? viteCandidates[0] : (kind === 'dev' ? 'dev' : 'build')
 }
 
-function isViteBuildCommand(command: string | undefined) {
+function isViteBuildCommand(command: string | null | undefined) {
   return Boolean(command && /\bvite\s+build\b/i.test(command))
+}
+
+export function hasViteBuildCommand(command: string | null | undefined) {
+  return isViteBuildCommand(command)
 }
 
 export function inferOutDirFromScript(packageJson: PackageJson, scriptName: string) {
@@ -160,6 +166,18 @@ export function inferOutDirFromScript(packageJson: PackageJson, scriptName: stri
 
   const match = command.match(/(?:--outDir|--outdir|-o)(?:\s+|=)([^\s"'`&]+)/i)
   return match?.[1] ? normalizePathValue(match[1], 'dist') : null
+}
+
+export function inferViteConfigPathFromScript(packageJson: PackageJson, scriptName: string) {
+  const command = getScriptCommand(packageJson, scriptName)
+
+  if (!isViteBuildCommand(command) || !command) {
+    return null
+  }
+
+  const match = command.match(/(?:^|[\s"'`])(?:--config|-c)(?:\s+|=)([^\s"'`&]+)/i)
+  const configPath = match?.[1]
+  return configPath ? normalizePathValue(configPath, configPath) : null
 }
 
 export function inferNextExportOutDirFromScript(packageJson: PackageJson, scriptName: string) {

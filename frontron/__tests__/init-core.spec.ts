@@ -14,6 +14,7 @@ describe('frontron init core flow', () => {
     const exitCode = await runCli(['init', '--yes'], output, {
       cwd: projectRoot,
     })
+    const combined = output.info.mock.calls.flat().join('\n')
 
     expect(exitCode).toBe(0)
 
@@ -31,9 +32,11 @@ describe('frontron init core flow', () => {
     }
 
     expect(readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')).toContain('createMainWindow')
-    expect(readFileSync(join(projectRoot, 'electron', 'window.ts'), 'utf8')).toContain('BrowserWindow')
-    expect(readFileSync(join(projectRoot, 'electron', 'window.ts'), 'utf8')).toContain('Content-Security-Policy')
-    expect(readFileSync(join(projectRoot, 'electron', 'window.ts'), 'utf8')).toContain("mainWindow.webContents.on('context-menu'")
+    const windowSource = readFileSync(join(projectRoot, 'electron', 'window.ts'), 'utf8')
+    expect(windowSource).toContain('BrowserWindow')
+    expect(windowSource).toContain('Content-Security-Policy')
+    expect(windowSource).not.toContain('unsafe-eval')
+    expect(windowSource).toContain("mainWindow.webContents.on('context-menu'")
     const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
     fixtures.expectEmbeddedString(serveSource, 'WEB_DEV_SCRIPT', 'dev')
     fixtures.expectEmbeddedString(serveSource, 'DEV_URL', 'http://localhost:5180')
@@ -79,6 +82,11 @@ describe('frontron init core flow', () => {
     expect(packageJson.devDependencies.electron).toBeTruthy()
     expect(packageJson.devDependencies['electron-builder']).toBeTruthy()
     expect(packageJson.devDependencies.typescript).toBeTruthy()
+    expect(combined).toContain('Next steps:')
+    expect(combined).toContain('1. Run "npm install" to install the new desktop dependencies.')
+    expect(combined).toContain('2. Run "npm run frontron:dev" to start the desktop app.')
+    expect(combined).toContain('3. Run "npm run frontron:build" to prepare the desktop build.')
+    expect(combined).toContain('4. Run "npm run frontron:package" to create a packaged build.')
     expect(manifest.adapter).toBe('generic-static')
     expect(manifest.adapterConfidence).toBe('low')
     expect(manifest.adapterReasons).toContain('No specific framework adapter matched; using generic static fallback.')
@@ -110,6 +118,48 @@ describe('frontron init core flow', () => {
         value: 'dist-web{,/**/*}',
       }),
     )
+  })
+
+  test.each([
+    ['pnpm', 'pnpm-lock.yaml', 'pnpm install', 'pnpm run frontron:dev'],
+    ['yarn', 'yarn.lock', 'yarn install', 'yarn frontron:dev'],
+    ['bun', 'bun.lock', 'bun install', 'bun run frontron:dev'],
+  ])('init prints copyable %s commands from the project lockfile', async (_name, lockfile, installCommand, devCommand) => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    writeFileSync(join(projectRoot, lockfile), '')
+    const output = fixtures.createOutput()
+
+    const exitCode = await runCli(['init', '--yes'], output, {
+      cwd: projectRoot,
+    })
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expect(exitCode).toBe(0)
+    expect(combined).toContain(`1. Run "${installCommand}" to install the new desktop dependencies.`)
+    expect(combined).toContain(`2. Run "${devCommand}" to start the desktop app.`)
+  })
+
+  test('init prints copyable commands from package.json packageManager', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      packageManager?: string
+    }
+
+    packageJson.packageManager = 'pnpm@10.0.0'
+    writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
+    const output = fixtures.createOutput()
+
+    const exitCode = await runCli(['init', '--yes'], output, {
+      cwd: projectRoot,
+    })
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expect(exitCode).toBe(0)
+    expect(combined).toContain('1. Run "pnpm install" to install the new desktop dependencies.')
+    expect(combined).toContain('2. Run "pnpm run frontron:dev" to start the desktop app.')
   })
 
   test('init --dry-run prints the plan without writing files or package changes', async () => {
@@ -295,9 +345,14 @@ describe('frontron init core flow', () => {
     expect(packageJson.scripts['frontron:dev:electron']).toContain('--dev-app')
     expect(packageJson.scripts['frontron:build:electron']).toContain('--prepare-build')
     expect(packageJson.scripts['frontron:package:electron']).toContain('electron-builder')
-    expect(output.info.mock.calls.flat().join('\n')).toContain(
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expect(combined).toContain(
       'Existing "frontron:dev" script found. Using "frontron:dev:electron" instead.',
     )
+    expect(combined).toContain('2. Run "npm run frontron:dev:electron" to start the desktop app.')
+    expect(combined).toContain('3. Run "npm run frontron:build:electron" to prepare the desktop build.')
+    expect(combined).toContain('4. Run "npm run frontron:package:electron" to create a packaged build.')
   })
 
   test('init treats existing target files as blockers even with --force', async () => {

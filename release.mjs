@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
@@ -8,6 +8,20 @@ const createPackageRoot = join(repoRoot, 'create-frontron')
 const frontronPackageRoot = join(repoRoot, 'frontron')
 const createPackagePath = join(createPackageRoot, 'package.json')
 const frontronPackagePath = join(frontronPackageRoot, 'package.json')
+const packageSpecs = [
+  {
+    name: 'create-frontron',
+    root: createPackageRoot,
+    packagePath: createPackagePath,
+    lockPath: join(createPackageRoot, 'package-lock.json'),
+  },
+  {
+    name: 'frontron',
+    root: frontronPackageRoot,
+    packagePath: frontronPackagePath,
+    lockPath: join(frontronPackageRoot, 'package-lock.json'),
+  },
+]
 
 function getNpmExecutable() {
   return process.platform === 'win32' ? 'npm.cmd' : 'npm'
@@ -19,6 +33,58 @@ function readJson(path) {
 
 function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`)
+}
+
+function parseVersion(version) {
+  return version.split('.').map((part) => Number.parseInt(part, 10))
+}
+
+function compareVersions(left, right) {
+  const leftParts = parseVersion(left)
+  const rightParts = parseVersion(right)
+
+  for (let index = 0; index < 3; index += 1) {
+    const leftPart = leftParts[index] ?? 0
+    const rightPart = rightParts[index] ?? 0
+
+    if (leftPart !== rightPart) {
+      return leftPart - rightPart
+    }
+  }
+
+  return 0
+}
+
+function getHighestVersion(versions) {
+  return versions.reduce((highest, version) =>
+    compareVersions(version, highest) > 0 ? version : highest,
+  )
+}
+
+function writePackageVersion(spec, version) {
+  const packageJson = readJson(spec.packagePath)
+
+  if (packageJson.version !== version) {
+    packageJson.version = version
+    writeJson(spec.packagePath, packageJson)
+    logStep(`synced ${spec.name} package.json to ${version}`)
+  }
+
+  if (!existsSync(spec.lockPath)) {
+    return
+  }
+
+  const lockJson = readJson(spec.lockPath)
+
+  if (lockJson.version !== version) {
+    lockJson.version = version
+  }
+
+  if (lockJson.packages?.['']?.version !== version) {
+    lockJson.packages[''].version = version
+  }
+
+  writeJson(spec.lockPath, lockJson)
 }
 
 function logStep(message) {
@@ -55,18 +121,19 @@ function runNode(args, cwd) {
 }
 
 function syncVersions() {
-  const createPackage = readJson(createPackagePath)
-  const frontronPackage = readJson(frontronPackagePath)
-  const nextVersion = createPackage.version
+  const packageVersions = packageSpecs.map((spec) => readJson(spec.packagePath).version)
+  const nextVersion = getHighestVersion(packageVersions)
+  const alreadyAligned = packageVersions.every((version) => version === nextVersion)
 
-  if (frontronPackage.version === nextVersion) {
+  if (alreadyAligned) {
     logStep(`versions already aligned at ${nextVersion}`)
     return nextVersion
   }
 
-  frontronPackage.version = nextVersion
-  writeJson(frontronPackagePath, frontronPackage)
-  logStep(`synced frontron version to ${nextVersion}`)
+  for (const spec of packageSpecs) {
+    writePackageVersion(spec, nextVersion)
+  }
+
   return nextVersion
 }
 
@@ -91,6 +158,11 @@ function publishPackages() {
   runNpm(['publish'], createPackageRoot)
 }
 
+function verifyPublishReadiness() {
+  verifyRelease()
+  runMatrixSmoke()
+}
+
 function main() {
   const command = process.argv[2] ?? 'publish'
   const args = process.argv.slice(3)
@@ -108,7 +180,7 @@ function main() {
     case 'publish':
     case 'release':
       syncVersions()
-      verifyRelease()
+      verifyPublishReadiness()
       publishPackages()
       return
     default:

@@ -24,6 +24,8 @@ npm create frontron@latest
 
 That starter owns its Electron files directly under `src/electron/` and uses `window.electron` for its preload bridge.
 
+Requires Node.js `22.15+`.
+
 ## Retrofit path
 
 If you already have a compatible web frontend project, start with:
@@ -31,10 +33,14 @@ If you already have a compatible web frontend project, start with:
 ```bash
 npm install -D frontron
 npx frontron init
+npm install
+npm run frontron:dev
 ```
 
 `frontron init` is the active retrofit command today.
 Use `npx frontron init --dry-run` first when you want to inspect the detected adapter, planned files, and package.json changes without writing anything.
+After `init`, run your package manager install command again because the retrofit adds Electron-related dependencies to `package.json`.
+Use `npm run frontron:package` when you are ready to create the packaged desktop app; `npm run frontron:build` only prepares the desktop build output.
 
 It auto-detects the current runtime adapter when possible:
 
@@ -46,6 +52,8 @@ It auto-detects the current runtime adapter when possible:
 - `sveltekit-static` for SvelteKit static exports
 - `sveltekit-node` for SvelteKit node adapter builds
 - `generic-node-server` when you want to wire a custom Node runtime manually
+
+The generated dev runner prints the local URL it waits for. If your frontend dev server uses a custom host or port, pass it through your existing dev script, for example `vite --host 127.0.0.1 --port 4200` or `next dev --port 3300`.
 
 You can override that detection when needed:
 

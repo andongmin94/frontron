@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "vite",
     "app": "node src/electron/serve.ts --dev-app",
+    "typecheck": "tsc -b && tsc -p tsconfig.electron.json",
     "build": "tsc -b && vite build && tsc -p tsconfig.electron.json && electron-builder",
     "lint": "oxlint --fix src vite.config.ts && oxfmt ."
   },

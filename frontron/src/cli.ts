@@ -55,7 +55,7 @@ function printInitHelp(output: CliOutput) {
   output.info('')
   output.info('Options:')
   output.info('  --dry-run                              Show the plan without writing changes.')
-  output.info('  --yes, -y                              Apply without interactive prompts.')
+  output.info('  --yes, -y                              Use detected/default values without prompts; fails if required paths cannot be inferred.')
   output.info('  --force                                Refresh manifest-owned files from a previous init.')
   output.info(
     '  --adapter <generic-static|next-export|next-standalone|nuxt-node-server|remix-node-server|sveltekit-static|sveltekit-node|generic-node-server>',

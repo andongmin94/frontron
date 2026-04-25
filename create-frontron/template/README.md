@@ -28,6 +28,7 @@ npm run app
 
 - `npm run dev`: starts a browser-only preview.
 - `npm run app`: starts the Electron dev runtime and its own Vite dev server. You do not need to run `npm run dev` separately.
+- `npm run typecheck`: verifies the web and Electron TypeScript projects without packaging.
 - Renderer changes use Vite HMR.
 - Files under `src/electron/` restart the Electron runtime during development, and launcher-side changes are picked up by the dev launcher itself.
 - In Electron mode, a gear button in the lower-left corner opens desktop settings such as the title bar X button behavior.

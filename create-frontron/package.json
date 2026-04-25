@@ -1,6 +1,6 @@
 {
   "name": "create-frontron",
-  "version": "0.13.0",
+  "version": "0.13.3",
   "type": "module",
   "description": "Electron starter generator with React and Vite",
   "license": "MIT",
@@ -25,7 +25,7 @@
     "release": "node ../release.mjs publish"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.15.0"
   },
   "repository": {
     "type": "git",

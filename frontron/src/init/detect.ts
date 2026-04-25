@@ -208,7 +208,11 @@ export function inferViteServerValue(cwd: string, key: 'port' | 'host') {
 export function normalizeLoopbackHost(value: string | null | undefined) {
   const normalized = value?.trim().replace(/^["'`]|["'`]$/g, '') ?? ''
 
-  if (!normalized || normalized === '0.0.0.0' || normalized === '::' || normalized === 'true') {
+  if (!normalized) {
+    return null
+  }
+
+  if (normalized === '0.0.0.0' || normalized === '::' || normalized === 'true') {
     return '127.0.0.1'
   }
 

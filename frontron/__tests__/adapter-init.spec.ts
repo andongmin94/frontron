@@ -33,6 +33,112 @@ describe('frontron adapter init flows', () => {
     expect(packageJson.build.files).toContain('build/client{,/**/*}')
   })
 
+  test('init uses the Vite default dist directory when no outDir is configured', async () => {
+    const projectRoot = fixtures.createTempProjectWithScripts(
+      {
+        dev: 'vite',
+        build: 'tsc && vite build',
+      },
+      {
+        devDependencies: {
+          vite: '^8.0.1',
+          typescript: '^6.0.2',
+        },
+      },
+    )
+    fixtures.tempDirs.push(projectRoot)
+    const output = fixtures.createOutput()
+
+    const exitCode = await runCli(['init', '--yes'], output, {
+      cwd: projectRoot,
+    })
+
+    expect(exitCode).toBe(0)
+
+    const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')) as {
+      build: {
+        files: string[]
+      }
+    }
+    const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
+
+    fixtures.expectEmbeddedString(serveSource, 'WEB_OUT_DIR', 'dist')
+    expect(packageJson.build.files).toContain('dist{,/**/*}')
+  })
+
+  test('init reads outDir from a custom Vite config path', async () => {
+    const projectRoot = fixtures.createTempProjectWithScripts(
+      {
+        dev: 'vite',
+        build: 'vite build --config vite.desktop.ts',
+      },
+      {
+        devDependencies: {
+          vite: '^8.0.1',
+        },
+        extraFiles: {
+          'vite.desktop.ts': `export default {
+  build: {
+    outDir: 'desktop-dist',
+  },
+}
+`,
+        },
+      },
+    )
+    fixtures.tempDirs.push(projectRoot)
+    const output = fixtures.createOutput()
+
+    const exitCode = await runCli(['init', '--yes'], output, {
+      cwd: projectRoot,
+    })
+
+    expect(exitCode).toBe(0)
+
+    const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')) as {
+      build: {
+        files: string[]
+      }
+    }
+    const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
+
+    fixtures.expectEmbeddedString(serveSource, 'WEB_OUT_DIR', 'desktop-dist')
+    expect(packageJson.build.files).toContain('desktop-dist{,/**/*}')
+  })
+
+  test('init does not default to dist for unresolved custom Vite config output', async () => {
+    const projectRoot = fixtures.createTempProjectWithScripts(
+      {
+        dev: 'vite',
+        build: 'vite build --config vite.dynamic.ts',
+      },
+      {
+        devDependencies: {
+          vite: '^8.0.1',
+        },
+        extraFiles: {
+          'vite.dynamic.ts': `const target = process.env.TARGET_DIR
+
+export default {
+  build: {
+    outDir: target,
+  },
+}
+`,
+        },
+      },
+    )
+    fixtures.tempDirs.push(projectRoot)
+    const output = fixtures.createOutput()
+
+    const exitCode = await runCli(['init', '--yes'], output, {
+      cwd: projectRoot,
+    })
+
+    expect(exitCode).toBe(1)
+    expect(output.error.mock.calls.flat().join('\n')).toContain('Unable to infer the frontend build output')
+  })
+
   test('init auto-detects Next.js static export projects and composes the desktop build command', async () => {
     const projectRoot = fixtures.createTempProjectWithScripts(
       {

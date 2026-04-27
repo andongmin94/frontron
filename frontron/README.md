@@ -132,7 +132,9 @@ Managed local edits are preserved by default. `update --force` or `clean --force
 
 `init`, `update`, and `clean` snapshot managed files before mutation and recover an interrupted operation on the next valid lifecycle command. Project escapes and symbolic-link paths are rejected.
 
-npm, pnpm, Yarn, and Bun are supported. Installed pnpm packages may use their normal content-addressed hard links; Frontron treats those read-only package files as valid templates. Frontron records the small pnpm or Yarn settings needed for Electron installation and restores its own changes during `clean`.
+npm, pnpm, Yarn, and Bun are supported. Installed pnpm packages may use their normal content-addressed hard links; Frontron treats those read-only package files as valid templates. Frontron records only the package-manager settings needed for Electron installation: pnpm build approvals, Yarn's `node-modules` linker, or Bun trusted dependencies. `clean` restores the previous values.
+
+`frontron` is a CLI package. Its JavaScript modules are internal implementation details rather than a public programmatic API.
 
 ## License
 

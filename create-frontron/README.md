@@ -9,7 +9,7 @@ npm install
 npm run app
 ```
 
-Equivalent commands work with pnpm, Yarn, and Bun. pnpm projects receive the Electron `allowBuilds` entries, and Yarn projects receive `nodeLinker: node-modules` because the generated task runner uses normal package binaries.
+Equivalent commands work with pnpm, Yarn, and Bun. The generator writes only the package-manager setting needed for Electron installation: pnpm build approvals, Yarn's `node-modules` linker, or Bun trusted dependencies.
 
 Requires Node.js `22.15+`.
 

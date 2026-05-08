@@ -75,6 +75,16 @@ function assertGeneratedScripts(packageJson, manager) {
   }
 }
 
+function assertBunTrust(packageJson, label) {
+  if (
+    !Array.isArray(packageJson.trustedDependencies) ||
+    !packageJson.trustedDependencies.includes('electron') ||
+    !packageJson.trustedDependencies.includes('electron-winstaller')
+  ) {
+    throw new Error(`${label} did not trust the Electron install scripts`)
+  }
+}
+
 function smokePnpm(createTarball, frontronTarball) {
   const projectRoot = mkdtempSync(join(tmpdir(), 'frontron-pnpm-'))
   temporaryDirectories.push(projectRoot)
@@ -166,8 +176,8 @@ function smokeYarn(createTarball) {
   assertGeneratedScripts(readJson(join(appRoot, 'package.json')), 'Yarn')
 }
 
-function smokeBun(createTarball) {
-  const runnerRoot = mkdtempSync(join(tmpdir(), 'frontron-bun-'))
+function smokeBun(createTarball, frontronTarball) {
+  const runnerRoot = mkdtempSync(join(tmpdir(), 'frontron-bun-generator-'))
   temporaryDirectories.push(runnerRoot)
   writeJson(join(runnerRoot, 'package.json'), {
     name: 'bun-generator-smoke',
@@ -186,14 +196,47 @@ function smokeBun(createTarball) {
   )
 
   const generatedPackage = readJson(join(runnerRoot, 'bun-app', 'package.json'))
-  if (
-    !Array.isArray(generatedPackage.trustedDependencies) ||
-    !generatedPackage.trustedDependencies.includes('electron') ||
-    !generatedPackage.trustedDependencies.includes('electron-winstaller')
-  ) {
-    throw new Error('Bun starter did not trust the Electron install scripts')
-  }
+  assertBunTrust(generatedPackage, 'Bun starter')
   assertGeneratedScripts(generatedPackage, 'Bun')
+
+  const retrofitRoot = mkdtempSync(join(tmpdir(), 'frontron-bun-retrofit-'))
+  temporaryDirectories.push(retrofitRoot)
+  writeJson(join(retrofitRoot, 'package.json'), {
+    name: 'bun-retrofit-smoke',
+    version: '0.0.0',
+    private: true,
+    packageManager: 'bun@1.3.14',
+    scripts: { dev: 'vite', build: 'vite build' },
+    devDependencies: {
+      'create-frontron': `file:${createTarball}`,
+      frontron: `file:${frontronTarball}`,
+      vite: '^8.0.1',
+    },
+  })
+
+  run('bun', ['install', '--ignore-scripts'], retrofitRoot)
+  const cli = installedCli(retrofitRoot, 'frontron')
+  const userAgent = 'bun/1.3.14 npm/? node/v24 linux x64'
+  run(
+    process.execPath,
+    [cli, 'init', '--yes', '--adapter', 'generic-static', '--out-dir', 'dist'],
+    retrofitRoot,
+    { npm_config_user_agent: userAgent },
+  )
+
+  const initializedPackage = readJson(join(retrofitRoot, 'package.json'))
+  assertBunTrust(initializedPackage, 'Bun retrofit')
+  run(process.execPath, [cli, 'doctor'], retrofitRoot, {
+    npm_config_user_agent: userAgent,
+  })
+  run(process.execPath, [cli, 'clean', '--yes'], retrofitRoot, {
+    npm_config_user_agent: userAgent,
+  })
+
+  const cleanedPackage = readJson(join(retrofitRoot, 'package.json'))
+  if (Object.hasOwn(cleanedPackage, 'trustedDependencies')) {
+    throw new Error('Bun retrofit clean did not restore the original package.json')
+  }
 }
 
 try {
@@ -201,7 +244,7 @@ try {
   const frontronTarball = pack(frontronRoot, 'frontron-pack-')
   smokePnpm(createTarball, frontronTarball)
   smokeYarn(createTarball)
-  smokeBun(createTarball)
+  smokeBun(createTarball, frontronTarball)
   console.log('[package-manager-smoke] pnpm, Yarn, and Bun manager-specific contracts passed')
 } finally {
   for (const directory of temporaryDirectories.reverse()) {

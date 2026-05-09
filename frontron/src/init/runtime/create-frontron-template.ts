@@ -218,37 +218,41 @@ function validateCandidate(candidate: TemplateCandidate, frontronVersion: string
   return { ...candidate, packageVersion }
 }
 
+function validateNamedCandidate(
+  candidate: TemplateCandidate,
+  frontronVersion: string,
+  label: string,
+) {
+  try {
+    return validateCandidate(candidate, frontronVersion)
+  } catch (error) {
+    throw new Error(`${label} must provide create-frontron@${frontronVersion}: ${(error as Error).message}`, {
+      cause: error,
+    })
+  }
+}
+
 function resolveTemplate(): ResolvedTemplate {
   const frontronVersion = resolveFrontronPackageVersion()
   const explicit = explicitCandidate()
 
   if (explicit) {
-    try {
-      return validateCandidate(explicit, frontronVersion)
-    } catch (error) {
-      throw new Error(
-        `FRONTRON_CREATE_TEMPLATE_DIR must point to create-frontron@${frontronVersion}: ${(error as Error).message}`,
-        { cause: error },
-      )
-    }
+    return validateNamedCandidate(explicit, frontronVersion, 'FRONTRON_CREATE_TEMPLATE_DIR')
   }
 
-  const candidates = [repoCandidate(), dependencyCandidate()].filter(
-    (candidate): candidate is TemplateCandidate => candidate !== null,
-  )
-  const problems: string[] = []
-
-  for (const candidate of candidates) {
-    try {
-      return validateCandidate(candidate, frontronVersion)
-    } catch (error) {
-      problems.push(`${candidate.templateDir}: ${(error as Error).message}`)
-    }
+  const repository = repoCandidate()
+  if (repository) {
+    return validateNamedCandidate(repository, frontronVersion, 'The repository template')
   }
 
-  throw new Error(
-    `Unable to find create-frontron@${frontronVersion}. Reinstall frontron. ${problems.join('; ')}`,
-  )
+  const dependency = dependencyCandidate()
+  if (!dependency) {
+    throw new Error(
+      `Unable to locate create-frontron@${frontronVersion}. Reinstall frontron and its exact dependency.`,
+    )
+  }
+
+  return validateNamedCandidate(dependency, frontronVersion, 'The installed dependency')
 }
 
 function readTemplateDependencies(templateDir: string): InitTemplateDependencies {

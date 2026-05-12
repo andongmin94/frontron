@@ -14,7 +14,8 @@ export const rendererOrigin = `${rendererScheme}://app`
 const defaultRendererCsp =
   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' http://127.0.0.1:* http://localhost:* https: ws: wss:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
 let rendererUrl: string | null = null
-let rendererShutdownStarted = false
+let rendererShutdownPromise: Promise<void> | null = null
+let rendererShutdownComplete = false
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -189,16 +190,17 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.on("before-quit", (event) => {
-    if (rendererShutdownStarted) return
+    if (rendererShutdownComplete) return
 
     event.preventDefault()
-    rendererShutdownStarted = true
+    if (rendererShutdownPromise) return
 
-    void stopRendererServer()
+    rendererShutdownPromise = stopRendererServer()
       .catch((error: unknown) => {
         console.error("Failed to stop renderer server:", error)
       })
       .finally(() => {
+        rendererShutdownComplete = true
         app.quit()
       })
   })

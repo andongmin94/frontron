@@ -104,17 +104,13 @@ test('rejects the current directory even when it is otherwise empty', async () =
   expect(existsSync(join(workspace, 'package.json'))).toBe(false)
 })
 
-test('rejects removed options, unknown options, and extra arguments', async () => {
+test('rejects unknown options and extra arguments', async () => {
   const workspace = createWorkspace('arguments')
   process.chdir(workspace)
 
-  await expect(runCreateFrontron(['app', '--overwrite', 'yes'])).rejects.toThrow(
-    '--overwrite option was removed',
-  )
-  await expect(runCreateFrontron(['app', '--template', 'react'])).rejects.toThrow(
-    'Template selection has been removed',
-  )
-  await expect(runCreateFrontron(['app', '--unknown'])).rejects.toThrow('Unknown option: --unknown')
+  for (const option of ['--overwrite', '--template', '--unknown']) {
+    await expect(runCreateFrontron(['app', option])).rejects.toThrow(`Unknown option: ${option}`)
+  }
   await expect(runCreateFrontron(['app', 'extra'])).rejects.toThrow(
     'Unexpected positional argument: "extra"',
   )

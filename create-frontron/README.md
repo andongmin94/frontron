@@ -23,6 +23,9 @@ It generates the default starter shape:
 ```bash
 npm create frontron@latest my-app
 npx create-frontron@latest my-app
+pnpm create frontron my-app
+yarn create frontron my-app
+bun create frontron my-app
 ```
 
 Requires Node.js `22.15+`.
@@ -35,6 +38,8 @@ cd my-app
 npm install
 npm run app
 ```
+
+Use the equivalent `pnpm`, `yarn`, or `bun` install/run commands when you created the app with another package manager. The generator also prints package-manager-specific next steps.
 
 - `npm run dev`: web preview only
 - `npm run app`: Electron runtime + web dev server

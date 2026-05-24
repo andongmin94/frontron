@@ -61,8 +61,10 @@ test('starter template restores the template-owned electron structure', () => {
 
   expect(packageJson.scripts.dev).toBe('vite')
   expect(packageJson.scripts.app).toContain('src/electron/serve.ts')
+  expect(packageJson.scripts.app).toContain('node --no-deprecation')
   expect(packageJson.scripts.typecheck).toBe('tsc -b && tsc -p tsconfig.electron.json')
   expect(packageJson.scripts.build).toContain('electron-builder')
+  expect(packageJson.scripts.build).toContain('node --no-deprecation ./node_modules/vite/bin/vite.js build')
   expect(packageJson.scripts).not.toHaveProperty('web:dev')
   expect(packageJson.scripts).not.toHaveProperty('web:build')
   expect(packageJson.scripts).not.toHaveProperty('app:dev')

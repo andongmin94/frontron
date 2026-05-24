@@ -71,7 +71,7 @@ describe('frontron init core flow', () => {
       }>
     }
 
-    expect(packageJson.scripts['frontron:dev']).toBe('tsc -p tsconfig.electron.json && node dist-electron/serve.js --dev-app')
+    expect(packageJson.scripts['frontron:dev']).toBe('tsc -p tsconfig.electron.json && node --no-deprecation dist-electron/serve.js --dev-app')
     expect(packageJson.scripts['frontron:build']).toContain('vite build')
     expect(packageJson.scripts['frontron:build']).toContain('--prepare-build')
     expect(packageJson.scripts['frontron:build']).not.toContain('electron-builder')
@@ -104,7 +104,7 @@ describe('frontron init core flow', () => {
     expect(manifest.fileHashes['.frontron/manifest.json']).toBeUndefined()
     expect(manifest.scripts).toEqual(['frontron:dev', 'frontron:build', 'frontron:package'])
     expect(manifest.scriptCommands['frontron:dev']).toBe(
-      'tsc -p tsconfig.electron.json && node dist-electron/serve.js --dev-app',
+      'tsc -p tsconfig.electron.json && node --no-deprecation dist-electron/serve.js --dev-app',
     )
     expect(manifest.scriptCommands['frontron:build']).toContain('--prepare-build')
     expect(manifest.scriptCommands['frontron:package']).toContain('electron-builder')
@@ -246,7 +246,7 @@ describe('frontron init core flow', () => {
 
     expect(readFileSync(join(projectRoot, 'apps', 'electron', 'main.ts'), 'utf8')).toContain('createMainWindow')
     expect(packageJson.scripts.desktop).toBe(
-      'tsc -p tsconfig.electron.json && node dist-electron/serve.js --dev-app',
+      'tsc -p tsconfig.electron.json && node --no-deprecation dist-electron/serve.js --dev-app',
     )
     expect(packageJson.scripts['desktop:build']).toContain('vite build')
     expect(packageJson.scripts['desktop:build']).not.toContain('electron-builder')
@@ -317,7 +317,7 @@ describe('frontron init core flow', () => {
     }
 
     expect(packageJson.scripts['desktop:app']).toBe(
-      'tsc -p tsconfig.electron.json && node dist-electron/serve.js --dev-app',
+      'tsc -p tsconfig.electron.json && node --no-deprecation dist-electron/serve.js --dev-app',
     )
     expect(packageJson.scripts['desktop:build']).toContain('--prepare-build')
     expect(packageJson.scripts['desktop:build']).not.toContain('electron-builder')

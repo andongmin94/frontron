@@ -441,6 +441,25 @@ function isUrlReady(urlString: string, timeoutMs = 1000) {
   })
 }
 
+function createLoopbackUrlCandidates(urlString: string) {
+  try {
+    const url = new URL(urlString)
+    const candidates = [urlString]
+
+    if (url.hostname === "127.0.0.1") {
+      url.hostname = "localhost"
+      candidates.push(url.toString())
+    } else if (url.hostname === "localhost") {
+      url.hostname = "127.0.0.1"
+      candidates.push(url.toString())
+    }
+
+    return [...new Set(candidates)]
+  } catch {
+    return [urlString]
+  }
+}
+
 function sendResponse(
   response: ServerResponse<IncomingMessage>,
   statusCode: number,
@@ -535,13 +554,19 @@ export async function waitForUrlReady(
   intervalMs = 250
 ) {
   const startedAt = Date.now()
+  const candidates = createLoopbackUrlCandidates(urlString)
 
   while (Date.now() - startedAt < timeoutMs) {
-    if (await isUrlReady(urlString)) return
+    for (const candidate of candidates) {
+      if (await isUrlReady(candidate)) return candidate
+    }
+
     await new Promise((resolve) => setTimeout(resolve, intervalMs))
   }
 
-  throw new Error(`Timed out waiting for dev server on ${urlString}`)
+  throw new Error(
+    `Timed out waiting for dev server on ${candidates.join(" or ")}`
+  )
 }
 
 export async function inferDevUrl() {

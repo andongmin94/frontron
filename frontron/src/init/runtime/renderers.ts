@@ -502,15 +502,38 @@ function isUrlReady(urlString: string, timeoutMs = 1000) {
   })
 }
 
+function createLoopbackUrlCandidates(urlString: string) {
+  try {
+    const url = new URL(urlString)
+    const candidates = [urlString]
+
+    if (url.hostname === '127.0.0.1') {
+      url.hostname = 'localhost'
+      candidates.push(url.toString())
+    } else if (url.hostname === 'localhost') {
+      url.hostname = '127.0.0.1'
+      candidates.push(url.toString())
+    }
+
+    return [...new Set(candidates)]
+  } catch {
+    return [urlString]
+  }
+}
+
 export async function waitForUrlReady(urlString: string, timeoutMs = 30_000, intervalMs = 250) {
   const startedAt = Date.now()
+  const candidates = createLoopbackUrlCandidates(urlString)
 
   while (Date.now() - startedAt < timeoutMs) {
-    if (await isUrlReady(urlString)) return
+    for (const candidate of candidates) {
+      if (await isUrlReady(candidate)) return candidate
+    }
+
     await new Promise((resolve) => setTimeout(resolve, intervalMs))
   }
 
-  throw new Error(\`Timed out waiting for \${urlString}\`)
+  throw new Error(\`Timed out waiting for \${candidates.join(' or ')}\`)
 }
 
 function getAvailablePort(host = LOOPBACK_HOST) {
@@ -831,7 +854,11 @@ async function runDevApp() {
     }
   })
 
-  await waitForUrlReady(DEV_URL)
+  const readyDevUrl = await waitForUrlReady(DEV_URL)
+
+  if (readyDevUrl !== DEV_URL) {
+    console.info(\`[frontron:init] Frontend dev server responded at \${readyDevUrl}.\`)
+  }
 
   electronProcess = spawn(getElectronExecutablePath(), [MAIN_ENTRY_PATH], {
     cwd: ROOT_DIR,
@@ -839,7 +866,7 @@ async function runDevApp() {
     env: {
       ...process.env,
       NODE_ENV: 'development',
-      ELECTRON_RENDERER_URL: DEV_URL,
+      ELECTRON_RENDERER_URL: readyDevUrl,
     },
   })
 

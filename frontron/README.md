@@ -33,6 +33,7 @@ If you already have a compatible web frontend project, start with:
 ```bash
 npm install -D frontron
 npx frontron init
+# or: npm exec -- frontron init
 npm install
 npm run frontron:dev
 ```
@@ -41,6 +42,7 @@ npm run frontron:dev
 Use `npx frontron init --dry-run` first when you want to inspect the detected adapter, planned files, and package.json changes without writing anything.
 After `init`, run your package manager install command again because the retrofit adds Electron-related dependencies to `package.json`.
 Use `npm run frontron:package` when you are ready to create the packaged desktop app; `npm run frontron:build` only prepares the desktop build output.
+When using `npm exec` directly, keep the `--` separator: `npm exec -- frontron init`.
 
 It auto-detects the current runtime adapter when possible:
 

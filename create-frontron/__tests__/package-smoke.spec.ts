@@ -8,15 +8,25 @@ import { afterEach, expect, test } from 'vitest'
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const tempDirs: string[] = []
 
-function getNpmExecutable() {
-  return process.platform === 'win32' ? 'npm.cmd' : 'npm'
+function getNpmInvocation(args: string[]) {
+  if (process.platform === 'win32') {
+    return {
+      command: process.env.ComSpec ?? 'cmd.exe',
+      args: ['/d', '/s', '/c', 'npm', ...args],
+    }
+  }
+
+  return {
+    command: 'npm',
+    args,
+  }
 }
 
 function runNpm(args: string[], cwd: string) {
-  const result = spawnSync(getNpmExecutable(), args, {
+  const invocation = getNpmInvocation(args)
+  const result = spawnSync(invocation.command, invocation.args, {
     cwd,
     encoding: 'utf8',
-    shell: process.platform === 'win32',
   })
 
   if (result.status !== 0) {

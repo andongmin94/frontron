@@ -8,15 +8,25 @@ import { afterEach, expect, test } from 'vitest'
 const createPackageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const tempDirs: string[] = []
 
-function getNpmExecutable() {
-  return process.platform === 'win32' ? 'npm.cmd' : 'npm'
+function getNpmInvocation(args: string[]) {
+  if (process.platform === 'win32') {
+    return {
+      command: process.env.ComSpec ?? 'cmd.exe',
+      args: ['/d', '/s', '/c', 'npm', ...args],
+    }
+  }
+
+  return {
+    command: 'npm',
+    args,
+  }
 }
 
 function runNpm(args: string[], cwd: string) {
-  const result = spawnSync(getNpmExecutable(), args, {
+  const invocation = getNpmInvocation(args)
+  const result = spawnSync(invocation.command, invocation.args, {
     cwd,
     encoding: 'utf8',
-    shell: process.platform === 'win32',
   })
 
   if (result.status !== 0) {
@@ -83,9 +93,10 @@ test(
     tempDirs.push(rehearsalRoot)
 
     runNpm(['init', '-y'], rehearsalRoot)
-    runNpm(['install', '--ignore-scripts', createTarball], rehearsalRoot)
-
-    runNpm(['exec', '--', 'create-frontron', generatedAppName, '--overwrite', 'yes'], rehearsalRoot)
+    runNpm(
+      ['exec', '--package', createTarball, '--', 'create-frontron', generatedAppName, '--overwrite', 'yes'],
+      rehearsalRoot,
+    )
 
     const generatedPackage = JSON.parse(
       readFileSync(join(generatedAppRoot, 'package.json'), 'utf8'),
@@ -115,8 +126,9 @@ test(
     expect(existsSync(join(generatedAppRoot, 'tsconfig.electron.json'))).toBe(true)
     expect(existsSync(join(generatedAppRoot, 'frontron.config.ts'))).toBe(false)
 
-    runNpm(['install', '--ignore-scripts'], generatedAppRoot)
+    runNpm(['install'], generatedAppRoot)
     runNpm(['run', 'typecheck'], generatedAppRoot)
+    runNpm(['run', 'build', '--', '--dir'], generatedAppRoot)
     stabilizeGeneratedStarterDevPort(generatedAppRoot, 4311)
 
     const packageAfterInstall = JSON.parse(

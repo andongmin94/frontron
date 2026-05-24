@@ -21,11 +21,12 @@ It generates the default starter shape:
 ## Usage
 
 ```bash
-npm create frontron@latest
+npm create frontron@latest my-app
 npx create-frontron@latest my-app
 ```
 
 Requires Node.js `22.15+`.
+When no project name is passed, the default target directory is `desktop-app`.
 
 ## After generation
 

@@ -8,9 +8,12 @@ import { red, reset } from 'kolorist'
 // Avoids autoconversion to number of the project name by defining that the args
 // non associated with an option ( _ ) needs to be parsed as a string. See #4606
 const argv = minimist<{
+  h?: boolean
+  help?: boolean
+  overwrite?: string | boolean
   t?: string | boolean
   template?: string | boolean
-}>(process.argv.slice(2), { string: ['_'] })
+}>(process.argv.slice(2), { boolean: ['h', 'help'], string: ['_', 'overwrite'] })
 const cwd = process.cwd()
 
 const renameFiles: Record<string, string | undefined> = {
@@ -19,6 +22,24 @@ const renameFiles: Record<string, string | undefined> = {
 
 const defaultTargetDir = 'desktop-app'
 const TEMPLATE_DIR = 'template'
+
+function printHelp() {
+  console.log(`Usage: create-frontron [project-name] [options]
+
+Scaffold the default Electron + React + Vite starter.
+
+Arguments:
+  project-name                 Target directory. Defaults to "${defaultTargetDir}".
+
+Options:
+  --overwrite <yes|no|ignore>  Choose how to handle a non-empty target directory.
+  --help, -h                   Print this help message.
+
+Examples:
+  npm create frontron@latest my-app
+  npx create-frontron@latest my-app
+`)
+}
 
 function ensureRemovedTemplateOption(
   template: string | boolean | undefined,
@@ -35,6 +56,11 @@ function ensureRemovedTemplateOption(
 }
 
 async function init() {
+  if (argv.help || argv.h) {
+    printHelp()
+    return
+  }
+
   const argTargetDir = formatTargetDir(argv._[0])
   ensureRemovedTemplateOption(argv.template, argv.t)
 

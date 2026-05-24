@@ -23,8 +23,18 @@ const packageSpecs = [
   },
 ]
 
-function getNpmExecutable() {
-  return process.platform === 'win32' ? 'npm.cmd' : 'npm'
+function getNpmInvocation(args) {
+  if (process.platform === 'win32') {
+    return {
+      command: process.env.ComSpec ?? 'cmd.exe',
+      args: ['/d', '/s', '/c', 'npm', ...args],
+    }
+  }
+
+  return {
+    command: 'npm',
+    args,
+  }
 }
 
 function readJson(path) {
@@ -36,7 +46,13 @@ function writeJson(path, value) {
 }
 
 function parseVersion(version) {
-  return version.split('.').map((part) => Number.parseInt(part, 10))
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version)
+
+  if (!match) {
+    throw new Error(`Unsupported package version "${version}". Use a plain x.y.z version.`)
+  }
+
+  return match.slice(1).map((part) => Number.parseInt(part, 10))
 }
 
 function compareVersions(left, right) {
@@ -95,7 +111,6 @@ function run(command, args, cwd) {
   const result = spawnSync(command, args, {
     cwd,
     encoding: 'utf8',
-    shell: process.platform === 'win32' && command.endsWith('.cmd'),
     stdio: 'pipe',
   })
 
@@ -113,7 +128,8 @@ function run(command, args, cwd) {
 }
 
 function runNpm(args, cwd) {
-  run(getNpmExecutable(), args, cwd)
+  const invocation = getNpmInvocation(args)
+  run(invocation.command, invocation.args, cwd)
 }
 
 function runNode(args, cwd) {
@@ -138,8 +154,29 @@ function syncVersions() {
 }
 
 function verifyRelease() {
+  logStep('auditing frontron dependencies')
+  runNpm(['audit', '--audit-level=moderate'], frontronPackageRoot)
+
+  logStep('auditing create-frontron dependencies')
+  runNpm(['audit', '--audit-level=moderate'], createPackageRoot)
+
+  logStep('typechecking frontron')
+  runNpm(['run', 'typecheck'], frontronPackageRoot)
+
+  logStep('testing frontron')
+  runNpm(['test'], frontronPackageRoot)
+
   logStep('running frontron package smoke')
   runNpm(['run', 'test:package-smoke'], frontronPackageRoot)
+
+  logStep('typechecking create-frontron')
+  runNpm(['run', 'typecheck'], createPackageRoot)
+
+  logStep('testing create-frontron')
+  runNpm(['test'], createPackageRoot)
+
+  logStep('running create-frontron package smoke')
+  runNpm(['run', 'test:package-smoke'], createPackageRoot)
 
   logStep('running create-frontron release smoke')
   runNpm(['run', 'test:release-smoke'], createPackageRoot)
@@ -158,9 +195,18 @@ function publishPackages() {
   runNpm(['publish'], createPackageRoot)
 }
 
+function dryRunPublishPackages() {
+  logStep('dry-running frontron publish')
+  runNpm(['publish', '--dry-run'], frontronPackageRoot)
+
+  logStep('dry-running create-frontron publish')
+  runNpm(['publish', '--dry-run'], createPackageRoot)
+}
+
 function verifyPublishReadiness() {
   verifyRelease()
   runMatrixSmoke()
+  dryRunPublishPackages()
 }
 
 function main() {
@@ -176,6 +222,13 @@ function main() {
       return
     case 'matrix-smoke':
       runMatrixSmoke(args)
+      return
+    case 'publish-dry-run':
+    case 'dry-run':
+      syncVersions()
+      verifyRelease()
+      runMatrixSmoke()
+      dryRunPublishPackages()
       return
     case 'publish':
     case 'release':

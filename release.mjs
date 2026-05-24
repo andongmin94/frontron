@@ -127,18 +127,141 @@ function run(command, args, cwd) {
   }
 }
 
+function runQuiet(command, args, cwd) {
+  return spawnSync(command, args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: 'pipe',
+  })
+}
+
 function runNpm(args, cwd) {
   const invocation = getNpmInvocation(args)
   run(invocation.command, invocation.args, cwd)
+}
+
+function runNpmQuiet(args, cwd) {
+  const invocation = getNpmInvocation(args)
+  return runQuiet(invocation.command, invocation.args, cwd)
 }
 
 function runNode(args, cwd) {
   run(process.execPath, args, cwd)
 }
 
-function syncVersions() {
+function getPackageVersions() {
   const packageVersions = packageSpecs.map((spec) => readJson(spec.packagePath).version)
   const nextVersion = getHighestVersion(packageVersions)
+
+  return { packageVersions, nextVersion }
+}
+
+function assertNpmPublishAccess() {
+  logStep('checking npm publish authentication')
+  const whoamiResult = runNpmQuiet(['whoami'], repoRoot)
+
+  if (whoamiResult.status !== 0) {
+    throw new Error(
+      'npm is not authenticated. Run "npm login" with an account that can publish "frontron" and "create-frontron", then retry "node release.mjs publish".',
+    )
+  }
+
+  const username = whoamiResult.stdout.trim()
+
+  if (!username) {
+    throw new Error('npm did not return a username. Run "npm login", then retry "node release.mjs publish".')
+  }
+
+  for (const spec of packageSpecs) {
+    const ownerResult = runNpmQuiet(['owner', 'ls', spec.name], repoRoot)
+
+    if (ownerResult.status !== 0) {
+      throw new Error(`Unable to verify npm owners for "${spec.name}". Check npm access, then retry.`)
+    }
+
+    const ownerLines = ownerResult.stdout.split(/\r?\n/).map((line) => line.trim())
+    const hasPublishAccess = ownerLines.some((line) => line === username || line.startsWith(`${username} `))
+
+    if (!hasPublishAccess) {
+      throw new Error(
+        `npm user "${username}" is not listed as an owner of "${spec.name}". Publish with an owner account or add the user before retrying.`,
+      )
+    }
+  }
+
+  logStep(`npm user "${username}" can publish both packages`)
+}
+
+function versionExistsOnRegistry(spec, version) {
+  const result = runNpmQuiet(['view', `${spec.name}@${version}`, 'version'], repoRoot)
+
+  if (result.status === 0) {
+    return true
+  }
+
+  const output = `${result.stdout}\n${result.stderr}`
+
+  if (output.includes('E404') || output.includes('No match found for version')) {
+    return false
+  }
+
+  throw new Error(`Unable to check npm registry version for "${spec.name}@${version}".`)
+}
+
+function assertVersionsNotPublished(version) {
+  logStep(`checking npm registry for unpublished version ${version}`)
+
+  const alreadyPublished = packageSpecs
+    .filter((spec) => versionExistsOnRegistry(spec, version))
+    .map((spec) => `${spec.name}@${version}`)
+
+  if (alreadyPublished.length > 0) {
+    throw new Error(
+      `Refusing to publish an existing npm version: ${alreadyPublished.join(', ')}. Bump both package versions before retrying.`,
+    )
+  }
+}
+
+function readRegistryValue(args, description) {
+  const result = runNpmQuiet(['view', ...args], repoRoot)
+
+  if (result.status !== 0) {
+    throw new Error(`Unable to verify ${description} on npm registry.`)
+  }
+
+  return result.stdout.trim()
+}
+
+function verifyPublishedPackages(version) {
+  logStep(`verifying published npm packages at ${version}`)
+
+  for (const spec of packageSpecs) {
+    const publishedVersion = readRegistryValue([`${spec.name}@${version}`, 'version'], `${spec.name}@${version}`)
+
+    if (publishedVersion !== version) {
+      throw new Error(`npm registry returned "${publishedVersion}" for "${spec.name}@${version}".`)
+    }
+
+    const latestVersion = readRegistryValue([spec.name, 'dist-tags.latest'], `${spec.name} latest dist-tag`)
+
+    if (latestVersion !== version) {
+      throw new Error(
+        `npm latest dist-tag for "${spec.name}" is "${latestVersion}", expected "${version}". Publish completed but latest does not point at the release.`,
+      )
+    }
+  }
+}
+
+function describeRegistryVersionState(spec, version) {
+  try {
+    return `${spec.name}@${version}: ${versionExistsOnRegistry(spec, version) ? 'published' : 'not published'}`
+  } catch (error) {
+    return `${spec.name}@${version}: unable to verify (${error instanceof Error ? error.message : error})`
+  }
+}
+
+function syncVersions() {
+  const { packageVersions, nextVersion } = getPackageVersions()
   const alreadyAligned = packageVersions.every((version) => version === nextVersion)
 
   if (alreadyAligned) {
@@ -187,12 +310,28 @@ function runMatrixSmoke(args = []) {
   runNode([join(createPackageRoot, 'scripts', 'release-matrix-smoke.mjs'), ...args], repoRoot)
 }
 
-function publishPackages() {
-  logStep('publishing frontron')
-  runNpm(['publish'], frontronPackageRoot)
+function publishPackages(version) {
+  const publishOrder = [
+    packageSpecs.find((spec) => spec.name === 'frontron'),
+    packageSpecs.find((spec) => spec.name === 'create-frontron'),
+  ].filter(Boolean)
+  const published = []
 
-  logStep('publishing create-frontron')
-  runNpm(['publish'], createPackageRoot)
+  try {
+    for (const spec of publishOrder) {
+      logStep(`publishing ${spec.name}`)
+      runNpm(['publish'], spec.root)
+      published.push(spec.name)
+    }
+  } catch (error) {
+    const registryState = packageSpecs.map((spec) => describeRegistryVersionState(spec, version))
+
+    throw new Error(
+      `Publish failed after ${published.length > 0 ? published.join(', ') : 'no packages'} published. Registry state: ${registryState.join('; ')}. Original error: ${
+        error instanceof Error ? error.message : error
+      }`,
+    )
+  }
 }
 
 function dryRunPublishPackages() {
@@ -223,22 +362,39 @@ function main() {
     case 'matrix-smoke':
       runMatrixSmoke(args)
       return
+    case 'auth':
+    case 'check-auth':
+      assertNpmPublishAccess()
+      return
     case 'publish-dry-run':
     case 'dry-run':
-      syncVersions()
+      {
+        const version = syncVersions()
+        assertVersionsNotPublished(version)
+      }
       verifyRelease()
       runMatrixSmoke()
       dryRunPublishPackages()
       return
     case 'publish':
     case 'release':
-      syncVersions()
-      verifyPublishReadiness()
-      publishPackages()
+      assertNpmPublishAccess()
+      {
+        const version = syncVersions()
+        assertVersionsNotPublished(version)
+        verifyPublishReadiness()
+        publishPackages(version)
+        verifyPublishedPackages(version)
+      }
       return
     default:
       throw new Error(`Unknown release command: ${command}`)
   }
 }
 
-main()
+try {
+  main()
+} catch (error) {
+  console.error(`[release] ${error instanceof Error ? error.message : error}`)
+  process.exitCode = 1
+}

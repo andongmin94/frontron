@@ -20,6 +20,9 @@ Use `create-frontron` for new apps. Use `frontron init` when you already have a 
 
 ```bash
 npm create frontron@latest
+pnpm create frontron
+yarn create frontron
+bun create frontron
 ```
 
 That starter owns its Electron files directly under `src/electron/` and uses `window.electron` for its preload bridge.
@@ -43,6 +46,7 @@ Use `npx frontron init --dry-run` first when you want to inspect the detected ad
 After `init`, run your package manager install command again because the retrofit adds Electron-related dependencies to `package.json`.
 Use `npm run frontron:package` when you are ready to create the packaged desktop app; `npm run frontron:build` only prepares the desktop build output.
 When using `npm exec` directly, keep the `--` separator: `npm exec -- frontron init`.
+For pnpm, yarn, or bun projects, use the equivalent package-manager commands; after `init`, Frontron prints next steps for the package manager detected from your lockfile.
 
 It auto-detects the current runtime adapter when possible:
 

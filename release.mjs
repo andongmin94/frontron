@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
@@ -22,6 +22,7 @@ const packageSpecs = [
     lockPath: join(frontronPackageRoot, 'package-lock.json'),
   },
 ]
+const tempRoot = join(repoRoot, '.tmp')
 
 function getNpmInvocation(args) {
   if (process.platform === 'win32') {
@@ -43,6 +44,11 @@ function readJson(path) {
 
 function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`)
+}
+
+function createScratchDir(prefix) {
+  mkdirSync(tempRoot, { recursive: true })
+  return mkdtempSync(join(tempRoot, prefix))
 }
 
 function parseVersion(version) {
@@ -252,6 +258,76 @@ function verifyPublishedPackages(version) {
   }
 }
 
+function installNpm(args, cwd) {
+  runNpm(['install', '--fund=false', '--audit=false', '--loglevel=error', ...args], cwd)
+}
+
+function verifyRegistryInstall(version) {
+  logStep(`running registry install smoke for ${version}`)
+
+  const scratchRoot = createScratchDir('registry-smoke-')
+
+  try {
+    const starterRoot = join(scratchRoot, 'starter')
+    const retrofitRoot = join(scratchRoot, 'retrofit')
+
+    mkdirSync(starterRoot, { recursive: true })
+    runNpm(['init', '-y'], starterRoot)
+    runNpm(
+      [
+        'exec',
+        '--yes',
+        '--package',
+        `create-frontron@${version}`,
+        '--',
+        'create-frontron',
+        'registry-starter',
+        '--overwrite',
+        'yes',
+      ],
+      starterRoot,
+    )
+
+    const generatedStarterRoot = join(starterRoot, 'registry-starter')
+
+    installNpm([], generatedStarterRoot)
+    runNpm(['run', 'typecheck'], generatedStarterRoot)
+
+    mkdirSync(join(retrofitRoot, 'scripts'), { recursive: true })
+    writeJson(join(retrofitRoot, 'package.json'), {
+      name: 'registry-retrofit-app',
+      version: '0.0.0',
+      private: true,
+      type: 'module',
+      scripts: {
+        dev: 'node scripts/dev-server.mjs',
+        build: 'node scripts/build.mjs',
+      },
+    })
+    writeFileSync(
+      join(retrofitRoot, 'scripts', 'dev-server.mjs'),
+      `import { createServer } from 'node:http'
+
+createServer((_request, response) => response.end('ok')).listen(5173, '127.0.0.1')
+`,
+    )
+    writeFileSync(
+      join(retrofitRoot, 'scripts', 'build.mjs'),
+      `import { mkdirSync, writeFileSync } from 'node:fs'
+
+mkdirSync('dist', { recursive: true })
+writeFileSync('dist/index.html', '<!doctype html><title>registry retrofit</title>')
+`,
+    )
+
+    installNpm(['--save-dev', `frontron@${version}`], retrofitRoot)
+    runNpm(['exec', '--', 'frontron', 'init', '--yes', '--out-dir', 'dist'], retrofitRoot)
+    runNpm(['exec', '--', 'frontron', 'doctor'], retrofitRoot)
+  } finally {
+    rmSync(scratchRoot, { recursive: true, force: true })
+  }
+}
+
 function describeRegistryVersionState(spec, version) {
   try {
     return `${spec.name}@${version}: ${versionExistsOnRegistry(spec, version) ? 'published' : 'not published'}`
@@ -362,6 +438,9 @@ function main() {
     case 'matrix-smoke':
       runMatrixSmoke(args)
       return
+    case 'registry-smoke':
+      verifyRegistryInstall(args[0] ?? readRegistryValue(['create-frontron', 'dist-tags.latest'], 'create-frontron latest dist-tag'))
+      return
     case 'auth':
     case 'check-auth':
       assertNpmPublishAccess()
@@ -385,6 +464,7 @@ function main() {
         verifyPublishReadiness()
         publishPackages(version)
         verifyPublishedPackages(version)
+        verifyRegistryInstall(version)
       }
       return
     default:

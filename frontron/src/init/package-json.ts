@@ -247,11 +247,11 @@ export function previewPackageJsonPatch(config: InitConfig): PackageJsonPatchPla
 
 export function createDesktopScriptCommands(config: InitConfig) {
   return {
-    [config.appScript]: 'tsc -p tsconfig.electron.json && node dist-electron/serve.js --dev-app',
+    [config.appScript]: 'tsc -p tsconfig.electron.json && node --no-deprecation dist-electron/serve.js --dev-app',
     [config.buildScript]:
-      `${config.webBuildCommand} && tsc -p tsconfig.electron.json && node dist-electron/serve.js --prepare-build`,
+      `${config.webBuildCommand} && tsc -p tsconfig.electron.json && node --no-deprecation dist-electron/serve.js --prepare-build`,
     [config.packageScript]:
-      `${config.webBuildCommand} && tsc -p tsconfig.electron.json && node dist-electron/serve.js --prepare-build && node --no-deprecation ./node_modules/electron-builder/cli.js`,
+      `${config.webBuildCommand} && tsc -p tsconfig.electron.json && node --no-deprecation dist-electron/serve.js --prepare-build && node --no-deprecation ./node_modules/electron-builder/cli.js`,
   }
 }
 

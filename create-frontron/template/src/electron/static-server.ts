@@ -339,9 +339,20 @@ export async function startStaticRendererServer(configuredDistPath: string) {
 
 export async function stopStaticRendererServer() {
   if (!rendererServer) return
+
   const server = rendererServer
   rendererServer = null
+
   await new Promise<void>((resolve, reject) => {
-    server.close((error) => (error ? reject(error) : resolve()))
+    const forceCloseTimer = setTimeout(() => {
+      server.closeAllConnections()
+    }, 2_000)
+
+    server.closeIdleConnections()
+    server.close((error) => {
+      clearTimeout(forceCloseTimer)
+      if (error) reject(error)
+      else resolve()
+    })
   })
 }

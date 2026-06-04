@@ -81,12 +81,6 @@ function throwUnexpectedPositional(command: CliCommand, argument: string): never
   )
 }
 
-function throwInitForceMigrationError(): never {
-  throw new Error(
-    '--force is not available for "frontron init". Use "frontron update --yes" to refresh an existing initialization, or "frontron update --yes --force" to overwrite locally edited manifest-owned files.',
-  )
-}
-
 export function parseCliOptions(argv: string[]): ParsedCliOptions {
   const options = createDefaultOptions()
   const rawCommand = argv[0]
@@ -127,8 +121,6 @@ export function parseCliOptions(argv: string[]): ParsedCliOptions {
       index = next.nextIndex
       continue
     }
-
-    if (rawCommand === 'init' && argument === '--force') throwInitForceMigrationError()
 
     if (argument === '--yes' || argument === '-y') {
       if (rawCommand === 'doctor') throwUnknownOption(rawCommand, rawArgument)

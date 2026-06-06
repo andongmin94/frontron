@@ -62,6 +62,7 @@ describe('frontron CLI help', () => {
 
   test.each([
     ['init', '--preset=minimal'],
+    ['init', '--force'],
     ['doctor', '--yes'],
     ['clean', '--adapter=generic-static'],
     ['update', '--preset=minimal'],
@@ -85,15 +86,4 @@ describe('frontron CLI help', () => {
       )
     },
   )
-
-  test('init --force points existing users to update', async () => {
-    const output = fixtures.createOutput()
-
-    expect(await runCli(['init', '--yes', '--force'], output)).toBe(1)
-    const error = output.error.mock.calls.flat().join('\n')
-
-    expect(error).toContain('--force is not available for "frontron init"')
-    expect(error).toContain('frontron update --yes')
-    expect(error).toContain('frontron update --yes --force')
-  })
 })

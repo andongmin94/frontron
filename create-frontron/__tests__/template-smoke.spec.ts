@@ -42,6 +42,7 @@ test('starter template exposes the supported Electron and React contract', async
   const electronPreload = readFileSync(join(projectRoot, 'src/electron/preload.ts'), 'utf8')
   const electronIpc = readFileSync(join(projectRoot, 'src/electron/ipc.ts'), 'utf8')
   const electronServe = readFileSync(join(projectRoot, 'src/electron/serve.ts'), 'utf8')
+  const staticServer = readFileSync(join(projectRoot, 'src/electron/static-server.ts'), 'utf8')
   const rendererMain = readFileSync(join(projectRoot, 'src/main.tsx'), 'utf8')
   const rendererApp = readFileSync(join(projectRoot, 'src/App.tsx'), 'utf8')
   const taskRunner = readFileSync(join(projectRoot, 'scripts/tasks.mjs'), 'utf8')
@@ -110,6 +111,8 @@ test('starter template exposes the supported Electron and React contract', async
   expect(electronServe).not.toContain('waitForUrlReady')
   expect(electronServe).not.toContain('watchLauncherSources')
   expect(electronServe).not.toContain('restartDevLauncher')
+  expect(staticServer).toContain('server.closeIdleConnections()')
+  expect(staticServer).toContain('server.closeAllConnections()')
   expect(rendererMain).not.toContain('ThemeProvider')
   expect(rendererApp).toContain('window.electron')
 

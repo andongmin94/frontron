@@ -100,7 +100,7 @@ describe('frontron init guardrails', () => {
     expect(existsSync(join(outsideRoot, 'main.ts'))).toBe(false)
   })
 
-  test('public init rejects --force before inspecting or writing project files', async () => {
+  test('init rejects unsupported options before inspecting or writing project files', async () => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)
     const existingPath = join(projectRoot, 'tsconfig.electron.json')
@@ -110,7 +110,7 @@ describe('frontron init guardrails', () => {
     expect(await runCli(['init', '--yes', '--force'], output, { cwd: projectRoot })).toBe(1)
     expect(readFileSync(existingPath, 'utf8')).toBe('{}\n')
     expect(output.error.mock.calls.flat().join('\n')).toContain(
-      '--force is not available for "frontron init"',
+      'Unknown option "--force" for "frontron init"',
     )
   })
 })

@@ -10,6 +10,8 @@ const packages = [
   { name: 'frontron', root: join(repoRoot, 'frontron') },
 ]
 const releaseEnvironment = 'FRONTRON_RELEASE'
+const registryCheckAttempts = 12
+const registryCheckDelayMs = 5_000
 
 function npmInvocation(args) {
   if (process.platform === 'win32') {
@@ -55,6 +57,31 @@ function readPackage(spec) {
 
 function log(message) {
   console.log(`[release] ${message}`)
+}
+
+function sleep(milliseconds) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds)
+}
+
+function waitForRegistryVersion(label, expectedVersion, readVersion) {
+  let observedVersion = null
+
+  for (let attempt = 1; attempt <= registryCheckAttempts; attempt += 1) {
+    observedVersion = readVersion()
+    if (observedVersion === expectedVersion) return
+
+    if (attempt < registryCheckAttempts) {
+      log(
+        `waiting for npm to expose ${label} as ${expectedVersion} ` +
+          `(observed ${observedVersion ?? 'nothing'}, attempt ${attempt}/${registryCheckAttempts})`,
+      )
+      sleep(registryCheckDelayMs)
+    }
+  }
+
+  throw new Error(
+    `npm did not expose ${label} as ${expectedVersion}; last observed ${observedVersion ?? 'nothing'}.`,
+  )
 }
 
 function assertMetadata() {
@@ -172,9 +199,7 @@ function publishPackage(spec, version) {
     },
   })
 
-  if (publishedVersion(spec, version) !== version) {
-    throw new Error(`npm did not expose ${spec.name}@${version} after publish.`)
-  }
+  waitForRegistryVersion(`${spec.name}@${version}`, version, () => publishedVersion(spec, version))
 }
 
 function assertInstalledVersion(projectRoot, packageName, version) {
@@ -265,9 +290,7 @@ function publishRelease() {
   }
 
   for (const spec of packages) {
-    if (latestPublishedVersion(spec) !== version) {
-      throw new Error(`npm latest for ${spec.name} does not point to ${version}.`)
-    }
+    waitForRegistryVersion(`${spec.name} latest`, version, () => latestPublishedVersion(spec))
   }
 
   log(`testing registry installs for ${version}`)

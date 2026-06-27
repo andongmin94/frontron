@@ -64,6 +64,7 @@ const VALID_TEMPLATE_RESOLUTIONS = new Set<InitTemplateResolvedFrom>(['env', 're
 const FORBIDDEN_CLAIM_PATH_SEGMENTS = new Set(['__proto__', 'prototype', 'constructor'])
 const PACKAGE_JSON_CLAIM_PATH_ALLOWLIST = new Set([
   'version',
+  'trustedDependencies',
   'devDependencies.electron',
   'devDependencies.electron-builder',
   'devDependencies.@types/node',
@@ -359,16 +360,12 @@ export function readManifest(cwd: string) {
 }
 
 export function readExistingManifest(cwd: string) {
-  try {
-    const manifest = readManifest(cwd)
-    if (!manifest) return null
+  const manifest = readManifest(cwd)
+  if (!manifest) return null
 
-    return {
-      createdFiles: new Set(manifest.createdFiles),
-      scripts: new Set(manifest.scripts),
-    }
-  } catch {
-    return null
+  return {
+    createdFiles: new Set(manifest.createdFiles),
+    scripts: new Set(manifest.scripts),
   }
 }
 

@@ -90,9 +90,9 @@ function spawnElectronProcess(rendererUrl: string) {
   })
 
   child.once("exit", (code, signal) => {
-    if (electronProcess !== child) return
-    electronProcess = null
-    if (shuttingDown) return
+    const isCurrentProcess = electronProcess === child
+    if (isCurrentProcess) electronProcess = null
+    if (!isCurrentProcess || shuttingDown) return
 
     if (signal) {
       console.error(`[template] Electron exited after ${signal}.`)

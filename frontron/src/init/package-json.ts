@@ -5,10 +5,12 @@ import {
   ELECTRON_VERSION,
   NODE_TYPES_VERSION,
   TYPESCRIPT_VERSION,
+  usesStarterBridge,
 } from './shared'
 import type { PackageJsonOwnershipClaim } from './manifest'
 import { cloneJsonValue, readPackageJsonPath, valuesEqual } from './package-json-path'
 
+// ensureArray 함수는 기존 설정 값이 문자열 배열인지 확인하고 복사본을 돌려준다.
 function ensureArray(value: unknown, label: string) {
   if (typeof value === 'undefined') {
     return []
@@ -21,6 +23,7 @@ function ensureArray(value: unknown, label: string) {
   return [...value]
 }
 
+// ensureObject 함수는 기존 설정 값이 객체인지 확인하고 아니면 기본 객체를 사용한다.
 function ensureObject<T extends object>(value: unknown, label: string, fallback: T) {
   if (typeof value === 'undefined') {
     return fallback
@@ -33,8 +36,25 @@ function ensureObject<T extends object>(value: unknown, label: string, fallback:
   throw new Error(`${label} must be an object to preserve existing packaging rules.`)
 }
 
+// clonePackageJson 함수는 package.json 객체를 안전하게 수정하기 위해 깊은 복사한다.
 function clonePackageJson(packageJson: PackageJson): PackageJson {
   return JSON.parse(JSON.stringify(packageJson)) as PackageJson
+}
+
+// parseMajorVersion 함수는 버전 문자열에서 major 버전을 숫자로 읽어낸다.
+function parseMajorVersion(value: string | undefined) {
+  const version = value?.match(/\d+(?:\.\d+){0,2}/)?.[0]
+
+  return version ? Number.parseInt(version.split('.')[0] ?? '', 10) : null
+}
+
+// shouldUseFrontronTypescriptVersion 함수는 프로젝트 TypeScript 버전에 Frontron 기본 버전을 넣어야 하는지 판단한다.
+function shouldUseFrontronTypescriptVersion(packageJson: PackageJson) {
+  const declaredVersion =
+    packageJson.dependencies?.typescript ?? packageJson.devDependencies?.typescript
+  const major = parseMajorVersion(declaredVersion)
+
+  return major === null || major < 5
 }
 
 export type PackageJsonPatchChangeAction = 'add' | 'update'
@@ -53,6 +73,7 @@ export type PackageJsonPatchPlan = {
   blockers: string[]
 }
 
+// addRecordChanges 함수는 객체 필드에서 추가되거나 바뀐 키를 변경 목록에 추가한다.
 function addRecordChanges(
   changes: PackageJsonPatchChange[],
   before: Record<string, string> | undefined,
@@ -71,6 +92,7 @@ function addRecordChanges(
   }
 }
 
+// addScalarChange 함수는 스칼라 값 변경을 package.json 변경 목록에 추가한다.
 function addScalarChange(
   changes: PackageJsonPatchChange[],
   before: unknown,
@@ -87,6 +109,7 @@ function addScalarChange(
   })
 }
 
+// addArrayValueChanges 함수는 배열 필드에 새로 추가된 값들을 변경 목록으로 기록한다.
 function addArrayValueChanges(
   changes: PackageJsonPatchChange[],
   before: unknown,
@@ -107,6 +130,7 @@ function addArrayValueChanges(
   }
 }
 
+// createPackageJsonPatchChanges 함수는 package.json 패치 전후 차이를 dry-run용 변경 목록으로 만든다.
 function createPackageJsonPatchChanges(before: PackageJson, after: PackageJson) {
   const changes: PackageJsonPatchChange[] = []
 
@@ -115,7 +139,12 @@ function createPackageJsonPatchChanges(before: PackageJson, after: PackageJson) 
   addScalarChange(changes, before.build?.appId, after.build?.appId, 'build.appId')
   addScalarChange(changes, before.build?.productName, after.build?.productName, 'build.productName')
   addArrayValueChanges(changes, before.build?.files, after.build?.files, 'build.files')
-  addArrayValueChanges(changes, before.build?.asarUnpack, after.build?.asarUnpack, 'build.asarUnpack')
+  addArrayValueChanges(
+    changes,
+    before.build?.asarUnpack,
+    after.build?.asarUnpack,
+    'build.asarUnpack',
+  )
   addScalarChange(
     changes,
     before.build?.directories?.output,
@@ -132,6 +161,7 @@ function createPackageJsonPatchChanges(before: PackageJson, after: PackageJson) 
   return changes
 }
 
+// addOwnershipClaim 함수는 package.json의 단일 필드 변경에 대한 소유권 기록을 추가한다.
 function addOwnershipClaim(
   claims: PackageJsonOwnershipClaim[],
   before: PackageJson,
@@ -160,6 +190,7 @@ function addOwnershipClaim(
   })
 }
 
+// addArrayValueOwnershipClaims 함수는 배열 필드에 Frontron이 추가한 값들의 소유권 기록을 만든다.
 function addArrayValueOwnershipClaims(
   claims: PackageJsonOwnershipClaim[],
   before: PackageJson,
@@ -192,6 +223,7 @@ function addArrayValueOwnershipClaims(
   }
 }
 
+// createPackageJsonOwnershipClaims 함수는 package.json 패치가 Frontron 소유로 추가한 필드 기록을 만든다.
 function createPackageJsonOwnershipClaims(before: PackageJson, after: PackageJson) {
   const claims: PackageJsonOwnershipClaim[] = []
 
@@ -214,6 +246,7 @@ function createPackageJsonOwnershipClaims(before: PackageJson, after: PackageJso
   return claims
 }
 
+// formatPackageJsonPatchChange 함수는 package.json 변경 항목을 dry-run 리포트 한 줄로 만든다.
 export function formatPackageJsonPatchChange(change: PackageJsonPatchChange) {
   const marker = change.action === 'add' ? '+' : '~'
   const value = change.value ? `: ${change.value}` : ''
@@ -221,6 +254,7 @@ export function formatPackageJsonPatchChange(change: PackageJsonPatchChange) {
   return `  ${marker} ${change.path}${value}`
 }
 
+// previewPackageJsonPatch 함수는 package.json 패치를 실제 적용 전 미리 계산한다.
 export function previewPackageJsonPatch(config: InitConfig): PackageJsonPatchPlan {
   const preview = clonePackageJson(config.packageJson)
   const blockers: string[] = []
@@ -245,16 +279,18 @@ export function previewPackageJsonPatch(config: InitConfig): PackageJsonPatchPla
   }
 }
 
+// createDesktopScriptCommands 함수는 Electron 개발, 빌드, 패키징에 필요한 npm script 명령을 만든다.
 export function createDesktopScriptCommands(config: InitConfig) {
+  const prepareRuntimePackageCommand = `node -e "const fs=require('node:fs');fs.mkdirSync('dist-electron',{recursive:true});fs.writeFileSync('dist-electron/package.json', JSON.stringify({type:'module'}, null, 2) + '\\n')"`
+
   return {
-    [config.appScript]: 'tsc -p tsconfig.electron.json && node --no-deprecation dist-electron/serve.js --dev-app',
-    [config.buildScript]:
-      `${config.webBuildCommand} && tsc -p tsconfig.electron.json && node --no-deprecation dist-electron/serve.js --prepare-build`,
-    [config.packageScript]:
-      `${config.webBuildCommand} && tsc -p tsconfig.electron.json && node --no-deprecation dist-electron/serve.js --prepare-build && node --no-deprecation ./node_modules/electron-builder/cli.js`,
+    [config.appScript]: `tsc -p tsconfig.electron.json && ${prepareRuntimePackageCommand} && node --no-deprecation dist-electron/serve.js --dev-app`,
+    [config.buildScript]: `${config.webBuildCommand} && tsc -p tsconfig.electron.json && ${prepareRuntimePackageCommand} && node --no-deprecation dist-electron/serve.js --prepare-build`,
+    [config.packageScript]: `${config.webBuildCommand} && tsc -p tsconfig.electron.json && ${prepareRuntimePackageCommand} && node --no-deprecation dist-electron/serve.js --prepare-build && node --no-deprecation ./node_modules/electron-builder/cli.js`,
   }
 }
 
+// patchPackageJson 함수는 package.json에 Electron 실행과 패키징 설정을 반영한다.
 export function patchPackageJson(config: InitConfig) {
   const packageJson = config.packageJson
   const scripts = { ...(packageJson.scripts ?? {}) }
@@ -282,14 +318,20 @@ export function patchPackageJson(config: InitConfig) {
     devDependencies['@types/node'] ??= NODE_TYPES_VERSION
   }
 
-  if (!packageJson.dependencies?.typescript) {
-    devDependencies.typescript ??= TYPESCRIPT_VERSION
+  if (!packageJson.dependencies?.typescript && shouldUseFrontronTypescriptVersion(packageJson)) {
+    devDependencies.typescript = TYPESCRIPT_VERSION
   }
 
   build.appId ??= config.appId
   build.productName ??= config.productName
 
-  for (const pattern of ['dist-electron{,/**/*}', `${config.outDir}{,/**/*}`, 'package.json']) {
+  const filePatterns = ['dist-electron{,/**/*}', `${config.outDir}{,/**/*}`, 'package.json']
+
+  if (usesStarterBridge(config.preset)) {
+    filePatterns.push('public{,/**/*}')
+  }
+
+  for (const pattern of filePatterns) {
     if (!files.includes(pattern)) {
       files.push(pattern)
     }

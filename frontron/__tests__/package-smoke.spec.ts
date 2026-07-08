@@ -1,11 +1,13 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, expect, test } from 'vitest'
 
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
+const repoRoot = dirname(packageRoot)
+const createPackageRoot = join(repoRoot, 'create-frontron')
 const tempDirs: string[] = []
 const buildLockPath = join(packageRoot, '.test-build.lock')
 
@@ -64,6 +66,12 @@ function ensureBuildOutput() {
   })
 }
 
+function ensureCreateBuildOutput() {
+  withBuildLock(() => {
+    runNpm(['run', 'build'], createPackageRoot)
+  })
+}
+
 function readPackedFiles() {
   ensureBuildOutput()
 
@@ -86,10 +94,7 @@ function packPackageForReal() {
   tempDirs.push(outputDir)
 
   const output = withBuildLock(() =>
-    runNpm(
-      ['pack', '--json', '--ignore-scripts', '--pack-destination', outputDir],
-      packageRoot,
-    ),
+    runNpm(['pack', '--json', '--ignore-scripts', '--pack-destination', outputDir], packageRoot),
   )
   const packResult = JSON.parse(output) as Array<{
     filename?: string
@@ -101,6 +106,34 @@ function packPackageForReal() {
   }
 
   return join(outputDir, filename)
+}
+
+function packCreatePackageForReal() {
+  ensureCreateBuildOutput()
+
+  const outputDir = mkdtempSync(join(tmpdir(), 'create-frontron-pack-'))
+  tempDirs.push(outputDir)
+
+  const output = withBuildLock(() =>
+    runNpm(
+      ['pack', '--json', '--ignore-scripts', '--pack-destination', outputDir],
+      createPackageRoot,
+    ),
+  )
+  const packResult = JSON.parse(output) as Array<{
+    filename?: string
+  }>
+  const filename = packResult[0]?.filename
+
+  if (!filename) {
+    throw new Error('npm pack did not report an output filename for create-frontron')
+  }
+
+  return join(outputDir, filename)
+}
+
+function installPackedFrontron(appRoot: string, frontronTarballPath: string) {
+  runNpm(['install', '--ignore-scripts', packCreatePackageForReal(), frontronTarballPath], appRoot)
 }
 
 afterEach(() => {
@@ -116,17 +149,33 @@ test(
     const packedFiles = readPackedFiles()
 
     expect(packedFiles.has('index.js')).toBe(true)
+    expect(packedFiles.has('scripts/tasks.mjs')).toBe(true)
     expect(packedFiles.has('dist/cli.mjs')).toBe(true)
     expect(packedFiles.has('dist/cli.d.ts')).toBe(true)
     expect(packedFiles.has('dist/cli.d.mts')).toBe(true)
     expect(packedFiles.has('package.json')).toBe(true)
     expect(packedFiles.has('README.md')).toBe(true)
 
+    expect(packedFiles.has('template/create-frontron/src/electron/main.ts')).toBe(false)
+    expect(packedFiles.has('template/create-frontron/src/electron/preload.ts')).toBe(false)
+    expect(packedFiles.has('template/create-frontron/src/electron/window.ts')).toBe(false)
+    expect(packedFiles.has('template/create-frontron/src/types/electron.d.ts')).toBe(false)
     expect(packedFiles.has('dist/index.mjs')).toBe(false)
     expect(packedFiles.has('dist/client.mjs')).toBe(false)
     expect(packedFiles.has('dist/runtime/main.mjs')).toBe(false)
     expect(packedFiles.has('dist/runtime/preload.mjs')).toBe(false)
     expect(packedFiles.has('assets/default-icon.ico')).toBe(false)
+
+    const packageJson = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as {
+      version: string
+      dependencies?: Record<string, string>
+    }
+    const createFrontronDependency = packageJson.dependencies?.['create-frontron']
+
+    expect(
+      createFrontronDependency === 'latest' ||
+        createFrontronDependency === `^${packageJson.version}`,
+    ).toBe(true)
   },
 )
 
@@ -168,7 +217,7 @@ test('packed frontron CLI can seed the minimal Electron layer', { timeout: 120_0
 `,
   )
 
-  runNpm(['install', '--ignore-scripts', tarballPath], appRoot)
+  installPackedFrontron(appRoot, tarballPath)
 
   runNpm(['exec', '--', 'frontron', 'init', '--yes'], appRoot)
   expect(existsSync(join(appRoot, 'electron', 'main.ts'))).toBe(true)
@@ -191,3 +240,70 @@ test('packed frontron CLI can seed the minimal Electron layer', { timeout: 120_0
   expect(updateOutput).toContain('Files to overwrite:')
   expect(updateOutput).toContain('Run "frontron update --yes" to apply this plan.')
 })
+
+test(
+  'packed frontron CLI can seed the create-frontron starter-like Electron layer',
+  { timeout: 120_000 },
+  () => {
+    const tarballPath = packPackageForReal()
+    const createPackageJson = JSON.parse(
+      readFileSync(join(createPackageRoot, 'package.json'), 'utf8'),
+    ) as {
+      version: string
+    }
+    const appRoot = mkdtempSync(join(tmpdir(), 'frontron-retrofit-starter-app-'))
+    tempDirs.push(appRoot)
+
+    runNpm(['init', '-y'], appRoot)
+    writeFileSync(
+      join(appRoot, 'package.json'),
+      `${JSON.stringify(
+        {
+          name: 'packed-retrofit-starter-app',
+          version: '0.0.1',
+          scripts: {
+            dev: 'vite',
+            build: 'vite build',
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    )
+
+    installPackedFrontron(appRoot, tarballPath)
+    runNpm(
+      ['exec', '--', 'frontron', 'init', '--yes', '--preset', 'starter-like', '--out-dir', 'dist'],
+      appRoot,
+    )
+
+    const manifest = JSON.parse(
+      readFileSync(join(appRoot, '.frontron', 'manifest.json'), 'utf8'),
+    ) as {
+      templateSource?: string
+      templatePackage?: string
+      templateVersion?: string | null
+      templateResolvedFrom?: string
+    }
+    const packageJson = JSON.parse(readFileSync(join(appRoot, 'package.json'), 'utf8')) as {
+      build: {
+        files: string[]
+      }
+    }
+
+    expect(existsSync(join(appRoot, 'electron', 'main.ts'))).toBe(true)
+    expect(existsSync(join(appRoot, 'electron', 'dev.ts'))).toBe(true)
+    expect(existsSync(join(appRoot, 'electron', 'splash.ts'))).toBe(true)
+    expect(existsSync(join(appRoot, 'electron', 'tray.ts'))).toBe(true)
+    expect(existsSync(join(appRoot, 'src', 'types', 'electron.d.ts'))).toBe(true)
+    expect(manifest.templateSource).toBe('create-frontron')
+    expect(manifest.templatePackage).toBe('create-frontron')
+    expect(manifest.templateVersion).toBe(createPackageJson.version)
+    expect(manifest.templateResolvedFrom).toBe('dependency')
+    expect(packageJson.build.files).toContain('public{,/**/*}')
+
+    const doctorOutput = runNpm(['exec', '--', 'frontron', 'doctor'], appRoot)
+
+    expect(doctorOutput).toContain('No blockers found.')
+  },
+)

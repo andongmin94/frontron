@@ -34,7 +34,9 @@ describe('frontron CLI help', () => {
 
     expect(initOutput.info.mock.calls.flat().join('\n')).toContain('Usage: frontron init [options]')
     expect(doctorOutput.info.mock.calls.flat().join('\n')).toContain('Usage: frontron doctor')
-    expect(cleanOutput.info.mock.calls.flat().join('\n')).toContain('Usage: frontron clean [options]')
+    expect(cleanOutput.info.mock.calls.flat().join('\n')).toContain(
+      'Usage: frontron clean [options]',
+    )
     const updateHelp = updateOutput.info.mock.calls.flat().join('\n')
 
     expect(updateHelp).toContain('Usage: frontron update [options]')

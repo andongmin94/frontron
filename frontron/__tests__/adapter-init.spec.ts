@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import * as ts from 'typescript'
 import { describe, expect, test } from 'vitest'
 
 import { runCli } from '../src/cli'
@@ -66,11 +67,37 @@ describe('frontron adapter init flows', () => {
     expect(packageJson.build.files).toContain('dist{,/**/*}')
   })
 
+  test('init parses quoted Vite script option values', async () => {
+    const projectRoot = fixtures.createTempProjectWithScripts({
+      dev: 'vite --host "0.0.0.0" --port "4301"',
+      build: 'vite build --outDir "desktop dist"',
+    })
+    fixtures.tempDirs.push(projectRoot)
+    const output = fixtures.createOutput()
+
+    const exitCode = await runCli(['init', '--yes'], output, {
+      cwd: projectRoot,
+    })
+
+    expect(exitCode).toBe(0)
+
+    const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')) as {
+      build: {
+        files: string[]
+      }
+    }
+    const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
+
+    fixtures.expectEmbeddedString(serveSource, 'DEV_URL', 'http://127.0.0.1:4301')
+    fixtures.expectEmbeddedString(serveSource, 'WEB_OUT_DIR', 'desktop dist')
+    expect(packageJson.build.files).toContain('desktop dist{,/**/*}')
+  })
+
   test('init reads outDir from a custom Vite config path', async () => {
     const projectRoot = fixtures.createTempProjectWithScripts(
       {
         dev: 'vite',
-        build: 'vite build --config vite.desktop.ts',
+        build: 'vite build --config "vite.desktop.ts"',
       },
       {
         devDependencies: {
@@ -106,6 +133,44 @@ describe('frontron adapter init flows', () => {
     expect(packageJson.build.files).toContain('desktop-dist{,/**/*}')
   })
 
+  test('init reads outDir from Vite CJS TypeScript config files', async () => {
+    const projectRoot = fixtures.createTempProjectWithScripts(
+      {
+        dev: 'vite --port 5180',
+        build: 'vite build',
+      },
+      {
+        devDependencies: {
+          vite: '^8.0.1',
+        },
+        extraFiles: {
+          'vite.config.cts': `export default {
+  build: {
+    outDir: 'cjs-dist',
+  },
+}
+`,
+        },
+      },
+    )
+    fixtures.tempDirs.push(projectRoot)
+    const output = fixtures.createOutput()
+
+    const exitCode = await runCli(['init', '--yes'], output, {
+      cwd: projectRoot,
+    })
+    const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')) as {
+      build: {
+        files: string[]
+      }
+    }
+    const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
+
+    expect(exitCode).toBe(0)
+    fixtures.expectEmbeddedString(serveSource, 'WEB_OUT_DIR', 'cjs-dist')
+    expect(packageJson.build.files).toContain('cjs-dist{,/**/*}')
+  })
+
   test('init does not default to dist for unresolved custom Vite config output', async () => {
     const projectRoot = fixtures.createTempProjectWithScripts(
       {
@@ -136,7 +201,9 @@ export default {
     })
 
     expect(exitCode).toBe(1)
-    expect(output.error.mock.calls.flat().join('\n')).toContain('Unable to infer the frontend build output')
+    expect(output.error.mock.calls.flat().join('\n')).toContain(
+      'Unable to infer the frontend build output',
+    )
   })
 
   test('init auto-detects Next.js static export projects and composes the desktop build command', async () => {
@@ -175,7 +242,9 @@ export default {
     fixtures.expectEmbeddedString(serveSource, 'WEB_DEV_SCRIPT', 'dev')
     fixtures.expectEmbeddedString(serveSource, 'DEV_URL', 'http://127.0.0.1:3300')
     fixtures.expectEmbeddedString(serveSource, 'WEB_OUT_DIR', 'static-out')
-    expect(packageJson.scripts['frontron:package']).toContain('next build && next export -o static-out')
+    expect(packageJson.scripts['frontron:package']).toContain(
+      'next build && next export -o static-out',
+    )
     expect(packageJson.build.files).toContain('static-out{,/**/*}')
     expect(combined).toContain('- adapter: next-export')
   })
@@ -193,8 +262,24 @@ export default {
           'react-dom': '^19.0.0',
         },
         extraFiles: {
-          'next.config.ts': `export default {
-  output: 'export',
+          'next.config.ts': `import createNextIntlPlugin from 'next-intl/plugin'
+
+const withNextIntl = createNextIntlPlugin()
+const nextConfig = {
+  "output": "export",
+}
+
+export default withNextIntl(nextConfig)
+`,
+          'tsconfig.json': `{
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules"]
 }
 `,
         },
@@ -215,13 +300,67 @@ export default {
         files: string[]
       }
     }
+    const tsconfigJson = JSON.parse(readFileSync(join(projectRoot, 'tsconfig.json'), 'utf8')) as {
+      exclude: string[]
+    }
+    const manifest = JSON.parse(
+      readFileSync(join(projectRoot, '.frontron', 'manifest.json'), 'utf8'),
+    ) as {
+      tsconfigJsonClaims?: Array<{
+        path: string
+        action?: string
+        value: unknown
+      }>
+    }
     const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
     const combined = output.info.mock.calls.flat().join('\n')
 
     fixtures.expectEmbeddedString(serveSource, 'WEB_OUT_DIR', 'out')
     expect(packageJson.scripts['frontron:package']).toContain('next build')
     expect(packageJson.build.files).toContain('out{,/**/*}')
+    expect(tsconfigJson.exclude).toEqual(['node_modules', 'electron', 'dist-electron', '.frontron'])
+    expect(manifest.tsconfigJsonClaims).toContainEqual(
+      expect.objectContaining({
+        path: 'exclude',
+        action: 'array-value',
+        value: 'electron',
+      }),
+    )
     expect(combined).toContain('- adapter: next-export')
+  })
+
+  test('init detects next.config.cts export mode', async () => {
+    const projectRoot = fixtures.createTempProjectWithScripts(
+      {
+        dev: 'next dev --port 3000',
+        build: 'next build',
+      },
+      {
+        dependencies: {
+          next: '^16.0.0',
+          react: '^19.0.0',
+          'react-dom': '^19.0.0',
+        },
+        extraFiles: {
+          'next.config.cts': `module.exports = {
+  output: 'export',
+}
+`,
+        },
+      },
+    )
+    fixtures.tempDirs.push(projectRoot)
+    const output = fixtures.createOutput()
+
+    const exitCode = await runCli(['init', '--yes'], output, {
+      cwd: projectRoot,
+    })
+    const combined = output.info.mock.calls.flat().join('\n')
+    const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
+
+    expect(exitCode).toBe(0)
+    expect(combined).toContain('- adapter: next-export')
+    fixtures.expectEmbeddedString(serveSource, 'WEB_OUT_DIR', 'out')
   })
 
   test('init uses the Next.js default dev port when no port is configured', async () => {
@@ -301,7 +440,11 @@ export default {
 
     fixtures.expectEmbeddedRuntimeStrategy(serveSource, 'node-server')
     fixtures.expectEmbeddedString(serveSource, 'WEB_OUT_DIR', '.frontron/runtime/next-standalone')
-    fixtures.expectEmbeddedNullableString(serveSource, 'NODE_SERVER_SOURCE_ROOT', '.next/standalone')
+    fixtures.expectEmbeddedNullableString(
+      serveSource,
+      'NODE_SERVER_SOURCE_ROOT',
+      '.next/standalone',
+    )
     expect(serveSource).toContain("ELECTRON_RUN_AS_NODE: '1'")
     expect(serveSource).toContain('Node server entry not found')
     expect(packageJson.scripts['frontron:package']).toContain('next build')
@@ -314,6 +457,54 @@ export default {
     expect(combined).toContain('- runtime strategy: node-server')
     expect(combined).toContain('- server runtime root: .next/standalone')
     expect(combined).toContain('- server entry: server.js')
+  })
+
+  test('generated node-server Electron runtime type-checks', async () => {
+    const projectRoot = fixtures.createTempProjectWithScripts(
+      {
+        dev: 'next dev --port 3400',
+        build: 'next build',
+      },
+      {
+        dependencies: {
+          next: '^16.0.0',
+          react: '^19.0.0',
+          'react-dom': '^19.0.0',
+        },
+        extraFiles: {
+          'next.config.ts': `export default {
+  output: 'standalone',
+}
+`,
+        },
+      },
+    )
+    fixtures.tempDirs.push(projectRoot)
+
+    const exitCode = await runCli(['init', '--yes'], fixtures.createOutput(), {
+      cwd: projectRoot,
+    })
+
+    expect(exitCode).toBe(0)
+
+    const servePath = join(projectRoot, 'electron', 'serve.ts')
+    const program = ts.createProgram([servePath], {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      lib: ['lib.dom.d.ts', 'lib.dom.iterable.d.ts', 'lib.esnext.d.ts'],
+      types: ['node'],
+      noEmit: true,
+      skipLibCheck: true,
+      esModuleInterop: true,
+    })
+    const diagnostics = ts.getPreEmitDiagnostics(program)
+
+    expect(
+      diagnostics.map((diagnostic) =>
+        ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
+      ),
+    ).toEqual([])
   })
 
   test('init auto-detects Nuxt node-server projects', async () => {
@@ -433,12 +624,16 @@ export default {
     fixtures.expectEmbeddedString(serveSource, 'DEV_URL', 'http://127.0.0.1:8002')
     fixtures.expectEmbeddedString(serveSource, 'WEB_OUT_DIR', '.frontron/runtime/remix-node-server')
     fixtures.expectEmbeddedNullableString(serveSource, 'NODE_SERVER_SOURCE_ROOT', 'build')
-    fixtures.expectEmbeddedNullableString(serveSource, 'NODE_SERVER_ENTRY', 'server/index.js')
+    fixtures.expectEmbeddedNullableString(serveSource, 'NODE_SERVER_ENTRY', 'server.cjs')
+    expect(serveSource).toContain(
+      "ADAPTER === 'remix-node-server' ? ['index.js', 'server/index.js']",
+    )
+    expect(serveSource).toContain("const { createApp } = require('@remix-run/serve')")
     expect(packageJson.build.files).toContain('.frontron/runtime/remix-node-server{,/**/*}')
     expect(packageJson.build.asarUnpack).toContain('.frontron/runtime/remix-node-server{,/**/*}')
     expect(combined).toContain('- adapter: remix-node-server')
     expect(combined).toContain('- server runtime root: build')
-    expect(combined).toContain('- server entry: server/index.js')
+    expect(combined).toContain('- server entry: server.cjs')
   })
 
   test('init auto-detects SvelteKit static projects', async () => {
@@ -582,13 +777,19 @@ export default {
     const combined = output.info.mock.calls.flat().join('\n')
 
     fixtures.expectEmbeddedRuntimeStrategy(serveSource, 'node-server')
-    fixtures.expectEmbeddedString(serveSource, 'WEB_OUT_DIR', '.frontron/runtime/custom-node-server')
+    fixtures.expectEmbeddedString(
+      serveSource,
+      'WEB_OUT_DIR',
+      '.frontron/runtime/custom-node-server',
+    )
     fixtures.expectEmbeddedNullableString(serveSource, 'NODE_SERVER_SOURCE_ROOT', 'build')
     fixtures.expectEmbeddedNullableString(serveSource, 'NODE_SERVER_ENTRY', 'server/index.js')
     expect(packageJson.build.files).toContain('.frontron/runtime/custom-node-server{,/**/*}')
     expect(packageJson.build.asarUnpack).toContain('.frontron/runtime/custom-node-server{,/**/*}')
     expect(combined).toContain('- adapter: generic-node-server')
-    expect(combined).toContain('- adapter reason: Adapter was explicitly selected with --adapter generic-node-server.')
+    expect(combined).toContain(
+      '- adapter reason: Adapter was explicitly selected with --adapter generic-node-server.',
+    )
     expect(combined).toContain('- server runtime root: build')
     expect(combined).toContain('- server entry: server/index.js')
   })

@@ -1,3 +1,4 @@
+import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { SyncOptions } from 'execa'
 import { execaCommandSync } from 'execa'
@@ -8,15 +9,21 @@ const CLI_PATH = join(__dirname, '..')
 const projectName = 'beginner-docs-smoke'
 const genPath = join(__dirname, projectName)
 
-const run = (
-  args: string[],
-  options: SyncOptions = {},
-): ReturnType<typeof execaCommandSync> => {
+const run = (args: string[], options: SyncOptions = {}): ReturnType<typeof execaCommandSync> => {
   return execaCommandSync(`node ${CLI_PATH} ${args.join(' ')}`, options)
 }
 
-beforeAll(() => fs.remove(genPath))
-afterEach(() => fs.remove(genPath))
+function removeGeneratedProject() {
+  rmSync(genPath, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 100,
+  })
+}
+
+beforeAll(removeGeneratedProject)
+afterEach(removeGeneratedProject)
 
 test('starter template restores the template-owned electron structure', () => {
   run([projectName], { cwd: __dirname })
@@ -31,40 +38,24 @@ test('starter template restores the template-owned electron structure', () => {
       appId?: string
     }
   }
-  const titleBar = fs.readFileSync(
-    join(genPath, 'src/components/TitleBar.tsx'),
-    'utf-8',
-  )
+  const titleBar = fs.readFileSync(join(genPath, 'src/components/TitleBar.tsx'), 'utf-8')
   const app = fs.readFileSync(join(genPath, 'src/App.tsx'), 'utf-8')
   const main = fs.readFileSync(join(genPath, 'src/main.tsx'), 'utf-8')
   const utils = fs.readFileSync(join(genPath, 'src/lib/utils.ts'), 'utf-8')
   const tsconfigApp = fs.readFileSync(join(genPath, 'tsconfig.app.json'), 'utf-8')
-  const tsconfigElectron = fs.readFileSync(
-    join(genPath, 'tsconfig.electron.json'),
-    'utf-8',
-  )
+  const tsconfigElectron = fs.readFileSync(join(genPath, 'tsconfig.electron.json'), 'utf-8')
   const viteConfig = fs.readFileSync(join(genPath, 'vite.config.ts'), 'utf-8')
   const electronMain = fs.readFileSync(join(genPath, 'src/electron/main.ts'), 'utf-8')
   const electronServe = fs.readFileSync(join(genPath, 'src/electron/serve.ts'), 'utf-8')
-  const electronPreload = fs.readFileSync(
-    join(genPath, 'src/electron/preload.ts'),
-    'utf-8',
-  )
-  const electronWindow = fs.readFileSync(
-    join(genPath, 'src/electron/window.ts'),
-    'utf-8',
-  )
-  const electronTypes = fs.readFileSync(
-    join(genPath, 'src/types/electron.d.ts'),
-    'utf-8',
-  )
+  const electronPreload = fs.readFileSync(join(genPath, 'src/electron/preload.ts'), 'utf-8')
+  const electronWindow = fs.readFileSync(join(genPath, 'src/electron/window.ts'), 'utf-8')
+  const electronTypes = fs.readFileSync(join(genPath, 'src/types/electron.d.ts'), 'utf-8')
 
-  expect(packageJson.scripts.dev).toBe('vite')
-  expect(packageJson.scripts.app).toContain('src/electron/serve.ts')
-  expect(packageJson.scripts.app).toContain('node --no-deprecation')
-  expect(packageJson.scripts.typecheck).toBe('tsc -b && tsc -p tsconfig.electron.json')
-  expect(packageJson.scripts.build).toContain('electron-builder')
-  expect(packageJson.scripts.build).toContain('node --no-deprecation ./node_modules/vite/bin/vite.js build')
+  expect(packageJson.scripts.dev).toBe('node scripts/tasks.mjs dev')
+  expect(packageJson.scripts.app).toBe('node scripts/tasks.mjs app')
+  expect(packageJson.scripts.typecheck).toBe('node scripts/tasks.mjs typecheck')
+  expect(packageJson.scripts.build).toBe('node scripts/tasks.mjs build')
+  expect(packageJson.scripts.lint).toBe('node scripts/tasks.mjs lint')
   expect(packageJson.scripts).not.toHaveProperty('web:dev')
   expect(packageJson.scripts).not.toHaveProperty('web:build')
   expect(packageJson.scripts).not.toHaveProperty('app:dev')
@@ -107,6 +98,7 @@ test('starter template restores the template-owned electron structure', () => {
   expect(main).toContain('ThemeProvider')
   expect(main).toContain('TitleBar')
   expect(fs.existsSync(join(genPath, 'components.json'))).toBe(true)
+  expect(fs.existsSync(join(genPath, 'scripts', 'tasks.mjs'))).toBe(true)
   expect(fs.existsSync(join(genPath, 'eslint.config.js'))).toBe(false)
   expect(fs.existsSync(join(genPath, 'src/electron'))).toBe(true)
   expect(fs.existsSync(join(genPath, 'src/App.css'))).toBe(false)

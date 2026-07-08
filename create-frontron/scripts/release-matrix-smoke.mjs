@@ -1,11 +1,5 @@
-import {
-  existsSync,
-  mkdtempSync,
-  mkdirSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
@@ -13,8 +7,9 @@ import { spawnSync } from 'node:child_process'
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const repoRoot = dirname(packageRoot)
 const frontronPackageRoot = join(repoRoot, 'frontron')
-const tempRoot = join(repoRoot, '.tmp')
-const scratchRoot = join(repoRoot, '.tmp', 'release-matrix-smoke')
+const tempRoot = join(tmpdir(), 'frontron-release-matrix-smoke')
+mkdirSync(tempRoot, { recursive: true })
+const scratchRoot = mkdtempSync(join(tempRoot, 'run-'))
 const tempRoots = []
 
 function getNpmInvocation(args) {
@@ -93,15 +88,17 @@ function packPackageForReal(root, prefix) {
   ensureBuildOutput(root)
 
   const outputDir = createScratchDir(prefix)
-  const invocation = getNpmInvocation(['pack', '--json', '--ignore-scripts', '--pack-destination', outputDir])
-  const result = spawnSync(
-    invocation.command,
-    invocation.args,
-    {
-      cwd: root,
-      encoding: 'utf8',
-    },
-  )
+  const invocation = getNpmInvocation([
+    'pack',
+    '--json',
+    '--ignore-scripts',
+    '--pack-destination',
+    outputDir,
+  ])
+  const result = spawnSync(invocation.command, invocation.args, {
+    cwd: root,
+    encoding: 'utf8',
+  })
 
   if (result.status !== 0) {
     throw new Error(result.stderr || result.stdout || 'npm pack failed')
@@ -327,13 +324,13 @@ function main() {
 try {
   main()
 } finally {
-  for (const tempRoot of tempRoots.splice(0)) {
-    rmSync(resolve(tempRoot), { recursive: true, force: true })
+  for (const tempDir of tempRoots.splice(0)) {
+    rmSync(resolve(tempDir), { recursive: true, force: true, maxRetries: 5, retryDelay: 500 })
   }
 
-  rmSync(scratchRoot, { recursive: true, force: true })
+  rmSync(scratchRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 })
 
   if (existsSync(tempRoot) && readdirSync(tempRoot).length === 0) {
-    rmSync(tempRoot, { recursive: true, force: true })
+    rmSync(tempRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 })
   }
 }

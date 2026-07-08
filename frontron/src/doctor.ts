@@ -2,8 +2,14 @@ import { existsSync, lstatSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { createFileHash, MANIFEST_PATH, readManifest } from './init/manifest'
-import { readPackageJsonPath, valuesEqual } from './init/package-json-path'
+import { inspectManifestClaim } from './init/manifest-claim-status'
+import { readPackageJsonPath } from './init/package-json-path'
+import {
+  findPnpmWorkspaceYamlPath,
+  readPnpmWorkspaceYamlClaimValue,
+} from './init/pnpm-workspace-yaml'
 import type { PackageJson } from './init/shared'
+import { readTsconfigJson } from './init/tsconfig-json'
 
 export interface DoctorOutput {
   info(message: string): void
@@ -14,14 +20,19 @@ export interface DoctorContext {
   output: DoctorOutput
 }
 
+// hasDependency 함수는 package.json의 dependencies 또는 devDependencies에 패키지가 있는지 확인한다.
 function hasDependency(packageJson: PackageJson, packageName: string) {
-  return Boolean(packageJson.dependencies?.[packageName] ?? packageJson.devDependencies?.[packageName])
+  return Boolean(
+    packageJson.dependencies?.[packageName] ?? packageJson.devDependencies?.[packageName],
+  )
 }
 
+// hasOwnString 함수는 객체가 특정 문자열 키를 직접 가지고 있는지 확인한다.
 function hasOwnString(record: Record<string, string> | undefined, key: string) {
   return Boolean(record && Object.prototype.hasOwnProperty.call(record, key))
 }
 
+// addList 함수는 제목과 항목 목록을 리포트 출력 줄에 추가한다.
 function addList(lines: string[], title: string, values: string[], emptyMessage: string) {
   lines.push(title)
 
@@ -35,6 +46,7 @@ function addList(lines: string[], title: string, values: string[], emptyMessage:
   }
 }
 
+// createDoctorNextSteps 함수는 doctor 결과에 따라 사용자가 다음에 할 일을 안내하는 문구를 만든다.
 function createDoctorNextSteps(manifestFound: boolean, warnings: string[], blockers: string[]) {
   if (!manifestFound) {
     return ['Run "frontron init --dry-run" to preview the retrofit plan.']
@@ -51,6 +63,7 @@ function createDoctorNextSteps(manifestFound: boolean, warnings: string[], block
   return ['No action needed.']
 }
 
+// runDoctor 함수는 현재 프로젝트의 Frontron 초기화 상태를 점검한다.
 export async function runDoctor(context: DoctorContext) {
   const packageJsonPath = join(context.cwd, 'package.json')
 
@@ -84,15 +97,92 @@ export async function runDoctor(context: DoctorContext) {
     checks.push(`${MANIFEST_PATH} found`)
 
     if (!manifest.fileHashes) {
-      warnings.push(`${MANIFEST_PATH} does not include file hashes. Run "frontron update --yes" to refresh it.`)
+      warnings.push(
+        `${MANIFEST_PATH} does not include file hashes. Run "frontron update --yes" to refresh it.`,
+      )
     }
 
     if (!manifest.scriptCommands) {
-      warnings.push(`${MANIFEST_PATH} does not include script commands. Run "frontron update --yes" to refresh it.`)
+      warnings.push(
+        `${MANIFEST_PATH} does not include script commands. Run "frontron update --yes" to refresh it.`,
+      )
     }
 
     if (!manifest.packageJsonClaims) {
-      warnings.push(`${MANIFEST_PATH} does not include package.json ownership. Run "frontron update --yes" to refresh it.`)
+      warnings.push(
+        `${MANIFEST_PATH} does not include package.json ownership. Run "frontron update --yes" to refresh it.`,
+      )
+    }
+
+    const tsconfigJsonClaims = manifest.tsconfigJsonClaims ?? []
+
+    if (tsconfigJsonClaims.length > 0) {
+      const tsconfigPath = join(context.cwd, 'tsconfig.json')
+
+      if (!existsSync(tsconfigPath)) {
+        warnings.push(
+          'Manifest-owned tsconfig.json changes cannot be checked because tsconfig.json is missing.',
+        )
+      } else {
+        try {
+          const tsconfigJson = readTsconfigJson(tsconfigPath)
+
+          for (const claim of tsconfigJsonClaims) {
+            const status = inspectManifestClaim(
+              'tsconfig.json',
+              claim,
+              readPackageJsonPath(tsconfigJson, claim.path),
+            )
+
+            if (status.check) checks.push(status.check)
+            if (status.warning) warnings.push(status.warning)
+          }
+        } catch {
+          warnings.push('tsconfig.json could not be parsed as JSON or JSONC.')
+        }
+      }
+    }
+
+    const pnpmWorkspaceClaims = manifest.pnpmWorkspaceClaims ?? []
+
+    if (pnpmWorkspaceClaims.length > 0) {
+      const pnpmWorkspacePath = findPnpmWorkspaceYamlPath(context.cwd)
+
+      if (!existsSync(pnpmWorkspacePath)) {
+        warnings.push(
+          'Manifest-owned pnpm-workspace.yaml changes cannot be checked because pnpm-workspace.yaml is missing.',
+        )
+      } else {
+        const pnpmWorkspaceSource = readFileSync(pnpmWorkspacePath, 'utf8')
+
+        for (const claim of pnpmWorkspaceClaims) {
+          const status = inspectManifestClaim(
+            'pnpm-workspace.yaml',
+            claim,
+            readPnpmWorkspaceYamlClaimValue(pnpmWorkspaceSource, claim.path),
+          )
+
+          if (status.check) checks.push(status.check)
+          if (status.warning) warnings.push(status.warning)
+        }
+      }
+    }
+
+    if (manifest.preset === 'starter-like') {
+      if (
+        manifest.templateSource === 'create-frontron' &&
+        manifest.templatePackage === 'create-frontron'
+      ) {
+        checks.push(
+          manifest.templateVersion
+            ? `create-frontron template metadata found (${manifest.templateVersion})`
+            : 'create-frontron template metadata found',
+        )
+      } else {
+        warnings.push(
+          `${MANIFEST_PATH} does not include create-frontron template metadata. Run "frontron update --yes" to refresh it.`,
+        )
+      }
     }
 
     for (const filePath of manifest.createdFiles) {
@@ -127,7 +217,10 @@ export async function runDoctor(context: DoctorContext) {
 
         const expectedCommand = manifest.scriptCommands?.[scriptName]
 
-        if (hasOwnString(manifest.scriptCommands, scriptName) && currentCommand === expectedCommand) {
+        if (
+          hasOwnString(manifest.scriptCommands, scriptName) &&
+          currentCommand === expectedCommand
+        ) {
           checks.push(`scripts.${scriptName} matches manifest`)
         } else if (hasOwnString(manifest.scriptCommands, scriptName)) {
           warnings.push(`Manifest-owned script has local edits: ${scriptName}`)
@@ -140,29 +233,14 @@ export async function runDoctor(context: DoctorContext) {
     }
 
     for (const claim of manifest.packageJsonClaims ?? []) {
-      const current = readPackageJsonPath(packageJson, claim.path)
+      const status = inspectManifestClaim(
+        'package.json',
+        claim,
+        readPackageJsonPath(packageJson, claim.path),
+      )
 
-      if (claim.action === 'array-value') {
-        if (Array.isArray(current.value) && current.value.some((value) => valuesEqual(value, claim.value))) {
-          checks.push(`package.json ${claim.path} contains manifest-owned value`)
-        } else if (!current.exists) {
-          warnings.push(`Manifest-owned package.json field is missing: ${claim.path}`)
-        } else if (Array.isArray(current.value)) {
-          warnings.push(`Manifest-owned package.json array value is missing: ${claim.path}`)
-        } else {
-          warnings.push(`Manifest-owned package.json field has local edits: ${claim.path}`)
-        }
-
-        continue
-      }
-
-      if (current.exists && valuesEqual(current.value, claim.value)) {
-        checks.push(`package.json ${claim.path} matches manifest`)
-      } else if (!current.exists) {
-        warnings.push(`Manifest-owned package.json field is missing: ${claim.path}`)
-      } else {
-        warnings.push(`Manifest-owned package.json field has local edits: ${claim.path}`)
-      }
+      if (status.check) checks.push(status.check)
+      if (status.warning) warnings.push(status.warning)
     }
   }
 

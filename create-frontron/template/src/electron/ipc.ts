@@ -2,6 +2,8 @@ import { app, ipcMain } from "electron"
 
 import { mainWindow } from "./window.js"
 
+// Keep these strings in sync with preload.ts. They are duplicated so the
+// sandboxed preload file can stay CommonJS-only and avoid ESM preload pitfalls.
 const hideWindowChannel = "window:hide"
 const minimizeWindowChannel = "window:minimize"
 const toggleMaximizeWindowChannel = "window:toggle-maximize"

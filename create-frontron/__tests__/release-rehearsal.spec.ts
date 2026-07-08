@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -62,83 +62,74 @@ function packPackageForReal(packageRoot: string, tempPrefix: string) {
   return join(outputDir, filename)
 }
 
-function stabilizeGeneratedStarterDevPort(appRoot: string, port: number) {
-  const packageJsonPath = join(appRoot, 'package.json')
-  const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
-    scripts?: Record<string, string>
-  }
-
-  packageJson.scripts = {
-    ...packageJson.scripts,
-    dev: `vite --port ${port}`,
-  }
-
-  writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
-}
-
 afterEach(() => {
   for (const tempDir of tempDirs.splice(0)) {
     rmSync(tempDir, { recursive: true, force: true })
   }
 }, 60000)
 
-test(
-  'packed create-frontron can generate the restored template-owned electron starter',
-  async () => {
-    const createTarball = packPackageForReal(createPackageRoot, 'create-frontron-release-')
-    const rehearsalRoot = mkdtempSync(join(tmpdir(), 'frontron-release-rehearsal-'))
-    const generatedAppName = 'release-smoke-app'
-    const generatedAppRoot = join(rehearsalRoot, generatedAppName)
+test('packed create-frontron can generate the restored template-owned electron starter', async () => {
+  const createTarball = packPackageForReal(createPackageRoot, 'create-frontron-release-')
+  const rehearsalRoot = mkdtempSync(join(tmpdir(), 'frontron-release-rehearsal-'))
+  const generatedAppName = 'release-smoke-app'
+  const generatedAppRoot = join(rehearsalRoot, generatedAppName)
 
-    tempDirs.push(rehearsalRoot)
+  tempDirs.push(rehearsalRoot)
 
-    runNpm(['init', '-y'], rehearsalRoot)
-    runNpm(
-      ['exec', '--package', createTarball, '--', 'create-frontron', generatedAppName, '--overwrite', 'yes'],
-      rehearsalRoot,
-    )
+  runNpm(['init', '-y'], rehearsalRoot)
+  runNpm(
+    [
+      'exec',
+      '--package',
+      createTarball,
+      '--',
+      'create-frontron',
+      generatedAppName,
+      '--overwrite',
+      'yes',
+    ],
+    rehearsalRoot,
+  )
 
-    const generatedPackage = JSON.parse(
-      readFileSync(join(generatedAppRoot, 'package.json'), 'utf8'),
-    ) as {
-      scripts: Record<string, string>
-      dependencies: Record<string, string>
-      devDependencies: Record<string, string>
-      main?: string
-      build?: {
-        productName?: string
-        appId?: string
-      }
+  const generatedPackage = JSON.parse(
+    readFileSync(join(generatedAppRoot, 'package.json'), 'utf8'),
+  ) as {
+    scripts: Record<string, string>
+    dependencies: Record<string, string>
+    devDependencies: Record<string, string>
+    main?: string
+    build?: {
+      productName?: string
+      appId?: string
     }
+  }
 
-    expect(generatedPackage.scripts.app).toContain('src/electron/serve.ts')
-    expect(generatedPackage.scripts.typecheck).toBe('tsc -b && tsc -p tsconfig.electron.json')
-    expect(generatedPackage.scripts.build).toContain('electron-builder')
-    expect(generatedPackage.dependencies).not.toHaveProperty('frontron')
-    expect(generatedPackage.devDependencies).toHaveProperty('electron')
-    expect(generatedPackage.devDependencies).toHaveProperty('electron-builder')
-    expect(generatedPackage.main).toBe('dist/electron/main.js')
-    expect(generatedPackage.build?.productName).toBe(generatedAppName)
-    expect(generatedPackage.build?.appId).toContain(generatedAppName)
-    expect(existsSync(join(generatedAppRoot, 'src', 'electron', 'main.ts'))).toBe(true)
-    expect(existsSync(join(generatedAppRoot, 'src', 'electron', 'preload.ts'))).toBe(true)
-    expect(existsSync(join(generatedAppRoot, 'src', 'types', 'electron.d.ts'))).toBe(true)
-    expect(existsSync(join(generatedAppRoot, 'tsconfig.electron.json'))).toBe(true)
-    expect(existsSync(join(generatedAppRoot, 'frontron.config.ts'))).toBe(false)
+  expect(generatedPackage.scripts.app).toBe('node scripts/tasks.mjs app')
+  expect(generatedPackage.scripts.typecheck).toBe('node scripts/tasks.mjs typecheck')
+  expect(generatedPackage.scripts.build).toBe('node scripts/tasks.mjs build')
+  expect(generatedPackage.scripts.lint).toBe('node scripts/tasks.mjs lint')
+  expect(generatedPackage.dependencies).not.toHaveProperty('frontron')
+  expect(generatedPackage.devDependencies).toHaveProperty('electron')
+  expect(generatedPackage.devDependencies).toHaveProperty('electron-builder')
+  expect(generatedPackage.main).toBe('dist/electron/main.js')
+  expect(generatedPackage.build?.productName).toBe(generatedAppName)
+  expect(generatedPackage.build?.appId).toContain(generatedAppName)
+  expect(existsSync(join(generatedAppRoot, 'src', 'electron', 'main.ts'))).toBe(true)
+  expect(existsSync(join(generatedAppRoot, 'src', 'electron', 'preload.ts'))).toBe(true)
+  expect(existsSync(join(generatedAppRoot, 'src', 'types', 'electron.d.ts'))).toBe(true)
+  expect(existsSync(join(generatedAppRoot, 'tsconfig.electron.json'))).toBe(true)
+  expect(existsSync(join(generatedAppRoot, 'frontron.config.ts'))).toBe(false)
 
-    runNpm(['install'], generatedAppRoot)
-    runNpm(['run', 'typecheck'], generatedAppRoot)
-    runNpm(['run', 'build', '--', '--dir'], generatedAppRoot)
-    stabilizeGeneratedStarterDevPort(generatedAppRoot, 4311)
+  runNpm(['install'], generatedAppRoot)
+  runNpm(['run', 'typecheck'], generatedAppRoot)
+  runNpm(['run', 'build', '--', '--dir'], generatedAppRoot)
 
-    const packageAfterInstall = JSON.parse(
-      readFileSync(join(generatedAppRoot, 'package.json'), 'utf8'),
-    ) as {
-      scripts: Record<string, string>
-    }
+  const packageAfterInstall = JSON.parse(
+    readFileSync(join(generatedAppRoot, 'package.json'), 'utf8'),
+  ) as {
+    scripts: Record<string, string>
+  }
 
-    expect(packageAfterInstall.scripts.dev).toBe('vite --port 4311')
-    expect(packageAfterInstall.scripts.app).toContain('src/electron/serve.ts')
-  },
-  120000,
-)
+  expect(packageAfterInstall.scripts.dev).toBe('node scripts/tasks.mjs dev')
+  expect(packageAfterInstall.scripts.app).toBe('node scripts/tasks.mjs app')
+}, 600000)

@@ -558,7 +558,25 @@ import { join } from 'node:path'
 
 const serverRoot = join(process.cwd(), '.output', 'server')
 mkdirSync(serverRoot, { recursive: true })
-writeFileSync(join(serverRoot, 'index.mjs'), "console.log('generic node server')\\n")
+writeFileSync(
+  join(serverRoot, 'index.mjs'),
+  \`import { createServer } from 'node:http'
+
+const port = Number(process.env.PORT)
+const host = process.env.HOST || '127.0.0.1'
+
+if (!Number.isInteger(port) || port < 1) {
+  throw new Error('PORT must be a positive integer')
+}
+
+const server = createServer((_request, response) => {
+  response.setHeader('content-type', 'text/plain; charset=utf-8')
+  response.end('generic node server')
+})
+
+server.listen(port, host)
+\`,
+)
 `,
   )
 

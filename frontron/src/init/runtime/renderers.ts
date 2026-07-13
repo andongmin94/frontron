@@ -1,10 +1,6 @@
 import type { InitPreset } from '../shared'
 import { usesStarterBridge } from '../shared'
-import {
-  getInitTemplateInfo,
-  readCreateFrontronTemplateFile,
-  renderCreateFrontronElectronFile,
-} from './create-frontron-template'
+import { getInitTemplateInfo, renderCreateFrontronElectronFile } from './create-frontron-template'
 import { renderMinimalMainSource, renderMinimalWindowSource } from './minimal-sources'
 import { resolveDevServerUrl } from './dev-server-url'
 import { renderServeSource } from './serve-source'
@@ -28,36 +24,6 @@ export function renderWindowSource(preset: InitPreset) {
   }
 
   return renderMinimalWindowSource()
-}
-
-// renderPreloadSource 함수는 starter-like preset의 preload 소스를 만든다.
-export function renderPreloadSource() {
-  return renderCreateFrontronElectronFile('preload.ts')
-}
-
-// renderIpcSource 함수는 starter-like preset의 IPC helper 소스를 만든다.
-export function renderIpcSource() {
-  return renderCreateFrontronElectronFile('ipc.ts')
-}
-
-// renderElectronTypesSource 함수는 renderer에서 preload API 타입을 볼 수 있는 타입 선언 소스를 만든다.
-export function renderElectronTypesSource() {
-  return readCreateFrontronTemplateFile('src/types/electron.d.ts')
-}
-
-// renderDevSource 함수는 starter-like preset의 dev helper 소스를 만든다.
-export function renderDevSource() {
-  return renderCreateFrontronElectronFile('dev.ts')
-}
-
-// renderSplashSource 함수는 starter-like preset의 splash window 소스를 만든다.
-export function renderSplashSource() {
-  return renderCreateFrontronElectronFile('splash.ts')
-}
-
-// renderTraySource 함수는 starter-like preset의 tray helper 소스를 만든다.
-export function renderTraySource() {
-  return renderCreateFrontronElectronFile('tray.ts')
 }
 
 // renderTsconfigSource 함수는 Electron 전용 tsconfig.electron.json 내용을 만든다.

@@ -355,7 +355,7 @@ describe('transaction lock, journal, and rollback coverage', () => {
     writeFileSync(orphanTemporary, 'temporary')
     writeFileSync(transactionPaths(root).lockPath, 'not json')
 
-    expect(recoverScaffoldTransaction(root, [preserved])).toBe(false)
+    expect(recoverScaffoldTransaction(root)).toBe(false)
     expect(existsSync(transactionPaths(root).lockPath)).toBe(false)
     expect(existsSync(preserved)).toBe(true)
     expect(existsSync(orphanStaging)).toBe(true)

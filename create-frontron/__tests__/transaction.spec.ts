@@ -312,7 +312,10 @@ process.stdout.write(JSON.stringify(recovered))
     ]
     const results = await Promise.all(children.map(collectChildResult))
 
-    expect(results.map((result) => result.code)).toEqual([0, 0])
+    expect(
+      results.map((result) => result.code),
+      `Concurrent recovery child failure: ${JSON.stringify(results)}`,
+    ).toEqual([0, 0])
     expect(results.map((result) => JSON.parse(result.stdout)).sort()).toEqual([false, true])
     expect(results.map((result) => result.stderr)).toEqual(['', ''])
     expect(readFileSync(join(root, 'old.txt'), 'utf8')).toBe('original\n')

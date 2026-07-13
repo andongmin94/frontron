@@ -6,7 +6,6 @@ import * as ts from 'typescript'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { renderMainSource, renderWindowSource } from '../src/init/runtime/renderers'
-import type { InitPreset } from '../src/init/shared'
 
 type ProtocolHandler = (request: Request) => Promise<Response>
 type NavigationHandler = (details: {
@@ -162,8 +161,8 @@ function createRuntimeProject() {
   return { projectRoot, electronDir }
 }
 
-// importMainRuntime 함수는 preset별 main.ts를 protocol 테스트용 sibling stub과 함께 불러온다.
-async function importMainRuntime(preset: InitPreset) {
+// importMainRuntime 함수는 템플릿 main.ts를 protocol 테스트용 sibling stub과 함께 불러온다.
+async function importMainRuntime() {
   const { electronDir } = createRuntimeProject()
   const mainPath = join(electronDir, 'main.js')
 
@@ -199,15 +198,15 @@ export async function waitForUrlReady(url) { return url }
     'export function createTray() {}\nexport function destroyTray() {}\n',
     'utf8',
   )
-  writeFileSync(mainPath, transpileRuntimeSource(renderMainSource(preset), 'main.ts'), 'utf8')
+  writeFileSync(mainPath, transpileRuntimeSource(renderMainSource(), 'main.ts'), 'utf8')
 
   return (await import(
     `${pathToFileURL(mainPath).href}?test=${Date.now()}-${Math.random()}`
   )) as MainRuntimeModule
 }
 
-// importWindowRuntime 함수는 preset별 window.ts를 Electron 창 mock과 함께 불러온다.
-async function importWindowRuntime(preset: InitPreset) {
+// importWindowRuntime 함수는 템플릿 window.ts를 Electron 창 mock과 함께 불러온다.
+async function importWindowRuntime() {
   const { electronDir } = createRuntimeProject()
   const windowPath = join(electronDir, 'window.js')
 
@@ -221,7 +220,7 @@ export const isQuitting = false
     'utf8',
   )
   writeFileSync(join(electronDir, 'splash.js'), 'export function closeSplash() {}\n', 'utf8')
-  writeFileSync(windowPath, transpileRuntimeSource(renderWindowSource(preset), 'window.ts'), 'utf8')
+  writeFileSync(windowPath, transpileRuntimeSource(renderWindowSource(), 'window.ts'), 'utf8')
 
   return (await import(
     `${pathToFileURL(windowPath).href}?test=${Date.now()}-${Math.random()}`
@@ -236,7 +235,7 @@ afterEach(() => {
   }
 })
 
-describe.each<InitPreset>(['minimal', 'starter-like'])('%s runtime security', (preset) => {
+describe('create-frontron runtime security', () => {
   test('uses a secure stable protocol and preserves proxy request and response semantics', async () => {
     const state = createElectronMockState()
     let capturedRequest: {
@@ -268,7 +267,7 @@ describe.each<InitPreset>(['minimal', 'starter-like'])('%s runtime security', (p
     }
     mockGlobal.__frontronElectronMock = state
 
-    const runtime = await importMainRuntime(preset)
+    const runtime = await importMainRuntime()
     await runtime.registerRendererProtocol('http://127.0.0.1:4321')
 
     const handler = state.protocolHandler
@@ -347,7 +346,7 @@ describe.each<InitPreset>(['minimal', 'starter-like'])('%s runtime security', (p
     const state = createElectronMockState()
     mockGlobal.__frontronElectronMock = state
 
-    const runtime = await importWindowRuntime(preset)
+    const runtime = await importWindowRuntime()
     const createWindow = runtime.createMainWindow ?? runtime.createWindow
 
     expect(createWindow).toBeTypeOf('function')

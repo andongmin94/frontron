@@ -219,10 +219,7 @@ test(
     const createFrontronDependency = packageJson.dependencies?.['create-frontron']
 
     expect(packageJson.engines?.node).toBe('>=22.15.0')
-    expect(
-      createFrontronDependency === 'latest' ||
-        createFrontronDependency === `^${packageJson.version}`,
-    ).toBe(true)
+    expect(createFrontronDependency).toBe(packageJson.version)
   },
 )
 
@@ -233,63 +230,8 @@ test('frontron can produce a real publish tarball', { timeout: 60_000 }, () => {
   expect(tarballPath.endsWith('.tgz')).toBe(true)
 })
 
-test('packed frontron CLI can seed the minimal Electron layer', { timeout: 120_000 }, () => {
-  const tarballPath = packPackageForReal()
-  const appRoot = mkdtempSync(join(tmpdir(), 'frontron-retrofit-app-'))
-  tempDirs.push(appRoot)
-
-  runNpm(['init', '-y'], appRoot)
-  writeFileSync(
-    join(appRoot, 'package.json'),
-    `${JSON.stringify(
-      {
-        name: 'packed-retrofit-app',
-        version: '0.0.1',
-        scripts: {
-          dev: 'vite',
-          build: 'vite build',
-        },
-      },
-      null,
-      2,
-    )}\n`,
-  )
-  writeFileSync(
-    join(appRoot, 'vite.config.ts'),
-    `export default {
-  build: {
-    outDir: 'dist-web'
-  }
-}
-`,
-  )
-
-  installPackedFrontron(appRoot, tarballPath)
-
-  runNpm(['exec', '--', 'frontron', 'init', '--yes'], appRoot)
-  expect(existsSync(join(appRoot, 'electron', 'main.ts'))).toBe(true)
-  expect(existsSync(join(appRoot, 'electron', 'window.ts'))).toBe(true)
-  expect(existsSync(join(appRoot, 'electron', 'serve.ts'))).toBe(true)
-  expect(existsSync(join(appRoot, '.frontron', 'manifest.json'))).toBe(true)
-  expect(existsSync(join(appRoot, 'tsconfig.electron.json'))).toBe(true)
-
-  const doctorOutput = runNpm(['exec', '--', 'frontron', 'doctor'], appRoot)
-
-  expect(doctorOutput).toContain('No blockers found.')
-
-  const cleanOutput = runNpm(['exec', '--', 'frontron', 'clean', '--dry-run'], appRoot)
-
-  expect(cleanOutput).toContain('Frontron Clean')
-  expect(cleanOutput).toContain('No changes were written because --dry-run was used.')
-
-  const updateOutput = runNpm(['exec', '--', 'frontron', 'update', '--dry-run'], appRoot)
-
-  expect(updateOutput).toContain('Files to overwrite:')
-  expect(updateOutput).toContain('Run "frontron update --yes" to apply this plan.')
-})
-
 test(
-  'packed frontron CLI can seed the create-frontron starter-like Electron layer',
+  'packed frontron CLI reads its exact-version create-frontron template',
   { timeout: 120_000 },
   () => {
     const tarballPath = packPackageForReal()
@@ -298,7 +240,7 @@ test(
     ) as {
       version: string
     }
-    const appRoot = mkdtempSync(join(tmpdir(), 'frontron-retrofit-starter-app-'))
+    const appRoot = mkdtempSync(join(tmpdir(), 'frontron-retrofit-app-'))
     tempDirs.push(appRoot)
 
     runNpm(['init', '-y'], appRoot)
@@ -306,7 +248,7 @@ test(
       join(appRoot, 'package.json'),
       `${JSON.stringify(
         {
-          name: 'packed-retrofit-starter-app',
+          name: 'packed-retrofit-app',
           version: '0.0.1',
           scripts: {
             dev: 'vite',
@@ -317,12 +259,30 @@ test(
         2,
       )}\n`,
     )
+    writeFileSync(
+      join(appRoot, 'vite.config.ts'),
+      `export default {
+  build: {
+    outDir: 'dist-web'
+  }
+}
+`,
+    )
 
     installPackedFrontron(appRoot, tarballPath)
-    runNpm(
-      ['exec', '--', 'frontron', 'init', '--yes', '--preset', 'starter-like', '--out-dir', 'dist'],
-      appRoot,
-    )
+
+    runNpm(['exec', '--', 'frontron', 'init', '--yes'], appRoot)
+    expect(existsSync(join(appRoot, 'electron', 'main.ts'))).toBe(true)
+    expect(existsSync(join(appRoot, 'electron', 'window.ts'))).toBe(true)
+    expect(existsSync(join(appRoot, 'electron', 'preload.ts'))).toBe(true)
+    expect(existsSync(join(appRoot, 'electron', 'ipc.ts'))).toBe(true)
+    expect(existsSync(join(appRoot, 'electron', 'dev.ts'))).toBe(true)
+    expect(existsSync(join(appRoot, 'electron', 'splash.ts'))).toBe(true)
+    expect(existsSync(join(appRoot, 'electron', 'tray.ts'))).toBe(true)
+    expect(existsSync(join(appRoot, 'electron', 'serve.ts'))).toBe(true)
+    expect(existsSync(join(appRoot, 'src', 'types', 'electron.d.ts'))).toBe(true)
+    expect(existsSync(join(appRoot, '.frontron', 'manifest.json'))).toBe(true)
+    expect(existsSync(join(appRoot, 'tsconfig.electron.json'))).toBe(true)
 
     const manifest = JSON.parse(
       readFileSync(join(appRoot, '.frontron', 'manifest.json'), 'utf8'),
@@ -338,11 +298,6 @@ test(
       }
     }
 
-    expect(existsSync(join(appRoot, 'electron', 'main.ts'))).toBe(true)
-    expect(existsSync(join(appRoot, 'electron', 'dev.ts'))).toBe(true)
-    expect(existsSync(join(appRoot, 'electron', 'splash.ts'))).toBe(true)
-    expect(existsSync(join(appRoot, 'electron', 'tray.ts'))).toBe(true)
-    expect(existsSync(join(appRoot, 'src', 'types', 'electron.d.ts'))).toBe(true)
     expect(manifest.templateSource).toBe('create-frontron')
     expect(manifest.templatePackage).toBe('create-frontron')
     expect(manifest.templateVersion).toBe(createPackageJson.version)
@@ -352,5 +307,15 @@ test(
     const doctorOutput = runNpm(['exec', '--', 'frontron', 'doctor'], appRoot)
 
     expect(doctorOutput).toContain('No blockers found.')
+
+    const cleanOutput = runNpm(['exec', '--', 'frontron', 'clean', '--dry-run'], appRoot)
+
+    expect(cleanOutput).toContain('Frontron Clean')
+    expect(cleanOutput).toContain('No changes were written because --dry-run was used.')
+
+    const updateOutput = runNpm(['exec', '--', 'frontron', 'update', '--dry-run'], appRoot)
+
+    expect(updateOutput).toContain('Files to overwrite:')
+    expect(updateOutput).toContain('Run "frontron update --yes" to apply this plan.')
   },
 )

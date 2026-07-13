@@ -20,6 +20,7 @@ interface ReleaseModule {
   assertNpmPublishAccess(): void
   main(): void
   publishPackages(version: string, tag?: string): void
+  runPublishOrchestration(version: string, operations: PublishOperations): void
 }
 
 interface ReleaseHarness {
@@ -28,6 +29,15 @@ interface ReleaseHarness {
 }
 
 type SpawnHandler = (call: SpawnCall) => SpawnResult
+
+interface PublishOperations {
+  promotePackagesToLatest(version: string): void
+  publishPackages(version: string, tag?: string): void
+  setDistTagForPackages(version: string, tag: string): void
+  verifyPublishedPackages(version: string, tag?: string): void
+  verifyPublishedProvenance(version: string): void
+  verifyRegistryInstall(version: string): void
+}
 
 const createPackageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const workspaceRoot = dirname(createPackageRoot)
@@ -140,7 +150,7 @@ async function loadReleaseHarness(): Promise<ReleaseHarness> {
     .replace(
       childProcessImport,
       'const spawnSync = globalThis.__FRONTRON_RELEASE_SPAWN_SYNC__',
-    )}\nexport { assertNpmPublishAccess, main, publishPackages }\n`
+    )}\nexport { assertNpmPublishAccess, main, publishPackages, runPublishOrchestration }\n`
   const root = mkdtempSync(join(tmpdir(), 'frontron-release-contract-'))
   const modulePath = join(root, 'release-under-test.mjs')
 
@@ -228,6 +238,40 @@ test('official publish requires complete GitHub Actions OIDC credentials', () =>
   expect(getNpmCalls()).toHaveLength(0)
 })
 
+// 이 테스트는 재실행된 워크플로가 checkout 당시가 아닌 현재 origin/main과 HEAD를 비교하는지 확인한다.
+test('release workflow requires the checked-out HEAD to equal current origin/main', () => {
+  const workflow = readFileSync(
+    join(workspaceRoot, '.github/workflows/frontron-release.yml'),
+    'utf8',
+  )
+  const checkoutIndex = workflow.indexOf('- name: Checkout')
+  const currentMainIndex = workflow.indexOf('- name: Require the current main commit')
+  const publishIndex = workflow.indexOf('- name: Verify and publish both packages')
+
+  expect(checkoutIndex).toBeGreaterThanOrEqual(0)
+  expect(currentMainIndex).toBeGreaterThan(checkoutIndex)
+  expect(publishIndex).toBeGreaterThan(currentMainIndex)
+  expect(workflow).toContain(
+    'git fetch --no-tags --force origin refs/heads/main:refs/remotes/origin/main',
+  )
+  expect(workflow).toContain(
+    'test "$(git rev-parse HEAD)" = "$(git rev-parse refs/remotes/origin/main)"',
+  )
+})
+
+// 이 테스트는 릴리스 필수 패키지 매니저 매트릭스가 major 범위 대신 정확 버전을 사용하는지 확인한다.
+test('release-required package manager matrix uses exact versions', () => {
+  const matrixScript = readFileSync(
+    join(workspaceRoot, 'create-frontron/scripts/package-manager-matrix-smoke.mjs'),
+    'utf8',
+  )
+
+  expect(matrixScript).toContain("FRONTRON_PM_MATRIX_NODE ?? 'node@22.23.1'")
+  expect(matrixScript).toContain("FRONTRON_PM_MATRIX_PNPM ?? 'pnpm@11.4.0'")
+  expect(matrixScript).toContain("FRONTRON_PM_MATRIX_YARN ?? '@yarnpkg/cli-dist@4.17.1'")
+  expect(matrixScript).toContain("FRONTRON_PM_MATRIX_BUN ?? 'bun@1.3.14'")
+})
+
 // 이 테스트는 이미 게시된 동일 tarball을 검증한 뒤 나머지 패키지만 게시하는지 확인한다.
 test('partial release resumes only after matching the published package integrity', () => {
   const version = '1.2.3'
@@ -306,6 +350,105 @@ test('partial release rejects a published package with different integrity', () 
   expect(getNpmCalls().some(({ args }) => args[0] === 'publish')).toBe(false)
 })
 
+// 이 테스트는 첫 게시의 부분 실패를 보고하고 재시도 시 이미 게시된 동일 패키지를 검증해 건너뛰는지 확인한다.
+test('partial publish failure retries only the remaining package', () => {
+  const version = '1.2.3'
+  const integrity = 'sha512-retry-release-candidate'
+  const publishedPackages = new Set<string>()
+  let failFrontronPublish = true
+
+  // 이 응답기는 create-frontron 게시 후 frontron만 한 번 실패하는 레지스트리 상태를 재현한다.
+  spawnHandler = (call) => {
+    const args = getNpmArgs(call)
+
+    if (!args) {
+      return failUnexpectedSpawn(call)
+    }
+
+    const command = args.join(' ')
+
+    if (command === 'pack --json --dry-run --ignore-scripts') {
+      return successfulSpawnResult(JSON.stringify([{ integrity }]))
+    }
+
+    if (command === `view create-frontron@${version} dist.integrity`) {
+      return successfulSpawnResult(integrity)
+    }
+
+    const versionMatch = /^view (create-frontron|frontron)@1\.2\.3 version$/.exec(command)
+
+    if (versionMatch) {
+      return publishedPackages.has(versionMatch[1])
+        ? successfulSpawnResult(version)
+        : failedSpawnResult('E404 No match found for version')
+    }
+
+    if (command === 'publish --tag frontron-staged') {
+      const packageName = call.cwd?.endsWith('create-frontron') ? 'create-frontron' : 'frontron'
+
+      if (packageName === 'frontron' && failFrontronPublish) {
+        failFrontronPublish = false
+        return failedSpawnResult('')
+      }
+
+      publishedPackages.add(packageName)
+      return successfulSpawnResult()
+    }
+
+    return failUnexpectedSpawn(call)
+  }
+
+  expect(() => releaseHarness.module.publishPackages(version)).toThrow(
+    'Publish failed after create-frontron published and no packages skipped',
+  )
+
+  releaseHarness.module.publishPackages(version)
+
+  const publishCalls = getNpmCalls().filter(({ args }) => args[0] === 'publish')
+  expect(publishCalls.map(({ call }) => call.cwd)).toEqual([
+    join(releaseHarness.root, 'create-frontron'),
+    join(releaseHarness.root, 'frontron'),
+    join(releaseHarness.root, 'frontron'),
+  ])
+  expect(publishedPackages).toEqual(new Set(['create-frontron', 'frontron']))
+})
+
+// 이 테스트는 로컬 emergency 게시가 staging tag와 패키지 순서를 지키고 provenance를 넣지 않는지 확인한다.
+test('local publishing uses staging without provenance in package order', () => {
+  const version = '1.2.3'
+
+  // 이 응답기는 두 패키지가 아직 게시되지 않은 로컬 token 게시를 표현한다.
+  spawnHandler = (call) => {
+    const args = getNpmArgs(call)
+
+    if (!args) {
+      return failUnexpectedSpawn(call)
+    }
+
+    if (args[0] === 'view' && args.at(-1) === 'version') {
+      return failedSpawnResult('E404 No match found for version')
+    }
+
+    if (args[0] === 'publish') {
+      return successfulSpawnResult()
+    }
+
+    return failUnexpectedSpawn(call)
+  }
+
+  releaseHarness.module.publishPackages(version)
+
+  const publishCalls = getNpmCalls().filter(({ args }) => args[0] === 'publish')
+  expect(publishCalls.map(({ args }) => args)).toEqual([
+    ['publish', '--tag', 'frontron-staged'],
+    ['publish', '--tag', 'frontron-staged'],
+  ])
+  expect(publishCalls.map(({ call }) => call.cwd)).toEqual([
+    join(releaseHarness.root, 'create-frontron'),
+    join(releaseHarness.root, 'frontron'),
+  ])
+})
+
 // 이 테스트는 trusted publishing이 두 패키지 모두에 provenance와 public access를 강제하는지 확인한다.
 test('trusted publishing adds provenance to both package publishes', () => {
   const version = '1.2.3'
@@ -341,4 +484,68 @@ test('trusted publishing adds provenance to both package publishes', () => {
     join(releaseHarness.root, 'create-frontron'),
     join(releaseHarness.root, 'frontron'),
   ])
+})
+
+// 이 테스트는 trusted 오케스트레이션이 게시 검증, provenance 검증, 설치 검증 순서로 끝나는지 확인한다.
+test('trusted publish orchestration verifies provenance before registry install', () => {
+  const version = '1.2.3'
+  const operations = {
+    promotePackagesToLatest: vi.fn(),
+    publishPackages: vi.fn(),
+    setDistTagForPackages: vi.fn(),
+    verifyPublishedPackages: vi.fn(),
+    verifyPublishedProvenance: vi.fn(),
+    verifyRegistryInstall: vi.fn(),
+  }
+  process.env.FRONTRON_TRUSTED_PUBLISHING = '1'
+
+  releaseHarness.module.runPublishOrchestration(version, operations)
+
+  expect(operations.publishPackages).toHaveBeenCalledWith(version, 'latest')
+  expect(operations.verifyPublishedPackages).toHaveBeenCalledWith(version)
+  expect(operations.verifyPublishedProvenance).toHaveBeenCalledWith(version)
+  expect(operations.verifyRegistryInstall).toHaveBeenCalledWith(version)
+  expect(operations.setDistTagForPackages).not.toHaveBeenCalled()
+  expect(operations.promotePackagesToLatest).not.toHaveBeenCalled()
+  const invocationOrder = [
+    operations.publishPackages.mock.invocationCallOrder[0],
+    operations.verifyPublishedPackages.mock.invocationCallOrder[0],
+    operations.verifyPublishedProvenance.mock.invocationCallOrder[0],
+    operations.verifyRegistryInstall.mock.invocationCallOrder[0],
+  ]
+  expect(invocationOrder).toEqual([...invocationOrder].sort((left, right) => left - right))
+})
+
+// 이 테스트는 로컬 오케스트레이션이 staging 검증 후에만 latest로 승격하고 다시 검증하는지 확인한다.
+test('local publish orchestration verifies staging before latest promotion', () => {
+  const version = '1.2.3'
+  const operations = {
+    promotePackagesToLatest: vi.fn(),
+    publishPackages: vi.fn(),
+    setDistTagForPackages: vi.fn(),
+    verifyPublishedPackages: vi.fn(),
+    verifyPublishedProvenance: vi.fn(),
+    verifyRegistryInstall: vi.fn(),
+  }
+
+  releaseHarness.module.runPublishOrchestration(version, operations)
+
+  expect(operations.publishPackages).toHaveBeenCalledWith(version, 'frontron-staged')
+  expect(operations.setDistTagForPackages).toHaveBeenCalledWith(version, 'frontron-staged')
+  expect(operations.verifyPublishedPackages).toHaveBeenNthCalledWith(1, version, 'frontron-staged')
+  expect(operations.verifyRegistryInstall).toHaveBeenCalledTimes(2)
+  expect(operations.promotePackagesToLatest).toHaveBeenCalledWith(version)
+  expect(operations.verifyPublishedPackages).toHaveBeenNthCalledWith(2, version)
+  expect(operations.verifyPublishedProvenance).not.toHaveBeenCalled()
+
+  const invocationOrder = [
+    operations.publishPackages.mock.invocationCallOrder[0],
+    operations.setDistTagForPackages.mock.invocationCallOrder[0],
+    operations.verifyPublishedPackages.mock.invocationCallOrder[0],
+    operations.verifyRegistryInstall.mock.invocationCallOrder[0],
+    operations.promotePackagesToLatest.mock.invocationCallOrder[0],
+    operations.verifyPublishedPackages.mock.invocationCallOrder[1],
+    operations.verifyRegistryInstall.mock.invocationCallOrder[1],
+  ]
+  expect(invocationOrder).toEqual([...invocationOrder].sort((left, right) => left - right))
 })

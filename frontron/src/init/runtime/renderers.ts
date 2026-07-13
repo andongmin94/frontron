@@ -1,29 +1,18 @@
-import type { InitPreset } from '../shared'
-import { usesStarterBridge } from '../shared'
 import { getInitTemplateInfo, renderCreateFrontronElectronFile } from './create-frontron-template'
-import { renderMinimalMainSource, renderMinimalWindowSource } from './minimal-sources'
 import { resolveDevServerUrl } from './dev-server-url'
 import { renderServeSource } from './serve-source'
 
 export { getInitTemplateInfo }
 export { resolveDevServerUrl, renderServeSource }
 
-// renderMainSource 함수는 선택한 preset에 맞는 Electron main.ts 소스를 만든다.
-export function renderMainSource(preset: InitPreset) {
-  if (usesStarterBridge(preset)) {
-    return renderCreateFrontronElectronFile('main.ts')
-  }
-
-  return renderMinimalMainSource()
+// renderMainSource 함수는 create-frontron 템플릿의 Electron main.ts 소스를 만든다.
+export function renderMainSource() {
+  return renderCreateFrontronElectronFile('main.ts')
 }
 
-// renderWindowSource 함수는 선택한 preset에 맞는 Electron window.ts 소스를 만든다.
-export function renderWindowSource(preset: InitPreset) {
-  if (usesStarterBridge(preset)) {
-    return renderCreateFrontronElectronFile('window.ts')
-  }
-
-  return renderMinimalWindowSource()
+// renderWindowSource 함수는 create-frontron 템플릿의 Electron window.ts 소스를 만든다.
+export function renderWindowSource() {
+  return renderCreateFrontronElectronFile('window.ts')
 }
 
 // renderTsconfigSource 함수는 Electron 전용 tsconfig.electron.json 내용을 만든다.

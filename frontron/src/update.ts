@@ -185,7 +185,6 @@ function createManifestOptions(manifest: Manifest, cwd: string): Partial<InitOpt
 
   return {
     adapter: manifest.adapter,
-    preset: manifest.preset,
     desktopDir: manifest.desktopDir ?? inferDesktopDirFromManifest(manifest),
     appScript: manifest.appScript ?? manifest.scripts[0],
     buildScript: manifest.buildScript ?? manifest.scripts[1],

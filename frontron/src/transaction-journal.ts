@@ -108,7 +108,7 @@ const PNPM_WORKSPACE_FILE = 'pnpm-workspace.yaml'
 const YARN_RC_FILE = '.yarnrc.yml'
 const caseSensitivityCache = new Map<
   string,
-  { device: number; inode: number; caseSensitive: boolean }
+  { device: bigint; inode: bigint; caseSensitive: boolean }
 >()
 
 // toPortableRelativePath 함수는 절대 경로를 운영체제와 무관한 저널용 상대 경로로 바꾼다.
@@ -235,26 +235,39 @@ function getLockClaimPath(lockRoot: string, kind: FixedLockKind) {
   )
 }
 
-// sameFileIdentity 함수는 두 경로 상태가 같은 파일시스템 inode를 가리키는지 확인한다.
+// lstatPrecisely 함수는 Windows의 큰 파일 ID가 number로 반올림되지 않도록 bigint 통계를 읽는다.
+function lstatPrecisely(targetPath: string) {
+  return lstatSync(targetPath, { bigint: true })
+}
+
+// fstatPrecisely 함수는 열린 파일도 경로와 같은 정밀도의 identity로 비교할 수 있게 읽는다.
+function fstatPrecisely(descriptor: number) {
+  return fstatSync(descriptor, { bigint: true })
+}
+
+// sameFileIdentity 함수는 같은 safety boundary에서 Node 22 Windows의 장치 ID 0까지 안전하게 비교한다.
 function sameFileIdentity(
-  left: NonNullable<ReturnType<typeof lstatSync>>,
-  right: NonNullable<ReturnType<typeof lstatSync>>,
+  left: ReturnType<typeof lstatPrecisely>,
+  right: ReturnType<typeof lstatPrecisely>,
 ) {
-  return left.dev === right.dev && left.ino === right.ino
+  const inodeMatches = left.ino !== 0n && left.ino === right.ino
+  const deviceMatches = left.dev === 0n || right.dev === 0n || left.dev === right.dev
+
+  return inodeMatches && deviceMatches
 }
 
 // isSafetyRootCaseSensitive 함수는 safety root의 실제 대소문자 구분 동작을 probe하고 inode별로 캐시한다.
 function isSafetyRootCaseSensitive(safetyRootValue: string) {
   const safetyRoot = resolve(safetyRootValue)
-  const rootStats = lstatSync(safetyRoot)
+  const rootIdentity = lstatPrecisely(safetyRoot)
 
-  if (!rootStats.isDirectory()) {
+  if (!rootIdentity.isDirectory()) {
     throw new Error(`Transaction safety root is not a directory: ${safetyRoot}`)
   }
 
   const cached = caseSensitivityCache.get(safetyRoot)
 
-  if (cached && cached.device === rootStats.dev && cached.inode === rootStats.ino) {
+  if (cached && cached.device === rootIdentity.dev && cached.inode === rootIdentity.ino) {
     return cached.caseSensitive
   }
 
@@ -275,7 +288,7 @@ function isSafetyRootCaseSensitive(safetyRootValue: string) {
     descriptor = null
 
     if (existsSync(alternatePath)) {
-      caseSensitive = !sameFileIdentity(lstatSync(probePath), lstatSync(alternatePath))
+      caseSensitive = !sameFileIdentity(lstatPrecisely(probePath), lstatPrecisely(alternatePath))
     }
   } finally {
     if (descriptor !== null) closeSync(descriptor)
@@ -284,8 +297,8 @@ function isSafetyRootCaseSensitive(safetyRootValue: string) {
 
   syncDirectoryBestEffort(safetyRoot)
   caseSensitivityCache.set(safetyRoot, {
-    device: rootStats.dev,
-    inode: rootStats.ino,
+    device: rootIdentity.dev,
+    inode: rootIdentity.ino,
     caseSensitive,
   })
   return caseSensitive
@@ -404,8 +417,8 @@ function syncDirectoryBestEffort(directoryPath: string) {
 
 // syncRegularFile 함수는 read-only 파일도 write-only descriptor에서 최종 mode와 바이트를 동기화한다.
 function syncRegularFile(filePath: string) {
-  const stats = lstatSync(filePath)
-  const originalMode = stats.mode & 0o7777
+  const stats = lstatPrecisely(filePath)
+  const originalMode = Number(stats.mode & 0o7777n)
   let descriptor: number | null = null
   let finalModeApplied = false
 
@@ -417,7 +430,7 @@ function syncRegularFile(filePath: string) {
 
   try {
     descriptor = openSync(filePath, constants.O_WRONLY)
-    const descriptorStats = fstatSync(descriptor)
+    const descriptorStats = fstatPrecisely(descriptor)
     assertSingleLinkFile(descriptorStats, 'Transaction result')
 
     if (!sameFileIdentity(stats, descriptorStats)) {
@@ -442,8 +455,11 @@ export function createTransactionSourceHash(content: string | Buffer) {
 }
 
 // assertSingleLinkFile 함수는 프로젝트 밖 inode를 함께 바꿀 수 있는 hard link 파일을 거부한다.
-function assertSingleLinkFile(stats: NonNullable<ReturnType<typeof lstatSync>>, label: string) {
-  if (!stats.isFile() || stats.nlink !== 1) {
+function assertSingleLinkFile(
+  stats: NonNullable<ReturnType<typeof lstatSync>> | ReturnType<typeof lstatPrecisely>,
+  label: string,
+) {
+  if (!stats.isFile() || Number(stats.nlink) !== 1) {
     throw new Error(`${label} must be a regular file with exactly one hard link.`)
   }
 }
@@ -558,12 +574,12 @@ function normalizePublishedLockHardLink(
   lockRoot: string,
   kind: FixedLockKind,
   lockPath: string,
-  lockStats: NonNullable<ReturnType<typeof lstatSync>>,
+  lockStats: ReturnType<typeof lstatPrecisely>,
   lock: NormalizedTransactionLock,
 ) {
-  if (lockStats.nlink === 1) return
+  if (lockStats.nlink === 1n) return
 
-  if (lockStats.nlink !== 2 || !/^[0-9a-z-]+$/i.test(lock.transactionId)) {
+  if (lockStats.nlink !== 2n || !/^[0-9a-z-]+$/i.test(lock.transactionId)) {
     throw new Error('Transaction lock has an unexpected hard-link count.')
   }
 
@@ -577,7 +593,7 @@ function normalizePublishedLockHardLink(
     throw new Error('Transaction lock has an unrecognized hard link.')
   }
 
-  const preparingStats = lstatSync(preparingPath)
+  const preparingStats = lstatPrecisely(preparingPath)
   const preparingLock = parseTransactionLock(readFileSync(preparingPath, 'utf8'), lockRoot, kind)
 
   if (
@@ -591,7 +607,7 @@ function normalizePublishedLockHardLink(
 
   unlinkSync(preparingPath)
   syncDirectoryBestEffort(lockRoot)
-  assertSingleLinkFile(lstatSync(lockPath), 'Transaction lock')
+  assertSingleLinkFile(lstatPrecisely(lockPath), 'Transaction lock')
 }
 
 // readFixedLock 함수는 lock의 구조를 읽고 정상적인 공개 중단 상태를 단일 link로 정리한다.
@@ -602,9 +618,9 @@ function readFixedLock(lockRootValue: string, kind: FixedLockKind) {
 
   if (!existsSync(lockPath)) return null
 
-  const stats = lstatSync(lockPath)
+  const stats = lstatPrecisely(lockPath)
 
-  if (!stats.isFile() || stats.nlink < 1 || stats.nlink > 2) {
+  if (!stats.isFile() || stats.nlink < 1n || stats.nlink > 2n) {
     throw new Error('Transaction lock is not a regular published file.')
   }
 
@@ -623,20 +639,20 @@ function cleanupLockClaim(lockRootValue: string, kind: FixedLockKind) {
 
   if (!existsSync(claimPath)) return
 
-  const claimStats = lstatSync(claimPath)
+  const claimStats = lstatPrecisely(claimPath)
 
   if (!claimStats.isFile()) {
     throw new Error('Transaction lock release claim is not a regular file.')
   }
 
   const claim = parseTransactionLock(readFileSync(claimPath, 'utf8'), lockRoot, kind)
-  const claimIsFresh = Date.now() - claimStats.ctimeMs < 5_000
+  const claimIsFresh = Date.now() - Number(claimStats.ctimeMs) < 5_000
 
   if (claimIsFresh || isTransactionOwnerActive(claim.ownerPid, claim.createdAt)) {
     throw new Error(`A Frontron ${kind} lock is currently being released.`)
   }
 
-  if (existsSync(lockPath) && !sameFileIdentity(claimStats, lstatSync(lockPath))) {
+  if (existsSync(lockPath) && !sameFileIdentity(claimStats, lstatPrecisely(lockPath))) {
     throw new Error('Transaction lock release claim does not match the fixed lock.')
   }
 
@@ -822,8 +838,8 @@ function removeFixedLock(
   linkSync(lockPath, claimPath)
 
   try {
-    const fixedStats = lstatSync(lockPath)
-    const claimStats = lstatSync(claimPath)
+    const fixedStats = lstatPrecisely(lockPath)
+    const claimStats = lstatPrecisely(claimPath)
     const claimedLock = parseTransactionLock(readFileSync(claimPath, 'utf8'), lockRoot, kind)
 
     if (
@@ -1144,14 +1160,14 @@ function takeSnapshot(
       }
     }
 
-    const initialDescriptorStats = fstatSync(descriptor)
+    const initialDescriptorStats = fstatPrecisely(descriptor)
     assertSingleLinkFile(initialDescriptorStats, 'Transaction snapshot target')
     assertProjectPathSafe(
       target.absoluteSafetyRoot,
       target.absolutePath,
       'Transaction snapshot target',
     )
-    const initialPathStats = lstatSync(target.absolutePath)
+    const initialPathStats = lstatPrecisely(target.absolutePath)
     assertSingleLinkFile(initialPathStats, 'Transaction snapshot target')
 
     if (!sameFileIdentity(initialDescriptorStats, initialPathStats)) {
@@ -1159,14 +1175,14 @@ function takeSnapshot(
     }
 
     const content = readFileSync(descriptor)
-    const finalDescriptorStats = fstatSync(descriptor)
+    const finalDescriptorStats = fstatPrecisely(descriptor)
     assertSingleLinkFile(finalDescriptorStats, 'Transaction snapshot target')
     assertProjectPathSafe(
       target.absoluteSafetyRoot,
       target.absolutePath,
       'Transaction snapshot target',
     )
-    const finalPathStats = lstatSync(target.absolutePath)
+    const finalPathStats = lstatPrecisely(target.absolutePath)
     assertSingleLinkFile(finalPathStats, 'Transaction snapshot target')
 
     if (
@@ -1175,7 +1191,7 @@ function takeSnapshot(
       initialDescriptorStats.size !== finalDescriptorStats.size ||
       initialDescriptorStats.mtimeMs !== finalDescriptorStats.mtimeMs ||
       initialDescriptorStats.ctimeMs !== finalDescriptorStats.ctimeMs ||
-      (initialDescriptorStats.mode & 0o7777) !== (finalDescriptorStats.mode & 0o7777)
+      (initialDescriptorStats.mode & 0o7777n) !== (finalDescriptorStats.mode & 0o7777n)
     ) {
       throw new Error('Transaction snapshot target changed while it was being read.')
     }
@@ -1192,7 +1208,7 @@ function takeSnapshot(
       existed: true,
       contentBase64: content.toString('base64'),
       contentSha256: contentHash,
-      mode: initialDescriptorStats.mode & 0o7777,
+      mode: Number(initialDescriptorStats.mode & 0o7777n),
     }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -1337,12 +1353,12 @@ function parseJournal(projectRoot: string, source: string): TransactionJournal {
 function normalizePublishedJournalHardLink(
   projectRoot: string,
   journalPath: string,
-  journalStats: NonNullable<ReturnType<typeof lstatSync>>,
+  journalStats: ReturnType<typeof lstatPrecisely>,
   journal: TransactionJournal,
 ) {
-  if (journalStats.nlink === 1) return
+  if (journalStats.nlink === 1n) return
 
-  if (journalStats.nlink !== 2) {
+  if (journalStats.nlink !== 2n) {
     throw new Error('Transaction journal has an unexpected hard-link count.')
   }
 
@@ -1358,7 +1374,7 @@ function normalizePublishedJournalHardLink(
 
   const preparingPath = resolve(projectRoot, candidates[0])
   assertProjectPathSafe(projectRoot, preparingPath, 'Transaction preparing journal')
-  const preparingStats = lstatSync(preparingPath)
+  const preparingStats = lstatPrecisely(preparingPath)
   const preparingJournal = parseJournal(projectRoot, readFileSync(preparingPath, 'utf8'))
 
   if (
@@ -1371,7 +1387,7 @@ function normalizePublishedJournalHardLink(
 
   unlinkSync(preparingPath)
   syncDirectoryBestEffort(projectRoot)
-  assertSingleLinkFile(lstatSync(journalPath), 'Transaction journal')
+  assertSingleLinkFile(lstatPrecisely(journalPath), 'Transaction journal')
 }
 
 // readActiveJournal 함수는 active 저널을 읽고 정상적인 nlink=2 공개 중단 상태를 자동 정상화한다.
@@ -1383,9 +1399,9 @@ function readActiveJournal(projectRoot: string) {
     return null
   }
 
-  const stats = lstatSync(journalPath)
+  const stats = lstatPrecisely(journalPath)
 
-  if (!stats.isFile() || stats.nlink < 1 || stats.nlink > 2) {
+  if (!stats.isFile() || stats.nlink < 1n || stats.nlink > 2n) {
     throw new Error('Transaction journal is not a regular file.')
   }
 
@@ -1499,7 +1515,7 @@ function restoreExistingFile(snapshot: ResolvedSnapshot) {
     'Transaction recovery file',
   )
   const existedBeforeOpen = existsSync(snapshot.absolutePath)
-  const beforeStats = existedBeforeOpen ? lstatSync(snapshot.absolutePath) : null
+  const beforeStats = existedBeforeOpen ? lstatPrecisely(snapshot.absolutePath) : null
   const finalMode = snapshot.mode ?? 0o644
   let descriptor: number | null = null
   let finalModeApplied = false
@@ -1507,8 +1523,8 @@ function restoreExistingFile(snapshot: ResolvedSnapshot) {
   if (beforeStats) {
     assertSingleLinkFile(beforeStats, 'Transaction recovery file')
 
-    if ((beforeStats.mode & 0o200) === 0) {
-      chmodSync(snapshot.absolutePath, (beforeStats.mode & 0o7777) | 0o200)
+    if ((beforeStats.mode & 0o200n) === 0n) {
+      chmodSync(snapshot.absolutePath, Number((beforeStats.mode & 0o7777n) | 0o200n))
     }
   }
 
@@ -1520,7 +1536,7 @@ function restoreExistingFile(snapshot: ResolvedSnapshot) {
         : constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
       0o600,
     )
-    const descriptorStats = fstatSync(descriptor)
+    const descriptorStats = fstatPrecisely(descriptor)
     assertSingleLinkFile(descriptorStats, 'Transaction recovery file')
 
     if (beforeStats && !sameFileIdentity(beforeStats, descriptorStats)) {
@@ -1679,12 +1695,12 @@ function removeActiveJournal(projectRoot: string, transactionId: string) {
 
   const journalPath = getJournalPath(projectRoot)
   assertProjectPathSafe(projectRoot, journalPath, 'Transaction journal')
-  const beforeStats = lstatSync(journalPath)
+  const beforeStats = lstatPrecisely(journalPath)
   const finalJournal = parseJournal(projectRoot, readFileSync(journalPath, 'utf8'))
 
   if (
     finalJournal.transactionId !== transactionId ||
-    !sameFileIdentity(beforeStats, lstatSync(journalPath))
+    !sameFileIdentity(beforeStats, lstatPrecisely(journalPath))
   ) {
     throw new Error('The active transaction journal changed immediately before removal.')
   }

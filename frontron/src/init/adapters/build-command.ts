@@ -26,7 +26,6 @@ export function resolveNextExportBuildCommand(packageJson: PackageJson, webBuild
       ? getScriptCommand(packageJson, nextBuildScriptName)
       : null
 
-  // Historical Next export projects often split build/export scripts; keep that
-  // compatibility rule near the generic "script must exist" guard above.
+  // 예전 Next export 프로젝트는 build와 export script를 나누므로 일반 script 검사 뒤에서 호환한다.
   return nextBuildCommand ? `${nextBuildCommand} && ${selectedCommand}` : selectedCommand
 }

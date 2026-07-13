@@ -11,6 +11,7 @@ import { createDryRunReport, createInitPlan, createScriptFallbackWarnings } from
 import { previewPnpmWorkspaceYamlPatch } from './init/pnpm-workspace-yaml'
 import { askText, chooseDesktopScriptName, createReadlinePrompter } from './init/prompts'
 import { previewTsconfigJsonPatch } from './init/tsconfig-json'
+import { mergeYarnRcClaims, previewYarnRcYamlPatch } from './init/yarnrc-yaml'
 import { normalizeProjectRelativePath } from './project-paths'
 import {
   type InitContext,
@@ -293,6 +294,7 @@ export async function runInit(options: InitOptions, context: InitContext) {
     const packageJsonPatchPlan = previewPackageJsonPatch(config)
     const tsconfigJsonPatchPlan = previewTsconfigJsonPatch(context.cwd, desktopDir)
     const pnpmWorkspacePatchPlan = previewPnpmWorkspaceYamlPatch(context.cwd, config.packageManager)
+    const yarnRcPatchPlan = previewYarnRcYamlPatch(context.cwd, config.packageManager)
     const packageJsonClaims = mergePackageJsonClaims(
       existingManifestDetails?.packageJsonClaims,
       packageJsonPatchPlan.ownershipClaims,
@@ -305,12 +307,17 @@ export async function runInit(options: InitOptions, context: InitContext) {
       existingManifestDetails?.pnpmWorkspaceClaims,
       pnpmWorkspacePatchPlan?.ownershipClaims,
     )
+    const yarnRcClaims = mergeYarnRcClaims(
+      existingManifestDetails?.yarnRcClaims,
+      yarnRcPatchPlan?.ownershipClaims,
+    )
     addManifestSource(
       config,
       filesToWrite,
       packageJsonClaims,
       tsconfigJsonClaims,
       pnpmWorkspaceClaims,
+      yarnRcClaims,
     )
 
     const conflicts = [...filesToWrite.keys()].filter((filePath) => existsSync(filePath))
@@ -323,6 +330,7 @@ export async function runInit(options: InitOptions, context: InitContext) {
         : null,
       ...(tsconfigJsonPatchPlan?.blockers ?? []),
       ...(pnpmWorkspacePatchPlan?.blockers ?? []),
+      ...(yarnRcPatchPlan?.blockers ?? []),
       !allowExtraMetadataMainOverride && typeof existingExtraMetadataMain === 'string'
         ? `Existing build.extraMetadata.main will not be overwritten: ${existingExtraMetadataMain}`
         : null,
@@ -333,12 +341,14 @@ export async function runInit(options: InitOptions, context: InitContext) {
       packageJsonPlan: packageJsonPatchPlan,
       tsconfigJsonPlan: tsconfigJsonPatchPlan,
       pnpmWorkspacePlan: pnpmWorkspacePatchPlan,
+      yarnRcPlan: yarnRcPatchPlan,
       warnings: [
         ...scriptFallbackWarnings,
         ...adapterSelection.warnings,
         ...packageJsonPatchPlan.warnings,
         ...(tsconfigJsonPatchPlan?.warnings ?? []),
         ...(pnpmWorkspacePatchPlan?.warnings ?? []),
+        ...(yarnRcPatchPlan?.warnings ?? []),
       ],
       blockers: packageJsonBlockers,
       blockedFiles: conflictPlan.blocked,
@@ -371,6 +381,7 @@ export async function runInit(options: InitOptions, context: InitContext) {
       plan,
       tsconfigJsonPatchPlan,
       pnpmWorkspacePatchPlan,
+      yarnRcPatchPlan,
     )
 
     writeInitSuccessReport(context.output, config, scriptFallbackWarnings)

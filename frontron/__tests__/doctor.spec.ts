@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
@@ -233,6 +233,34 @@ describe('frontron doctor', () => {
     expect(combined).toContain('Warnings:')
     expect(combined).toContain(
       'Manifest-owned package.json field has local edits: devDependencies.electron',
+    )
+  })
+
+  test('doctor does not follow a manifest path through a symbolic link or junction', async () => {
+    const projectRoot = fixtures.createTempProject()
+    const outsideRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot, outsideRoot)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const projectManifestDirectory = join(projectRoot, '.frontron')
+    const externalManifestDirectory = join(outsideRoot, 'external-manifest')
+
+    renameSync(projectManifestDirectory, externalManifestDirectory)
+    symlinkSync(
+      externalManifestDirectory,
+      projectManifestDirectory,
+      process.platform === 'win32' ? 'junction' : 'dir',
+    )
+
+    const output = fixtures.createOutput()
+    const exitCode = await runCli(['doctor'], output, { cwd: projectRoot })
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expect(exitCode).toBe(1)
+    expect(combined).toContain('Status: blocked')
+    expect(combined).toContain(
+      'Frontron manifest must not pass through a symbolic link or junction',
     )
   })
 })

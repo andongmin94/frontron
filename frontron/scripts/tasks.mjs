@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url'
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const command = process.argv[2]
 const extraArgs = process.argv.slice(3)
+const lintPaths = ['src', '__tests__', 'scripts', 'build.config.ts', 'vitest.config.ts', 'index.js']
+const packageJsonPaths = ['package.json']
 
 function run(executable, args, options = {}) {
   const result = spawnSync(executable, args, {
@@ -95,8 +97,8 @@ function alignObjectSection(lines, sectionName) {
   }
 }
 
-function formatPackageJson() {
-  const packageJsonPath = join(root, 'package.json')
+function getFormattedPackageJson(relativePath) {
+  const packageJsonPath = join(root, relativePath)
   const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'))
   const lines = JSON.stringify(packageJson, null, 2).split('\n')
 
@@ -104,13 +106,42 @@ function formatPackageJson() {
     alignObjectSection(lines, sectionName)
   }
 
-  writeFileSync(packageJsonPath, `${lines.join('\n')}\n`, 'utf8')
+  return `${lines.join('\n')}\n`
+}
+
+function formatPackageJson(relativePath = 'package.json') {
+  writeFileSync(join(root, relativePath), getFormattedPackageJson(relativePath), 'utf8')
+}
+
+function checkPackageJson(relativePath) {
+  const packageJsonPath = join(root, relativePath)
+  const actual = readFileSync(packageJsonPath, 'utf8')
+  const expected = getFormattedPackageJson(relativePath)
+
+  if (actual !== expected) {
+    console.error(
+      `[tasks] ${relativePath} does not match the repository package.json layout. Run "npm run lint".`,
+    )
+    process.exit(1)
+  }
+}
+
+function runCheck() {
+  runBin('oxlint', lintPaths)
+  runBin('oxfmt', ['--check', ...lintPaths])
+
+  for (const packageJsonPath of packageJsonPaths) {
+    checkPackageJson(packageJsonPath)
+  }
 }
 
 function runLint() {
-  runBin('oxlint', ['--fix', 'src', '__tests__', 'scripts', 'build.config.ts', 'index.js'])
-  runBin('oxfmt', ['src', '__tests__', 'scripts', 'build.config.ts', 'index.js', 'package.json'])
-  formatPackageJson()
+  runBin('oxlint', ['--fix', ...lintPaths])
+  runBin('oxfmt', [...lintPaths, ...packageJsonPaths])
+
+  for (const packageJsonPath of packageJsonPaths) {
+    formatPackageJson(packageJsonPath)
+  }
 }
 
 switch (command) {
@@ -120,6 +151,16 @@ switch (command) {
   case 'test':
     runBin('vitest', [
       'run',
+      '--no-file-parallelism',
+      '--exclude',
+      '__tests__/package-smoke.spec.ts',
+      ...extraArgs,
+    ])
+    break
+  case 'coverage':
+    runBin('vitest', [
+      'run',
+      '--coverage',
       '--no-file-parallelism',
       '--exclude',
       '__tests__/package-smoke.spec.ts',
@@ -136,6 +177,9 @@ switch (command) {
     break
   case 'typecheck':
     runBin('tsc', ['--noEmit', ...extraArgs])
+    break
+  case 'check':
+    runCheck()
     break
   case 'prepublishOnly':
     runBuild()

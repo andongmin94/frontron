@@ -104,6 +104,63 @@ function stubElectronModule(projectRoot: string) {
   writeFileSync(join(moduleRoot, 'index.js'), `module.exports = 'electron'\n`, 'utf8')
 }
 
+// stubRemixBuildModules 함수는 fixture가 실제 설치 없이 Remix bundle 준비 경로를 검증하게 한다.
+function stubRemixBuildModules(projectRoot: string) {
+  const serveRoot = join(projectRoot, 'node_modules', '@remix-run', 'serve')
+  const esbuildRoot = join(projectRoot, 'node_modules', 'esbuild')
+
+  mkdirSync(join(serveRoot, 'dist'), { recursive: true })
+  writeFileSync(
+    join(serveRoot, 'package.json'),
+    `${JSON.stringify({ name: '@remix-run/serve', version: '2.0.0' }, null, 2)}\n`,
+    'utf8',
+  )
+  writeFileSync(join(serveRoot, 'LICENSE'), 'fixture license\n', 'utf8')
+  writeFileSync(join(serveRoot, 'dist', 'cli.js'), 'module.exports = {}\n', 'utf8')
+
+  mkdirSync(esbuildRoot, { recursive: true })
+  writeFileSync(
+    join(esbuildRoot, 'package.json'),
+    `${JSON.stringify(
+      {
+        name: 'esbuild',
+        version: '0.28.0',
+        type: 'module',
+        exports: './index.js',
+      },
+      null,
+      2,
+    )}\n`,
+    'utf8',
+  )
+  writeFileSync(
+    join(esbuildRoot, 'index.js'),
+    `import { copyFileSync, writeFileSync } from 'node:fs'
+import { relative } from 'node:path'
+
+export async function build(options) {
+  const entryPath = options.entryPoints[0]
+
+  if (options.format === 'esm') {
+    copyFileSync(entryPath, options.outfile)
+  } else {
+    writeFileSync(options.outfile, 'module.exports = {}\\n', 'utf8')
+  }
+
+  return {
+    metafile: {
+      inputs: {
+        [relative(process.cwd(), entryPath)]: {},
+        'node_modules/@remix-run/serve/dist/cli.js': {},
+      },
+    },
+  }
+}
+`,
+    'utf8',
+  )
+}
+
 function transpileGeneratedServe(projectRoot: string) {
   const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
   const transpiled = ts.transpileModule(serveSource, {
@@ -121,6 +178,15 @@ function transpileGeneratedServe(projectRoot: string) {
 
 function runPrepareBuild(projectRoot: string) {
   stubElectronModule(projectRoot)
+
+  const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')) as {
+    devDependencies?: Record<string, string>
+  }
+
+  if (packageJson.devDependencies?.['@remix-run/serve']) {
+    stubRemixBuildModules(projectRoot)
+  }
+
   transpileGeneratedServe(projectRoot)
 
   const result = spawnSync(
@@ -288,8 +354,9 @@ const frameworkFixtures: FrameworkFixture[] = [
     ],
     buildCommands: ['build'],
     expectedPreparedPaths: [
-      '.frontron/runtime/remix-node-server/index.js',
+      '.frontron/runtime/remix-node-server/build/index.js',
       '.frontron/runtime/remix-node-server/server.cjs',
+      '.frontron/runtime/remix-node-server/THIRD_PARTY_LICENSES.json',
       '.frontron/runtime/remix-node-server/public/remix.txt',
     ],
   },

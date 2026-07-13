@@ -11,6 +11,7 @@ import {
   printUpdateHelp,
 } from './cli/help'
 import { parseCliOptions } from './cli/options'
+import { recoverPendingTransaction } from './transaction-journal'
 
 export type { CliOutput } from './cli-output'
 
@@ -38,7 +39,23 @@ export async function runCli(
   output: CliOutput = defaultOutput,
   context: CliContext = {},
 ) {
+  const cwd = context.cwd ?? process.cwd()
   let parsed: ReturnType<typeof parseCliOptions>
+
+  try {
+    const recovery = recoverPendingTransaction(cwd)
+
+    if (recovery.recovered) {
+      output.info(
+        `[Frontron] Recovered an interrupted ${recovery.operation} transaction before running the command.`,
+      )
+    }
+  } catch (error) {
+    output.error(
+      `[Frontron] Could not recover an interrupted transaction: ${(error as Error).message}`,
+    )
+    return 1
+  }
 
   try {
     parsed = parseCliOptions(argv)
@@ -62,7 +79,7 @@ export async function runCli(
 
     try {
       return await runInit(parsed.options, {
-        cwd: context.cwd ?? process.cwd(),
+        cwd,
         output,
         stdin: context.stdin ?? process.stdin,
         stdout: context.stdout ?? process.stdout,
@@ -82,7 +99,7 @@ export async function runCli(
 
     try {
       return await runDoctor({
-        cwd: context.cwd ?? process.cwd(),
+        cwd,
         output,
       })
     } catch (error) {
@@ -99,7 +116,7 @@ export async function runCli(
 
     try {
       return await runClean(parsed.options, {
-        cwd: context.cwd ?? process.cwd(),
+        cwd,
         output,
       })
     } catch (error) {
@@ -116,7 +133,7 @@ export async function runCli(
 
     try {
       return await runUpdate(parsed.options, {
-        cwd: context.cwd ?? process.cwd(),
+        cwd,
         output,
         stdin: context.stdin ?? process.stdin,
         stdout: context.stdout ?? process.stdout,

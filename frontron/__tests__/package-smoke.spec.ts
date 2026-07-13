@@ -15,12 +15,56 @@ function sleepSync(timeoutMs: number) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, timeoutMs)
 }
 
+// isProcessAlive 함수는 build lock을 만든 테스트 프로세스가 아직 실행 중인지 확인한다.
+function isProcessAlive(pid: number) {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return false
+
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM'
+  }
+}
+
+// readBuildLockOwner 함수는 깨진 lock도 stale 상태로 처리할 수 있게 PID를 읽는다.
+function readBuildLockOwner() {
+  try {
+    return Number(readFileSync(buildLockPath, 'utf8'))
+  } catch {
+    return 0
+  }
+}
+
+// releaseBuildLock 함수는 현재 프로세스가 만든 lock만 제거한다.
+function releaseBuildLock() {
+  if (readBuildLockOwner() === process.pid) {
+    rmSync(buildLockPath, { force: true })
+  }
+}
+
+// withBuildLock 함수는 병렬 pack 빌드를 직렬화하고 죽은 프로세스의 lock은 복구한다.
 function withBuildLock<T>(run: () => T) {
+  const startedAt = Date.now()
+
   while (true) {
     try {
       writeFileSync(buildLockPath, String(process.pid), { flag: 'wx' })
       break
-    } catch {
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+
+      const ownerPid = readBuildLockOwner()
+
+      if (!isProcessAlive(ownerPid)) {
+        rmSync(buildLockPath, { force: true })
+        continue
+      }
+
+      if (Date.now() - startedAt > 60_000) {
+        throw new Error(`Timed out waiting for package build lock owned by process ${ownerPid}.`)
+      }
+
       sleepSync(50)
     }
   }
@@ -28,7 +72,7 @@ function withBuildLock<T>(run: () => T) {
   try {
     return run()
   } finally {
-    rmSync(buildLockPath, { force: true })
+    releaseBuildLock()
   }
 }
 
@@ -155,6 +199,7 @@ test(
     expect(packedFiles.has('dist/cli.d.mts')).toBe(true)
     expect(packedFiles.has('package.json')).toBe(true)
     expect(packedFiles.has('README.md')).toBe(true)
+    expect(packedFiles.has('LICENSE')).toBe(true)
 
     expect(packedFiles.has('template/create-frontron/src/electron/main.ts')).toBe(false)
     expect(packedFiles.has('template/create-frontron/src/electron/preload.ts')).toBe(false)
@@ -169,9 +214,11 @@ test(
     const packageJson = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as {
       version: string
       dependencies?: Record<string, string>
+      engines?: Record<string, string>
     }
     const createFrontronDependency = packageJson.dependencies?.['create-frontron']
 
+    expect(packageJson.engines?.node).toBe('>=22.15.0')
     expect(
       createFrontronDependency === 'latest' ||
         createFrontronDependency === `^${packageJson.version}`,

@@ -433,6 +433,7 @@ export default withNextIntl(nextConfig)
       build: {
         files: string[]
         asarUnpack: string[]
+        npmRebuild?: boolean
       }
     }
     const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
@@ -449,7 +450,9 @@ export default withNextIntl(nextConfig)
     expect(serveSource).toContain('Node server entry not found')
     expect(packageJson.scripts['frontron:package']).toContain('next build')
     expect(packageJson.build.files).toContain('.frontron/runtime/next-standalone{,/**/*}')
+    expect(packageJson.build.files).toContain('!node_modules{,/**/*}')
     expect(packageJson.build.asarUnpack).toContain('.frontron/runtime/next-standalone{,/**/*}')
+    expect(packageJson.build.npmRebuild).toBe(false)
     expect(combined).toContain('- adapter: next-standalone')
     expect(combined).toContain('- adapter confidence: high')
     expect(combined).toContain('- adapter reason: next dependency found.')
@@ -536,6 +539,7 @@ export default withNextIntl(nextConfig)
       build: {
         files: string[]
         asarUnpack: string[]
+        npmRebuild?: boolean
       }
     }
     const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
@@ -546,7 +550,9 @@ export default withNextIntl(nextConfig)
     fixtures.expectEmbeddedNullableString(serveSource, 'NODE_SERVER_SOURCE_ROOT', '.output')
     fixtures.expectEmbeddedNullableString(serveSource, 'NODE_SERVER_ENTRY', 'server/index.mjs')
     expect(packageJson.build.files).toContain('.frontron/runtime/nuxt-node-server{,/**/*}')
+    expect(packageJson.build.files).toContain('!node_modules{,/**/*}')
     expect(packageJson.build.asarUnpack).toContain('.frontron/runtime/nuxt-node-server{,/**/*}')
+    expect(packageJson.build.npmRebuild).toBe(false)
     expect(combined).toContain('- adapter: nuxt-node-server')
     expect(combined).toContain('- server runtime root: .output')
     expect(combined).toContain('- server entry: server/index.mjs')
@@ -613,9 +619,12 @@ export default withNextIntl(nextConfig)
     expect(exitCode).toBe(0)
 
     const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')) as {
+      dependencies: Record<string, string>
+      devDependencies: Record<string, string>
       build: {
         files: string[]
         asarUnpack: string[]
+        npmRebuild?: boolean
       }
     }
     const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
@@ -628,9 +637,18 @@ export default withNextIntl(nextConfig)
     expect(serveSource).toContain(
       "ADAPTER === 'remix-node-server' ? ['index.js', 'server/index.js']",
     )
-    expect(serveSource).toContain("const { createApp } = require('@remix-run/serve')")
+    expect(serveSource).toContain("require.resolve('@remix-run/serve/package.json')")
+    expect(serveSource).toContain('__frontronCreateRequire(import.meta.url)')
+    expect(serveSource).toContain('await stageRemixRuntimeDependencies(stagedRuntimeDir')
+    expect(serveSource).toContain('THIRD_PARTY_LICENSES.json')
+    expect(serveSource).toContain("path.join(stagedRuntimeDir, 'build')")
     expect(packageJson.build.files).toContain('.frontron/runtime/remix-node-server{,/**/*}')
+    expect(packageJson.build.files).toContain('!node_modules{,/**/*}')
     expect(packageJson.build.asarUnpack).toContain('.frontron/runtime/remix-node-server{,/**/*}')
+    expect(packageJson.build.npmRebuild).toBe(false)
+    expect(packageJson.dependencies['@remix-run/serve']).toBeUndefined()
+    expect(packageJson.devDependencies['@remix-run/serve']).toBe('^2.0.0')
+    expect(packageJson.devDependencies.esbuild).toBe('^0.28.0')
     expect(combined).toContain('- adapter: remix-node-server')
     expect(combined).toContain('- server runtime root: build')
     expect(combined).toContain('- server entry: server.cjs')
@@ -696,12 +714,12 @@ export default {
           '@sveltejs/adapter-node': '^5.0.0',
         },
         extraFiles: {
-          'svelte.config.js': `import adapter from '@sveltejs/adapter-node'
+          'svelte.config.js': 'export default {}\n',
+          'vite.config.ts': `import adapter from '@sveltejs/adapter-node'
+import { sveltekit } from '@sveltejs/kit/vite'
 
 export default {
-  kit: {
-    adapter: adapter(),
-  },
+  plugins: [sveltekit({ adapter: adapter() })],
 }
 `,
         },
@@ -720,6 +738,7 @@ export default {
       build: {
         files: string[]
         asarUnpack: string[]
+        npmRebuild?: boolean
       }
     }
     const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
@@ -729,8 +748,11 @@ export default {
     fixtures.expectEmbeddedNullableString(serveSource, 'NODE_SERVER_SOURCE_ROOT', 'build')
     fixtures.expectEmbeddedNullableString(serveSource, 'NODE_SERVER_ENTRY', 'index.js')
     expect(packageJson.build.files).toContain('.frontron/runtime/sveltekit-node{,/**/*}')
+    expect(packageJson.build.files).not.toContain('!node_modules{,/**/*}')
     expect(packageJson.build.asarUnpack).toContain('.frontron/runtime/sveltekit-node{,/**/*}')
+    expect(packageJson.build.npmRebuild).toBeUndefined()
     expect(combined).toContain('- adapter: sveltekit-node')
+    expect(combined).toContain('- adapter confidence: high')
     expect(combined).toContain('- server entry: index.js')
   })
 
@@ -771,6 +793,7 @@ export default {
       build: {
         files: string[]
         asarUnpack: string[]
+        npmRebuild?: boolean
       }
     }
     const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
@@ -785,7 +808,9 @@ export default {
     fixtures.expectEmbeddedNullableString(serveSource, 'NODE_SERVER_SOURCE_ROOT', 'build')
     fixtures.expectEmbeddedNullableString(serveSource, 'NODE_SERVER_ENTRY', 'server/index.js')
     expect(packageJson.build.files).toContain('.frontron/runtime/custom-node-server{,/**/*}')
+    expect(packageJson.build.files).not.toContain('!node_modules{,/**/*}')
     expect(packageJson.build.asarUnpack).toContain('.frontron/runtime/custom-node-server{,/**/*}')
+    expect(packageJson.build.npmRebuild).toBeUndefined()
     expect(combined).toContain('- adapter: generic-node-server')
     expect(combined).toContain(
       '- adapter reason: Adapter was explicitly selected with --adapter generic-node-server.',

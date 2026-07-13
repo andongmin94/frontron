@@ -138,6 +138,7 @@ export const ELECTRON_VERSION = '^40.1.0'
 export const ELECTRON_BUILDER_VERSION = '^26.0.12'
 export const TYPESCRIPT_VERSION = '~6.0.2'
 export const NODE_TYPES_VERSION = '^25.5.0'
+export const ESBUILD_VERSION = '^0.28.0'
 
 export const VALID_PRESETS: readonly InitPreset[] = ['minimal', 'starter-like']
 export const VALID_ADAPTERS: readonly InitAdapterId[] = [

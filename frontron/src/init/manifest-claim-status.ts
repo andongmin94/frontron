@@ -12,8 +12,7 @@ export function inspectManifestClaim(
   claim: PackageJsonOwnershipClaim,
   current: ClaimReadResult,
 ) {
-  // Manifest claims describe exactly what Frontron wrote. Doctor only reports
-  // whether that owned value is still present; it never mutates the project.
+  // manifest claim은 Frontron이 쓴 값을 나타내며 doctor는 존재 여부만 보고하고 수정하지 않는다.
   if (claim.action === 'array-value') {
     if (
       Array.isArray(current.value) &&

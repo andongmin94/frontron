@@ -83,7 +83,7 @@ export const nextStandaloneAdapter: InitAdapter = {
       outDir: DEFAULT_NEXT_STANDALONE_OUT_DIR,
       nodeServerSourceRoot: '.next/standalone',
       nodeServerEntry: 'server.js',
-      // Next standalone keeps static/public assets outside server.js.
+      // Next standalone은 static/public asset을 server.js 바깥에 두므로 별도 복사한다.
       nodeServerCopyTargets: [
         { from: '.next/static', to: '.next/static' },
         { from: 'public', to: 'public' },

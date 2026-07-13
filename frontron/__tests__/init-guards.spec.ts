@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
@@ -64,6 +64,72 @@ describe('frontron init guardrails', () => {
     expect(existsSync(join(projectRoot, 'electron'))).toBe(false)
   })
 
+  test('init allows a project directory name that starts with two dots', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const output = fixtures.createOutput()
+
+    const exitCode = await runCli(['init', '--yes', '--desktop-dir', '..foo/electron'], output, {
+      cwd: projectRoot,
+    })
+
+    expect(exitCode).toBe(0)
+    expect(existsSync(join(projectRoot, '..foo', 'electron', 'main.ts'))).toBe(true)
+  })
+
+  test('init planning blocks a desktop directory whose parent is a symbolic link or junction', async () => {
+    const projectRoot = fixtures.createTempProject()
+    const outsideRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot, outsideRoot)
+    const linkedDesktopDir = join(projectRoot, 'linked-electron')
+
+    symlinkSync(outsideRoot, linkedDesktopDir, process.platform === 'win32' ? 'junction' : 'dir')
+
+    const output = fixtures.createOutput()
+    const exitCode = await runCli(
+      ['init', '--dry-run', '--desktop-dir', 'linked-electron'],
+      output,
+      { cwd: projectRoot },
+    )
+    const combined = output.error.mock.calls.flat().join('\n')
+
+    expect(exitCode).toBe(1)
+    expect(combined).toContain('symbolic link or junction')
+    expect(existsSync(join(outsideRoot, 'main.ts'))).toBe(false)
+    expect(existsSync(join(projectRoot, MANIFEST_PATH))).toBe(false)
+  })
+
+  test('init apply rechecks parent links immediately before writing', () => {
+    const projectRoot = fixtures.createTempProject()
+    const outsideRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot, outsideRoot)
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const packageJsonBefore = readFileSync(packageJsonPath, 'utf8')
+    const linkedDesktopDir = join(projectRoot, 'electron')
+
+    symlinkSync(outsideRoot, linkedDesktopDir, process.platform === 'win32' ? 'junction' : 'dir')
+
+    const plan = {
+      config: { cwd: projectRoot },
+      files: [
+        {
+          path: join(linkedDesktopDir, 'main.ts'),
+          action: 'create',
+          reason: 'test generated file',
+          content: 'generated\n',
+        },
+      ],
+      warnings: [],
+      blockers: [],
+    } as unknown as InitPlan
+
+    expect(() => applyInitChanges(packageJsonPath, { name: 'sample-web-app' }, plan)).toThrow(
+      'symbolic link or junction',
+    )
+    expect(readFileSync(packageJsonPath, 'utf8')).toBe(packageJsonBefore)
+    expect(existsSync(join(outsideRoot, 'main.ts'))).toBe(false)
+  })
+
   test('init rolls back written files and applies the manifest only after patches succeed', () => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)
@@ -103,7 +169,7 @@ describe('frontron init guardrails', () => {
         {
           path: join(projectRoot, 'electron'),
           tsconfigJson: {},
-          changes: [],
+          changes: [{ action: 'add', path: 'exclude', value: 'electron' }],
           ownershipClaims: [],
           warnings: [],
           blockers: [],

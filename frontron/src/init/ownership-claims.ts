@@ -7,8 +7,7 @@ export function mergePackageJsonClaims(
 ) {
   const claims = new Map<string, PackageJsonOwnershipClaim>()
 
-  // A claim is identified by what Frontron owns, not by where the claim came
-  // from. This lets update/init preserve old claims while replacing duplicates.
+  // claim은 출처가 아니라 소유 값으로 식별해 update/init이 이전 기록을 보존하며 중복만 바꾼다.
   for (const claim of [...existingClaims, ...nextClaims]) {
     claims.set(`${claim.action ?? 'set'}:${claim.path}:${JSON.stringify(claim.value)}`, claim)
   }

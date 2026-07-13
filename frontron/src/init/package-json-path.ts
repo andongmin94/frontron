@@ -10,6 +10,11 @@ export function valuesEqual(left: unknown, right: unknown) {
   return JSON.stringify(left) === JSON.stringify(right)
 }
 
+// hasOwnString 함수는 문자열 객체가 특정 키를 직접 가지고 있는지 확인한다.
+export function hasOwnString(record: Record<string, string> | undefined, key: string) {
+  return Boolean(record && Object.prototype.hasOwnProperty.call(record, key))
+}
+
 // readPackageJsonPath 함수는 점 표기법 경로로 package.json 값을 읽는다.
 export function readPackageJsonPath(packageJson: PackageJson, path: string) {
   const parts = path.split('.')

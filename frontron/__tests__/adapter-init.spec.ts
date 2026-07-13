@@ -93,6 +93,29 @@ describe('frontron adapter init flows', () => {
     expect(packageJson.build.files).toContain('desktop dist{,/**/*}')
   })
 
+  test('init reads the first available Vite host and port in config priority order', async () => {
+    const projectRoot = fixtures.createTempProjectWithScripts(
+      {
+        dev: 'vite',
+        build: 'vite build --outDir dist',
+      },
+      {
+        extraFiles: {
+          'vite.config.ts': `export default { server: { host: '0.0.0.0' } }\n`,
+          'vite.config.mts': `export default { server: { host: 'ignored.local', port: 4321 } }\n`,
+        },
+      },
+    )
+    fixtures.tempDirs.push(projectRoot)
+    const output = fixtures.createOutput()
+
+    const exitCode = await runCli(['init', '--yes'], output, { cwd: projectRoot })
+    const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
+
+    expect(exitCode).toBe(0)
+    fixtures.expectEmbeddedString(serveSource, 'DEV_URL', 'http://127.0.0.1:4321')
+  })
+
   test('init reads outDir from a custom Vite config path', async () => {
     const projectRoot = fixtures.createTempProjectWithScripts(
       {

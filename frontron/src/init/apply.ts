@@ -13,7 +13,6 @@ import {
 } from '../transaction-journal'
 import { MANIFEST_PATH } from './manifest'
 import type { InitPlan } from './plan'
-import type { PackageJson } from './shared'
 import type { TsconfigJsonPatchPlan } from './tsconfig-json'
 import type { PnpmWorkspaceYamlPatchPlan } from './pnpm-workspace-yaml'
 import type { YarnRcYamlPatchPlan } from './yarnrc-yaml'
@@ -106,14 +105,13 @@ function createInitTransactionTargets(
 }
 
 // applyInitChanges 함수는 init 계획에 따라 생성 파일과 설정 파일을 실제 프로젝트에 기록한다.
-export function applyInitChanges(
-  packageJsonPath: string,
-  packageJson: PackageJson,
-  plan: InitPlan,
-  tsconfigJsonPlan: TsconfigJsonPatchPlan | null = null,
-  pnpmWorkspacePlan: PnpmWorkspaceYamlPatchPlan | null = null,
-  yarnRcPlan: YarnRcYamlPatchPlan | null = null,
-) {
+export function applyInitChanges(packageJsonPath: string, plan: InitPlan) {
+  const {
+    packageJsonPlan: { packageJson },
+    tsconfigJsonPlan = null,
+    pnpmWorkspacePlan = null,
+    yarnRcPlan = null,
+  } = plan
   const writableFiles = plan.files.filter((file) => file.action !== 'blocked')
   const manifestPath = resolve(plan.config.cwd, MANIFEST_PATH)
   const generatedFiles = writableFiles.filter((file) => resolve(file.path) !== manifestPath)

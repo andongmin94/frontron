@@ -3,6 +3,17 @@ import { lstatSync, readFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 import { formatProjectPathBlocker, inspectProjectPath, isInsideDirectory } from '../project-paths'
+import {
+  findInlineCommentStart,
+  findPreferredEol,
+  formatLineReason,
+  getYamlLineText,
+  isYamlTrivia,
+  joinYamlLines,
+  type ParseResult,
+  splitYamlLines,
+  type YamlLine,
+} from './yaml-source'
 
 export const YARN_RC_YAML_PATH = '.yarnrc.yml'
 export const REQUIRED_YARN_NODE_LINKER = 'node-modules'
@@ -65,11 +76,6 @@ export type YarnRcClaimPathResolution =
       blocker: string
     }
 
-type YamlLine = {
-  text: string
-  ending: string
-}
-
 type ParsedMappingLine = {
   key: string
   valueSource: string
@@ -96,67 +102,14 @@ type UnsafeYarnRcInspection = {
 
 type YarnRcInspection = EditableYarnRcInspection | UnsafeYarnRcInspection
 
-type ParseResult<T> = { ok: true; value: T } | { ok: false; reason: string }
-
 // formatYarnRcBlocker 함수는 안전하게 편집할 수 없는 Yarn 설정 사유를 일관된 문장으로 만든다.
 function formatYarnRcBlocker(reason: string) {
   return `Cannot safely edit ${YARN_RC_YAML_PATH}: ${reason}. The file was left unchanged.`
 }
 
-// formatLineReason 함수는 YAML 문제 위치를 사람이 바로 찾을 수 있도록 줄 번호를 붙인다.
-function formatLineReason(lineIndex: number, reason: string) {
-  return `${reason} (line ${lineIndex + 1})`
-}
-
 // createSourceHash 함수는 추가한 줄을 지울 때 원래 EOF 상태를 안전하게 식별할 해시를 만든다.
 function createSourceHash(source: string) {
   return createHash('sha256').update(source).digest('hex')
-}
-
-// splitYamlLines 함수는 각 줄의 원래 줄바꿈 문자를 보존한 채 YAML 원문을 나눈다.
-function splitYamlLines(source: string) {
-  const lines: YamlLine[] = []
-  let start = 0
-
-  for (let index = 0; index < source.length; index += 1) {
-    const character = source[index]
-
-    if (character !== '\n' && character !== '\r') {
-      continue
-    }
-
-    const ending = character === '\r' && source[index + 1] === '\n' ? '\r\n' : character
-    lines.push({ text: source.slice(start, index), ending })
-    index += ending.length - 1
-    start = index + 1
-  }
-
-  if (start < source.length) {
-    lines.push({ text: source.slice(start), ending: '' })
-  }
-
-  return lines
-}
-
-// joinYamlLines 함수는 보존한 줄바꿈과 함께 YAML 줄을 다시 합친다.
-function joinYamlLines(lines: YamlLine[]) {
-  return lines.map((line) => `${line.text}${line.ending}`).join('')
-}
-
-// findPreferredEol 함수는 새 줄에 사용할 기존 문서의 대표 줄바꿈을 찾는다.
-function findPreferredEol(lines: YamlLine[]) {
-  return lines.find((line) => line.ending)?.ending || '\n'
-}
-
-// getYamlLineText 함수는 첫 줄의 UTF-8 BOM만 파싱 대상에서 제외한다.
-function getYamlLineText(line: YamlLine, lineIndex: number) {
-  return lineIndex === 0 && line.text.startsWith('\uFEFF') ? line.text.slice(1) : line.text
-}
-
-// isYamlTrivia 함수는 빈 줄과 주석 전용 줄을 구분한다.
-function isYamlTrivia(text: string) {
-  const trimmed = text.trim()
-  return trimmed === '' || trimmed.startsWith('#')
 }
 
 // parseQuotedYamlString 함수는 한 줄에서 끝나는 단순 따옴표 문자열을 읽는다.
@@ -200,43 +153,6 @@ function parseQuotedYamlString(source: string): ParseResult<string> {
   }
 
   return { ok: false, reason: 'scalar is not quoted' }
-}
-
-// findInlineCommentStart 함수는 따옴표 안의 #을 제외하고 inline comment 시작점을 찾는다.
-function findInlineCommentStart(text: string, start: number) {
-  let quote: 'single' | 'double' | null = null
-
-  for (let index = start; index < text.length; index += 1) {
-    const character = text[index]
-
-    if (quote === 'single') {
-      if (character === "'" && text[index + 1] === "'") {
-        index += 1
-      } else if (character === "'") {
-        quote = null
-      }
-      continue
-    }
-
-    if (quote === 'double') {
-      if (character === '\\') {
-        index += 1
-      } else if (character === '"') {
-        quote = null
-      }
-      continue
-    }
-
-    if (character === "'") {
-      quote = 'single'
-    } else if (character === '"') {
-      quote = 'double'
-    } else if (character === '#' && (index === start || /\s/.test(text[index - 1]))) {
-      return index
-    }
-  }
-
-  return -1
 }
 
 // findYamlReferenceToken 함수는 따옴표 밖의 anchor, alias, tag 토큰을 찾는다.

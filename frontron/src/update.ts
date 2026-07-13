@@ -2,6 +2,7 @@ import { existsSync, lstatSync, readFileSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 
 import { createFileHash, MANIFEST_PATH, readManifest } from './init/manifest'
+import { hasOwnString } from './init/package-json-path'
 import { runInit, type InitContext, type InitOptions } from './init'
 import {
   assertProjectPathSafe,
@@ -11,11 +12,6 @@ import {
 } from './project-paths'
 
 type Manifest = NonNullable<ReturnType<typeof readManifest>>
-
-// hasOwnString 함수는 객체가 특정 문자열 키를 직접 가지고 있는지 확인한다.
-function hasOwnString(record: Record<string, string> | undefined, key: string) {
-  return Boolean(record && Object.prototype.hasOwnProperty.call(record, key))
-}
 
 // resolveManifestProjectFile 함수는 manifest 파일 항목을 링크 없는 프로젝트 내부 경로로 해석한다.
 function resolveManifestProjectFile(cwd: string, filePath: string, label: string) {

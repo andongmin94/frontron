@@ -20,6 +20,7 @@ import {
 } from '../transaction-journal'
 import { createFileHash, type PackageJsonOwnershipClaim } from '../init/manifest'
 import {
+  cloneJsonValue,
   deletePackageJsonPath,
   readPackageJsonPath,
   writePackageJsonPath,
@@ -38,11 +39,6 @@ function createCurrentExpectedHash(filePath: string) {
 // uniqueStrings 함수는 문자열 배열에서 중복 값을 제거한다.
 function uniqueStrings(values: string[]) {
   return [...new Set(values)]
-}
-
-// clonePackageJson 함수는 clean 계산 중 호출자가 가진 package.json 객체를 바꾸지 않게 복사한다.
-function clonePackageJson(packageJson: PackageJson): PackageJson {
-  return JSON.parse(JSON.stringify(packageJson)) as PackageJson
 }
 
 // restorePackageJsonClaim 함수는 manifest claim에 기록된 이전 상태로 package.json 값을 되돌린다.
@@ -196,7 +192,7 @@ export function applyCleanPlan(
   plan: CleanPlan,
 ) {
   const projectRoot = resolve(cwd)
-  const nextPackageJson = clonePackageJson(packageJson)
+  const nextPackageJson = cloneJsonValue(packageJson)
   const scripts = { ...(nextPackageJson.scripts ?? {}) }
   let packageJsonChanged = false
 

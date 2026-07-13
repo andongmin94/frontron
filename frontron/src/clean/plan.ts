@@ -3,7 +3,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path'
 
 import { formatProjectPathBlocker, inspectProjectPath, isInsideDirectory } from '../project-paths'
 import { createFileHash, MANIFEST_PATH, readManifest } from '../init/manifest'
-import { readPackageJsonPath, valuesEqual } from '../init/package-json-path'
+import { hasOwnString, readPackageJsonPath, valuesEqual } from '../init/package-json-path'
 import {
   findPnpmWorkspaceYamlPath,
   readPnpmWorkspaceYamlClaimValue,
@@ -36,11 +36,6 @@ type ManifestValueClaim = {
 // uniqueStrings 함수는 문자열 배열에서 중복 값을 제거한다.
 function uniqueStrings(values: string[]) {
   return [...new Set(values)]
-}
-
-// hasOwnString 함수는 객체가 특정 문자열 키를 직접 가지고 있는지 확인한다.
-function hasOwnString(record: Record<string, string> | undefined, key: string) {
-  return Boolean(record && Object.prototype.hasOwnProperty.call(record, key))
 }
 
 // resolveManifestClaimRestore 함수는 clean 시 manifest claim을 복구할지 경고만 남길지 결정한다.

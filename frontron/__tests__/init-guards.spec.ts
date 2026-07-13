@@ -111,6 +111,7 @@ describe('frontron init guardrails', () => {
 
     const plan = {
       config: { cwd: projectRoot },
+      packageJsonPlan: { packageJson: { name: 'sample-web-app' } },
       files: [
         {
           path: join(linkedDesktopDir, 'main.ts'),
@@ -123,9 +124,7 @@ describe('frontron init guardrails', () => {
       blockers: [],
     } as unknown as InitPlan
 
-    expect(() => applyInitChanges(packageJsonPath, { name: 'sample-web-app' }, plan)).toThrow(
-      'symbolic link or junction',
-    )
+    expect(() => applyInitChanges(packageJsonPath, plan)).toThrow('symbolic link or junction')
     expect(readFileSync(packageJsonPath, 'utf8')).toBe(packageJsonBefore)
     expect(existsSync(join(outsideRoot, 'main.ts'))).toBe(false)
   })
@@ -140,6 +139,15 @@ describe('frontron init guardrails', () => {
     const plan = {
       config: {
         cwd: projectRoot,
+      },
+      packageJsonPlan: { packageJson: { name: 'sample-web-app' } },
+      tsconfigJsonPlan: {
+        path: join(projectRoot, 'electron'),
+        tsconfigJson: {},
+        changes: [{ action: 'add', path: 'exclude', value: 'electron' }],
+        ownershipClaims: [],
+        warnings: [],
+        blockers: [],
       },
       files: [
         {
@@ -159,23 +167,7 @@ describe('frontron init guardrails', () => {
       blockers: [],
     } as unknown as InitPlan
 
-    expect(() =>
-      applyInitChanges(
-        packageJsonPath,
-        {
-          name: 'sample-web-app',
-        },
-        plan,
-        {
-          path: join(projectRoot, 'electron'),
-          tsconfigJson: {},
-          changes: [{ action: 'add', path: 'exclude', value: 'electron' }],
-          ownershipClaims: [],
-          warnings: [],
-          blockers: [],
-        },
-      ),
-    ).toThrow('Written files were rolled back')
+    expect(() => applyInitChanges(packageJsonPath, plan)).toThrow('Written files were rolled back')
 
     expect(readFileSync(packageJsonPath, 'utf8')).toBe(packageJsonBefore)
     expect(existsSync(generatedPath)).toBe(false)

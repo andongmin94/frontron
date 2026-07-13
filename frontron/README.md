@@ -11,7 +11,7 @@ Use `create-frontron` for new apps. Use `frontron init` when you already have a 
 - `frontron doctor` checks the generated Electron layer after init
 - `frontron clean` removes manifest-owned generated files, package scripts, and package metadata when you want to back out the retrofit layer
 - `frontron update` refreshes manifest-owned generated files, package scripts, and package metadata through a guarded manifest-based plan
-- `init` can now seed a conservative `minimal` or `starter-like` Electron layer into a compatible existing web frontend project
+- `init` always seeds its Electron layer from the exact-version `create-frontron` template
 - the generated Electron files stay app-owned instead of introducing a starter-owned runtime contract
 - the current CLI surface is intentionally narrow: `init`, `doctor`, `clean`, and `update` are supported
 - the retrofit flow is still starter-derived and intentionally conservative
@@ -82,28 +82,27 @@ It currently walks through:
   - default: `electron/`
 - ask which desktop script names to add
   - defaults: `frontron:dev`, `frontron:build`, and `frontron:package`
-- ask which preset to use
-  - defaults: `minimal`
-- copy a minimal, app-owned Electron layer into the project
+- resolve the `create-frontron` package whose version exactly matches `frontron`
+- copy its Electron template files into the project as app-owned files
 - record generated files, scripts, and package metadata ownership in `.frontron/manifest.json`
-- optionally copy a starter-like preload bridge on `window.electron`
+- expose the template preload bridge on `window.electron`
 - keep existing web scripts intact unless the user explicitly chooses otherwise
-
-The default preset is `minimal`. `starter-like` adds `preload.ts`, `ipc.ts`, and `src/types/electron.d.ts` without replacing the app's existing frontend structure.
 
 ## How `create-frontron` feeds the retrofit
 
-`frontron` declares the matching `create-frontron` release as a runtime dependency. The `starter-like` preset resolves the installed package's `template/` directory when `init` or `update` runs, validates the required Electron files, and records the source package version in `.frontron/manifest.json`. It does not keep a stale second copy of that template inside `frontron`.
+`frontron` declares the exact same `create-frontron` version as a runtime dependency. Every `init` and `update` resolves that package's `template/` directory, validates all required Electron files, verifies that both package versions are identical, and records the source package version in `.frontron/manifest.json`. It does not keep a second Electron template inside `frontron` and it has no built-in fallback preset.
 
-This means Electron fixes made in a compatible `create-frontron` release can reach an existing retrofit project through the normal dependency update followed by a guarded refresh:
+All TypeScript modules under `template/src/electron/` are discovered on each run, so newly added Electron modules are copied without maintaining a second file list. The template's Vite-specific `serve.ts` is the one deliberate exception: Frontron generates its own adapter-specific `serve.ts` so Vite, Next.js, Nuxt, Remix, SvelteKit, and custom Node runtimes keep their existing build behavior.
+
+This means Electron fixes in a new `create-frontron` release reach retrofit projects through the matching `frontron` release and a guarded refresh:
 
 ```bash
-npm update frontron create-frontron
+npm install -D frontron@latest
 npx frontron update --dry-run
 npx frontron update --yes
 ```
 
-Only manifest-owned files and values are refreshed. Local edits are reported as conflicts unless `--force` is explicitly used. The `minimal` preset intentionally uses Frontron's smaller built-in Electron sources, so starter-only UI and preload changes do not apply to it.
+Only manifest-owned files and values are refreshed. Local edits are reported as conflicts unless `--force` is explicitly used. If the template is missing, incomplete, or from a different version, Frontron stops with a diagnostic instead of generating from stale internal sources.
 
 ## Runtime and recovery
 
@@ -123,7 +122,7 @@ After init, check the generated Electron layer with:
 npx frontron doctor
 ```
 
-`doctor` verifies the manifest, generated files, package scripts, Electron build entry, and required dependencies. It reports blockers when the initialized layer is incomplete. If the project has not been initialized yet, it reports that state directly and points you to `frontron init`.
+`doctor` verifies the manifest, generated files, package scripts, Electron build entry, required dependencies, and exact `create-frontron` template version. It reports blockers when the initialized layer is incomplete. If the project has not been initialized yet, it reports that state directly and points you to `frontron init`.
 
 ## Clean
 
@@ -145,7 +144,7 @@ npx frontron update --dry-run
 
 Run `npx frontron update --yes` to apply the refresh. Use `npx frontron update --yes --force` only when locally edited manifest-owned files or scripts should be overwritten.
 
-`update` always reuses the adapter, preset, paths, script names, product name, and app id recorded by `init`; migration override options are intentionally not accepted. The public `init --force` flow has been removed in favor of `update --yes` and `update --yes --force`.
+`update` always reuses the adapter, paths, script names, product name, and app id recorded by `init`; migration override options are intentionally not accepted. Older manifests that used a preset are migrated to the single exact-version template flow. The public `init --force` flow has been removed in favor of `update --yes` and `update --yes --force`.
 
 ## Compatibility verification
 

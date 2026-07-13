@@ -102,5 +102,33 @@ jobs:
             frontron/package-lock.json
             create-frontron/package-lock.json
 
-      - name: Verify release
-        run: node release.mjs verify
+      - name: Verify release metadata
+        run: node release.mjs check-metadata
+
+      - name: Install create-frontron
+        run: npm ci --fund=false --audit=false
+        working-directory: create-frontron
+
+      - name: Install frontron
+        run: npm ci --fund=false --audit=false
+        working-directory: frontron
+
+      - name: Audit create-frontron dependencies
+        run: npm audit --audit-level=moderate
+        working-directory: create-frontron
+
+      - name: Audit frontron dependencies
+        run: npm audit --audit-level=moderate
+        working-directory: frontron
+
+      - name: Check create-frontron coverage
+        run: npm run coverage
+        working-directory: create-frontron
+
+      - name: Check frontron coverage
+        run: npm run coverage
+        working-directory: frontron
+
+      - name: Rehearse release and audit generated template dependencies
+        run: npm run test:release-smoke
+        working-directory: create-frontron

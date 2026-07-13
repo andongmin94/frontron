@@ -42,14 +42,6 @@ jobs:
       - name: Use the audited npm CLI
         run: npm install --global npm@11.18.0
 
-      - name: Install create-frontron
-        run: npm ci --fund=false --audit=false
-        working-directory: create-frontron
-
-      - name: Install frontron
-        run: npm ci --fund=false --audit=false
-        working-directory: frontron
-
       - name: Verify and publish both packages
         run: node release.mjs publish
         env:

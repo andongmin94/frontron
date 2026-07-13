@@ -193,7 +193,7 @@ test(
     const packedFiles = readPackedFiles()
 
     expect(packedFiles.has('index.js')).toBe(true)
-    expect(packedFiles.has('scripts/tasks.mjs')).toBe(true)
+    expect(packedFiles.has('scripts/tasks.mjs')).toBe(false)
     expect(packedFiles.has('dist/cli.mjs')).toBe(true)
     expect(packedFiles.has('dist/cli.d.ts')).toBe(true)
     expect(packedFiles.has('dist/cli.d.mts')).toBe(true)

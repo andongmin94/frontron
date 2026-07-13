@@ -1,4 +1,5 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { spawnSync as spawnProcessSync } from 'node:child_process'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -8,6 +9,7 @@ interface SpawnCall {
   command: string
   args: string[]
   cwd?: string
+  env?: NodeJS.ProcessEnv
 }
 
 interface SpawnResult {
@@ -47,6 +49,8 @@ const releaseEnvironmentKeys = [
   'GITHUB_ACTIONS',
   'ACTIONS_ID_TOKEN_REQUEST_URL',
   'ACTIONS_ID_TOKEN_REQUEST_TOKEN',
+  'FRONTRON_RELEASE_PUBLISH_TOKEN',
+  'FRONTRON_RELEASE_PUBLISH_TOKEN_FILE',
 ] as const
 const originalReleaseEnvironment = new Map<string, string | undefined>()
 const spawnCalls: SpawnCall[] = []
@@ -77,9 +81,14 @@ let spawnHandler: SpawnHandler = failUnexpectedSpawn
 function mockSpawnSync(
   command: string,
   args: string[] = [],
-  options: { cwd?: string } = {},
+  options: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
 ): SpawnResult {
-  const call = { command, args: [...args], cwd: options.cwd }
+  const call = {
+    command,
+    args: [...args],
+    cwd: options.cwd,
+    env: options.env ? { ...options.env } : undefined,
+  }
   spawnCalls.push(call)
   return spawnHandler(call)
 }
@@ -198,6 +207,59 @@ afterAll(() => {
   delete (globalThis as Record<string, unknown>).__FRONTRON_RELEASE_SPAWN_SYNC__
 })
 
+test('release CLI requires an explicit canonical command', () => {
+  const originalArgv = process.argv
+  const modulePath = join(releaseHarness.root, 'release-under-test.mjs')
+
+  try {
+    process.argv = [process.execPath, modulePath]
+    expect(() => releaseHarness.module.main()).toThrow('Missing release command')
+
+    for (const alias of ['sync-dependency', 'auth', 'dry-run', 'release']) {
+      process.argv = [process.execPath, modulePath, alias]
+      expect(() => releaseHarness.module.main()).toThrow(`Unknown release command: ${alias}`)
+    }
+  } finally {
+    process.argv = originalArgv
+  }
+
+  expect(spawnCalls).toHaveLength(0)
+})
+
+test('package prepublish tasks reject direct npm publish before building', () => {
+  const packageRoots = [join(workspaceRoot, 'create-frontron'), join(workspaceRoot, 'frontron')]
+
+  for (const packageRoot of packageRoots) {
+    const result = spawnProcessSync(
+      process.execPath,
+      [join(packageRoot, 'scripts', 'tasks.mjs'), 'prepublishOnly'],
+      {
+        cwd: packageRoot,
+        encoding: 'utf8',
+        env: { ...process.env },
+      },
+    )
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('Direct npm publish is disabled')
+    expect(result.stdout).not.toContain('Building')
+  }
+})
+
+test('create-frontron tasks omit repository release wrappers', () => {
+  const tasksSource = readFileSync(join(workspaceRoot, 'create-frontron/scripts/tasks.mjs'), 'utf8')
+
+  for (const command of [
+    'release:verify',
+    'release:matrix-smoke',
+    'release:package-manager-smoke',
+    'version',
+    'release',
+  ]) {
+    expect(tasksSource).not.toContain(`case '${command}'`)
+  }
+})
+
 // 이 테스트는 공식 publish 진입점이 로컬 실행과 불완전한 OIDC 환경을 모두 차단하는지 확인한다.
 test('official publish requires complete GitHub Actions OIDC credentials', () => {
   const originalArgv = process.argv
@@ -257,6 +319,33 @@ test('release workflow requires the checked-out HEAD to equal current origin/mai
   expect(workflow).toContain(
     'test "$(git rev-parse HEAD)" = "$(git rev-parse refs/remotes/origin/main)"',
   )
+})
+
+test('general CI keeps only release-specific verification after the matrix', () => {
+  const releaseWorkflow = readFileSync(
+    join(workspaceRoot, '.github/workflows/frontron-release.yml'),
+    'utf8',
+  )
+  const ciWorkflow = readFileSync(join(workspaceRoot, '.github/workflows/frontron-ci.yml'), 'utf8')
+  const releaseVerifyJob = ciWorkflow.slice(ciWorkflow.indexOf('  release-verify:'))
+
+  expect(releaseWorkflow).not.toContain('run: npm ci')
+  expect(releaseVerifyJob).not.toContain('node release.mjs verify')
+  expect(releaseVerifyJob).toContain('node release.mjs check-metadata')
+  expect(releaseVerifyJob.match(/npm audit --audit-level=moderate/g)).toHaveLength(2)
+  expect(releaseVerifyJob.match(/npm run coverage/g)).toHaveLength(2)
+  expect(releaseVerifyJob).toContain('npm run test:release-smoke')
+})
+
+test('generated template dependencies are audited and monitored', () => {
+  const rehearsal = readFileSync(
+    join(workspaceRoot, 'create-frontron/__tests__/release-rehearsal.spec.ts'),
+    'utf8',
+  )
+  const dependabot = readFileSync(join(workspaceRoot, '.github/dependabot.yml'), 'utf8')
+
+  expect(rehearsal).toContain("runNpm(['audit', '--audit-level=moderate'], generatedAppRoot)")
+  expect(dependabot).toContain('directory: /create-frontron/template')
 })
 
 // 이 테스트는 릴리스 필수 패키지 매니저 매트릭스가 major 범위 대신 정확 버전을 사용하는지 확인한다.
@@ -416,6 +505,7 @@ test('partial publish failure retries only the remaining package', () => {
 // 이 테스트는 로컬 emergency 게시가 staging tag와 패키지 순서를 지키고 provenance를 넣지 않는지 확인한다.
 test('local publishing uses staging without provenance in package order', () => {
   const version = '1.2.3'
+  const guardFiles: string[] = []
 
   // 이 응답기는 두 패키지가 아직 게시되지 않은 로컬 token 게시를 표현한다.
   spawnHandler = (call) => {
@@ -430,6 +520,13 @@ test('local publishing uses staging without provenance in package order', () => 
     }
 
     if (args[0] === 'publish') {
+      const token = call.env?.FRONTRON_RELEASE_PUBLISH_TOKEN
+      const tokenPath = call.env?.FRONTRON_RELEASE_PUBLISH_TOKEN_FILE
+
+      expect(token).toMatch(/^[a-f0-9]{64}$/)
+      expect(tokenPath).toBeTypeOf('string')
+      expect(readFileSync(tokenPath as string, 'utf8')).toBe(token)
+      guardFiles.push(tokenPath as string)
       return successfulSpawnResult()
     }
 
@@ -447,6 +544,8 @@ test('local publishing uses staging without provenance in package order', () => 
     join(releaseHarness.root, 'create-frontron'),
     join(releaseHarness.root, 'frontron'),
   ])
+  expect(guardFiles).toHaveLength(2)
+  expect(guardFiles.every((path) => !existsSync(path))).toBe(true)
 })
 
 // 이 테스트는 trusted publishing이 두 패키지 모두에 provenance와 public access를 강제하는지 확인한다.

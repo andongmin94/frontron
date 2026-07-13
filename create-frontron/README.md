@@ -31,6 +31,8 @@ bun create frontron my-app
 Requires Node.js `22.15+`.
 When no project name is passed, the default target directory is `desktop-app`.
 
+Generation is transactional. The complete project is prepared beside the destination, existing entries are backed up before replacement, and a durable journal plus process lock protects merge and overwrite operations. If the process is interrupted, the next run restores the previous destination before scaffolding again. Symlinked destination ancestors and filesystem roots are rejected.
+
 ## After generation
 
 ```bash
@@ -45,6 +47,8 @@ Use the equivalent `pnpm`, `yarn`, or `bun` install/run commands when you create
 - `npm run app`: Electron runtime + web dev server
 - `npm run typecheck`: fast TypeScript verification without packaging
 - `npm run build`: production web build + Electron packaging
+
+The packaged renderer loads from the stable `frontron://app` origin. The Electron main process proxies that origin to a private loopback renderer server, preserves an app CSP or supplies a fallback policy, and restricts external navigation to explicit HTTP(S) URLs. The generated window uses context isolation with Node integration disabled.
 
 ## Output shape
 

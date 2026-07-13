@@ -1,39 +1,38 @@
 import { existsSync } from "node:fs"
 import path from "path"
-import { app, BrowserWindow } from "electron"
+import { app, BrowserWindow, shell } from "electron"
 
 import { __dirname, isDev, isQuitting } from "./main.js"
 import { closeSplash } from "./splash.js"
 
 export let mainWindow: BrowserWindow | null = null
 
-function toWebSocketOrigin(rendererUrl: URL) {
-  return `${rendererUrl.protocol === "https:" ? "wss:" : "ws:"}//${rendererUrl.host}`
+// isRendererUrl 함수는 URL이 현재 렌더러와 같은 protocol과 host인지 확인한다.
+function isRendererUrl(urlString: string, rendererUrl: URL) {
+  try {
+    const url = new URL(urlString)
+    return url.protocol === rendererUrl.protocol && url.host === rendererUrl.host
+  } catch {
+    return false
+  }
 }
 
-function buildContentSecurityPolicy(rendererUrl: string) {
-  const origin = new URL(rendererUrl)
-  const directives = [
-    "default-src 'self'",
-    "base-uri 'self'",
-    "form-action 'self'",
-    "frame-ancestors 'none'",
-    "object-src 'none'",
-    "img-src 'self' data: blob:",
-    "font-src 'self' data:",
-    "style-src 'self' 'unsafe-inline'",
-    "worker-src 'self' blob:",
-    isDev
-      ? `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${origin.origin}`
-      : "script-src 'self'",
-    isDev
-      ? `connect-src 'self' ${origin.origin} ${toWebSocketOrigin(origin)}`
-      : "connect-src 'self'",
-  ]
+// openExternalHttpUrl 함수는 안전한 외부 웹 URL만 기본 브라우저로 연다.
+function openExternalHttpUrl(urlString: string) {
+  try {
+    const url = new URL(urlString)
 
-  return directives.join("; ")
+    if (url.protocol !== "http:" && url.protocol !== "https:") return
+
+    void shell.openExternal(url.toString()).catch((error) => {
+      console.error("Failed to open external URL:", error)
+    })
+  } catch {
+    return
+  }
 }
 
+// createWindow 함수는 렌더러 URL을 로드하는 메인 창을 만든다.
 export function createWindow(rendererUrl: string) {
   const preloadPath = path.join(__dirname, "preload.js")
 
@@ -56,28 +55,40 @@ export function createWindow(rendererUrl: string) {
     },
   })
 
-  const rendererOrigin = new URL(rendererUrl).origin
-  const contentSecurityPolicy = buildContentSecurityPolicy(rendererUrl)
+  const rendererBaseUrl = new URL(rendererUrl)
 
-  mainWindow.webContents.session.webRequest.onHeadersReceived(
-    {
-      urls: [`${rendererOrigin}/*`],
-    },
-    (details, callback) => {
-      callback({
-        responseHeaders: {
-          ...details.responseHeaders,
-          "Content-Security-Policy": [contentSecurityPolicy],
-        },
-      })
+  mainWindow.webContents.on("will-redirect", (details) => {
+    if (isRendererUrl(details.url, rendererBaseUrl)) return
+
+    details.preventDefault()
+    openExternalHttpUrl(details.url)
+  })
+
+  mainWindow.webContents.on("will-frame-navigate", (details) => {
+    if (isRendererUrl(details.url, rendererBaseUrl)) return
+
+    details.preventDefault()
+
+    if (details.isMainFrame) {
+      openExternalHttpUrl(details.url)
     }
-  )
+  })
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (!isRendererUrl(url, rendererBaseUrl)) {
+      openExternalHttpUrl(url)
+    }
+
+    return { action: "deny" }
+  })
 
   mainWindow.loadURL(rendererUrl)
 
   mainWindow.webContents.on("did-finish-load", () => {
     closeSplash()
-    mainWindow?.show()
+    if (!process.env.FRONTRON_RENDERER_PROBE_PATH) {
+      mainWindow?.show()
+    }
 
     if (isDev) {
       void mainWindow?.webContents

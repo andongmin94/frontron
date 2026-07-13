@@ -25,6 +25,7 @@ import {
   inspectProjectPath,
   normalizeProjectRelativePath,
 } from '../src/project-paths'
+import { TRANSACTION_JOURNAL_PATH } from '../src/transaction-journal'
 import * as fixtures from './helpers/frontron-cli-fixtures'
 
 function readJson<T>(path: string) {
@@ -88,6 +89,38 @@ describe('public CLI recovery and output paths', () => {
 
     log.mockRestore()
     error.mockRestore()
+  })
+
+  test('help and argument errors are handled before pending transaction recovery', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const journalPath = join(projectRoot, TRANSACTION_JOURNAL_PATH)
+    const journalSource = 'malformed pending journal\n'
+
+    writeFileSync(journalPath, journalSource)
+
+    expect(await runCli([], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+    expect(await runCli(['--help'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+    expect(await runCli(['init', '--help'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const unknownOutput = fixtures.createOutput()
+    const optionOutput = fixtures.createOutput()
+
+    expect(await runCli(['launch'], unknownOutput, { cwd: projectRoot })).toBe(1)
+    expect(await runCli(['init', '--not-a-real-option'], optionOutput, { cwd: projectRoot })).toBe(
+      1,
+    )
+    expect(unknownOutput.error.mock.calls.flat().join('\n')).toContain('Unknown command "launch"')
+    expect(optionOutput.error.mock.calls.flat().join('\n')).toContain('Unknown option')
+    expect(readFileSync(journalPath, 'utf8')).toBe(journalSource)
+
+    const lifecycleOutput = fixtures.createOutput()
+
+    expect(await runCli(['init', '--dry-run'], lifecycleOutput, { cwd: projectRoot })).toBe(1)
+    expect(lifecycleOutput.error.mock.calls.flat().join('\n')).toContain(
+      'Could not recover an interrupted transaction',
+    )
+    expect(readFileSync(journalPath, 'utf8')).toBe(journalSource)
   })
 
   test('the readline prompter trims text and honors default, yes, and no answers', async () => {

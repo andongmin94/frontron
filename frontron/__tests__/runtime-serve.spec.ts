@@ -52,6 +52,44 @@ function createStaticConfig(cwd: string): InitConfig {
   }
 }
 
+// createNodeConfig 함수는 일반 Node 또는 Remix 런타임 생성 설정을 만든다.
+function createNodeConfig(
+  cwd: string,
+  adapter: 'generic-node-server' | 'remix-node-server' = 'generic-node-server',
+): InitConfig {
+  const usesRemixRuntime = adapter === 'remix-node-server'
+
+  return {
+    ...createStaticConfig(cwd),
+    adapter,
+    runtimeStrategy: 'node-server',
+    outDir: usesRemixRuntime
+      ? '.frontron/runtime/remix-node-server'
+      : '.frontron/runtime/node-server',
+    nodeServerSourceRoot: 'build',
+    nodeServerEntry: usesRemixRuntime ? 'server.cjs' : 'server/index.js',
+    nodeServerCopyTargets: [{ from: 'public', to: 'public' }],
+  }
+}
+
+// expectSourceToTranspile 함수는 생성된 TypeScript에 문법 진단이 없는지 확인한다.
+function expectSourceToTranspile(source: string) {
+  const result = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ES2022,
+    },
+    fileName: 'serve.ts',
+    reportDiagnostics: true,
+  })
+
+  expect(
+    (result.diagnostics ?? []).map((diagnostic) =>
+      ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
+    ),
+  ).toEqual([])
+}
+
 // createStaticRuntime 함수는 생성된 serve.ts를 컴파일해 실제 HTTP 런타임을 준비한다.
 async function createStaticRuntime() {
   const projectRoot = mkdtempSync(join(tmpdir(), 'frontron-runtime-'))
@@ -134,6 +172,45 @@ afterEach(async () => {
   for (const tempDir of tempDirs.splice(0)) {
     rmSync(tempDir, { recursive: true, force: true })
   }
+})
+
+describe('generated renderer runtime source selection', () => {
+  test('static strategy excludes Node and Remix production code', () => {
+    const source = renderServeSource(createStaticConfig('C:/runtime-test'))
+
+    expectSourceToTranspile(source)
+    expect(source).toContain('function startStaticServer')
+    expect(source).toContain('function prepareStaticBuild')
+    expect(source).not.toContain('function startNodeServerRuntime')
+    expect(source).not.toContain('NODE_SERVER_ENTRY')
+    expect(source).not.toContain('RemixBundleMetafile')
+    expect(source).not.toContain("require.resolve('@remix-run/serve/package.json')")
+  })
+
+  test('generic Node strategy excludes static and Remix production code', () => {
+    const source = renderServeSource(createNodeConfig('C:/runtime-test'))
+
+    expectSourceToTranspile(source)
+    expect(source).toContain('function startNodeServerRuntime')
+    expect(source).toContain('function prepareNodeServerBuild')
+    expect(source).not.toContain('function startStaticServer')
+    expect(source).not.toContain('function parseByteRange')
+    expect(source).not.toContain('RemixBundleMetafile')
+    expect(source).not.toContain("require.resolve('@remix-run/serve/package.json')")
+  })
+
+  test('Remix Node strategy includes Remix preparation without static code or runtime branches', () => {
+    const source = renderServeSource(createNodeConfig('C:/runtime-test', 'remix-node-server'))
+
+    expectSourceToTranspile(source)
+    expect(source).toContain('function startNodeServerRuntime')
+    expect(source).toContain('function stageRemixRuntimeDependencies')
+    expect(source).toContain("require.resolve('@remix-run/serve/package.json')")
+    expect(source).toContain('THIRD_PARTY_LICENSES.json')
+    expect(source).not.toContain('function startStaticServer')
+    expect(source).not.toContain("ADAPTER === 'remix-node-server'")
+    expect(source).not.toContain("RUNTIME_STRATEGY === 'node-server'")
+  })
 })
 
 describe('generated static renderer runtime', () => {

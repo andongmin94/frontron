@@ -1,8 +1,18 @@
+import type { InitConfig } from '../../shared'
+
 // renderServeDevAndBuildSource 함수는 generated serve.ts의 dev 실행과 build 준비 진입점을 만든다.
-export function renderServeDevAndBuildSource() {
+export function renderServeDevAndBuildSource(config: InitConfig) {
+  const usesNodeServer = config.runtimeStrategy === 'node-server'
+  const usesRemixRuntime = usesNodeServer && config.adapter === 'remix-node-server'
+
   return `
 export const startRendererServer = startRendererRuntime
 export const stopRendererServer = stopRendererRuntime
+
+// inferDevUrl 함수는 개발 모드에서 Electron이 접속할 렌더러 URL을 반환한다.
+export async function inferDevUrl() {
+  return DEV_URL
+}
 
 // spawnWebDevServer 함수는 프론트엔드 개발 서버 프로세스를 시작한다.
 function spawnWebDevServer() {
@@ -87,16 +97,22 @@ async function runDevApp() {
   }
 }
 
-// prepareStaticBuild 함수는 정적 렌더러 빌드가 패키징 가능한 상태인지 확인한다.
+${
+  !usesNodeServer
+    ? `// prepareStaticBuild 함수는 정적 렌더러 빌드가 패키징 가능한 상태인지 확인한다.
 function prepareStaticBuild() {
   const indexPath = path.join(ROOT_DIR, WEB_OUT_DIR, 'index.html')
 
   if (!existsSync(indexPath)) {
     throw new Error(\`Renderer entry not found at \${indexPath}. Run the frontend build first.\`)
   }
+}`
+    : ''
 }
 
-type RemixBundleMetafile = {
+${
+  usesRemixRuntime
+    ? `type RemixBundleMetafile = {
   inputs: Record<string, unknown>
 }
 
@@ -258,17 +274,20 @@ require(\${JSON.stringify(serveCliPath)})
     JSON.stringify({ private: true, type: 'module' }, null, 2) + '\\n',
     'utf8',
   )
+}`
+    : ''
 }
 
-// prepareNodeServerBuild 함수는 node-server 런타임 파일을 패키징 위치로 복사하고 정리한다.
+${
+  usesNodeServer
+    ? `// prepareNodeServerBuild 함수는 node-server 런타임 파일을 패키징 위치로 복사하고 정리한다.
 async function prepareNodeServerBuild() {
   if (!NODE_SERVER_SOURCE_ROOT || !NODE_SERVER_ENTRY) {
     throw new Error('A node-server adapter must define both a source runtime root and a server entry.')
   }
 
   const sourceRuntimeDir = path.resolve(ROOT_DIR, NODE_SERVER_SOURCE_ROOT)
-  const sourceServerEntryCandidates =
-    ADAPTER === 'remix-node-server' ? ['index.js', 'server/index.js'] : [NODE_SERVER_ENTRY]
+  const sourceServerEntryCandidates = ${usesRemixRuntime ? "['index.js', 'server/index.js']" : '[NODE_SERVER_ENTRY]'}
   const sourceServerEntryName = sourceServerEntryCandidates.find((entry) =>
     existsSync(path.join(sourceRuntimeDir, entry)),
   )
@@ -284,15 +303,12 @@ async function prepareNodeServerBuild() {
   rmSync(stagedRuntimeDir, { recursive: true, force: true })
   mkdirSync(stagedRuntimeDir, { recursive: true })
 
-  if (ADAPTER === 'remix-node-server') {
-    cpSync(sourceRuntimeDir, path.join(stagedRuntimeDir, 'build'), { recursive: true })
-  } else {
-    cpSync(sourceRuntimeDir, stagedRuntimeDir, { recursive: true })
-  }
-
-  if (ADAPTER === 'remix-node-server') {
-    await stageRemixRuntimeDependencies(stagedRuntimeDir, sourceServerEntryName)
-  }
+${
+  usesRemixRuntime
+    ? `  cpSync(sourceRuntimeDir, path.join(stagedRuntimeDir, 'build'), { recursive: true })
+  await stageRemixRuntimeDependencies(stagedRuntimeDir, sourceServerEntryName)`
+    : `  cpSync(sourceRuntimeDir, stagedRuntimeDir, { recursive: true })`
+}
 
   for (const target of NODE_SERVER_COPY_TARGETS) {
     const sourcePath = path.resolve(ROOT_DIR, target.from)
@@ -309,18 +325,14 @@ async function prepareNodeServerBuild() {
   if (!existsSync(stagedServerEntry)) {
     throw new Error(\`Node server entry not found at \${stagedServerEntry} after staging.\`)
   }
+}`
+    : ''
 }
 
 // prepareBuild 함수는 패키징 전에 렌더러 런타임을 준비한다.
 async function prepareBuild() {
   ensureRuntimePackage()
-
-  if (RUNTIME_STRATEGY === 'node-server') {
-    await prepareNodeServerBuild()
-    return
-  }
-
-  prepareStaticBuild()
+  ${usesNodeServer ? 'await prepareNodeServerBuild()' : 'prepareStaticBuild()'}
 }
 
 if (process.argv.includes('--dev-app')) {

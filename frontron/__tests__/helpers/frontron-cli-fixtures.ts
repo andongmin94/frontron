@@ -115,15 +115,6 @@ export function expectEmbeddedNullableString(source: string, name: string, value
   )
 }
 
-export function expectEmbeddedRuntimeStrategy(
-  source: string,
-  value: 'static-export' | 'node-server',
-) {
-  expect(source).toContain(
-    `const RUNTIME_STRATEGY = readEmbeddedJson<'static-export' | 'node-server'>(${JSON.stringify(JSON.stringify(value))})`,
-  )
-}
-
 export const tempDirs: string[] = []
 
 afterEach(() => {

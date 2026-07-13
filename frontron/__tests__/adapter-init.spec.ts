@@ -462,7 +462,6 @@ export default withNextIntl(nextConfig)
     const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
     const combined = output.info.mock.calls.flat().join('\n')
 
-    fixtures.expectEmbeddedRuntimeStrategy(serveSource, 'node-server')
     fixtures.expectEmbeddedString(serveSource, 'WEB_OUT_DIR', '.frontron/runtime/next-standalone')
     fixtures.expectEmbeddedNullableString(
       serveSource,
@@ -471,6 +470,8 @@ export default withNextIntl(nextConfig)
     )
     expect(serveSource).toContain("ELECTRON_RUN_AS_NODE: '1'")
     expect(serveSource).toContain('Node server entry not found')
+    expect(serveSource).not.toContain('function startStaticServer')
+    expect(serveSource).not.toContain('RemixBundleMetafile')
     expect(packageJson.scripts['frontron:package']).toContain('next build')
     expect(packageJson.build.files).toContain('.frontron/runtime/next-standalone{,/**/*}')
     expect(packageJson.build.files).toContain('!node_modules{,/**/*}')
@@ -658,7 +659,7 @@ export default withNextIntl(nextConfig)
     fixtures.expectEmbeddedNullableString(serveSource, 'NODE_SERVER_SOURCE_ROOT', 'build')
     fixtures.expectEmbeddedNullableString(serveSource, 'NODE_SERVER_ENTRY', 'server.cjs')
     expect(serveSource).toContain(
-      "ADAPTER === 'remix-node-server' ? ['index.js', 'server/index.js']",
+      "const sourceServerEntryCandidates = ['index.js', 'server/index.js']",
     )
     expect(serveSource).toContain("require.resolve('@remix-run/serve/package.json')")
     expect(serveSource).toContain('__frontronCreateRequire(import.meta.url)')
@@ -822,7 +823,6 @@ export default {
     const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
     const combined = output.info.mock.calls.flat().join('\n')
 
-    fixtures.expectEmbeddedRuntimeStrategy(serveSource, 'node-server')
     fixtures.expectEmbeddedString(
       serveSource,
       'WEB_OUT_DIR',

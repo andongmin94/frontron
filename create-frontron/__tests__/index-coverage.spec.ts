@@ -168,7 +168,13 @@ describe('runCreateFrontron branch coverage', () => {
       'Template selection has been removed',
     )
     await expect(runCreateFrontron(['app', '--overwrite', 'invalid'])).rejects.toThrow(
-      '--overwrite must be one of',
+      '--overwrite must be either',
+    )
+    await expect(runCreateFrontron(['app', '--unknown'])).rejects.toThrow(
+      'Unknown option: --unknown',
+    )
+    await expect(runCreateFrontron(['app', 'extra'])).rejects.toThrow(
+      'Unexpected positional argument: "extra"',
     )
   })
 
@@ -204,13 +210,13 @@ describe('runCreateFrontron branch coverage', () => {
       projectQuestion.onState?.({ value: 'nested/My App///' })
       expect(callQuestionType(overwriteQuestion)).toBeNull()
       expect(readQuestionMessage(overwriteQuestion)).toContain('Target directory "nested/My App"')
-      expect(callQuestionType(checkerQuestion, undefined, { overwrite: 'ignore' })).toBeNull()
+      expect(callQuestionType(checkerQuestion, undefined, {})).toBeNull()
       expect(callQuestionType(packageQuestion)).toBe('text')
       expect((packageQuestion.initial as () => string)()).toBe('my-app')
       expect(packageQuestion.validate?.('Bad Package')).toBe('Invalid package.json name')
       expect(packageQuestion.validate?.('valid-package')).toBe(true)
 
-      return { overwrite: 'ignore', packageName: 'my-app' }
+      return { packageName: 'my-app' }
     }
 
     await runCreateFrontron([])
@@ -286,19 +292,19 @@ describe('runCreateFrontron branch coverage', () => {
     const templateDir = join(packageRoot, 'template')
     const originalExistsSync = fs.existsSync.bind(fs)
     process.chdir(workspace)
-    promptControl.handler = () => ({ overwrite: 'ignore' })
+    promptControl.handler = () => ({})
 
     vi.spyOn(fs, 'existsSync').mockImplementation((candidate) => {
       return resolve(String(candidate)) === templateDir ? false : originalExistsSync(candidate)
     })
 
-    await expect(
-      runCreateFrontron(['missing-template-app', '--overwrite', 'ignore']),
-    ).rejects.toThrow('Template directory not found')
+    await expect(runCreateFrontron(['missing-template-app'])).rejects.toThrow(
+      'Template directory not found',
+    )
     expect(transactionArtifacts(join(workspace, 'missing-template-app'))).toEqual([])
   })
 
-  test('removes CLI staging and backup paths when a merge fails', async () => {
+  test('refuses a target that becomes non-empty before the merge commit', async () => {
     const workspace = createWorkspace('cli-failed-merge')
     const root = join(workspace, 'app')
     const externalRoot = join(workspace, 'external')
@@ -312,12 +318,10 @@ describe('runCreateFrontron branch coverage', () => {
         join(root, 'src'),
         process.platform === 'win32' ? 'junction' : 'dir',
       )
-      return { overwrite: 'ignore' }
+      return {}
     }
 
-    await expect(runCreateFrontron(['app', '--overwrite', 'ignore'])).rejects.toThrow(
-      'symbolic link',
-    )
+    await expect(runCreateFrontron(['app'])).rejects.toThrow('is not empty')
 
     expect(readFileSync(join(externalRoot, 'keep.txt'), 'utf8')).toBe('external\n')
     expect(existsSync(join(externalRoot, 'main.ts'))).toBe(false)

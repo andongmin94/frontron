@@ -16,6 +16,7 @@ type CliArguments = {
 }
 
 type CommitMode = 'merge' | 'replace'
+type MergeTargetPolicy = 'allow-existing' | 'empty-only'
 
 type ScaffoldTransactionEntry = {
   identity: string
@@ -86,10 +87,20 @@ const ignoredTemplateEntries = new Set(['dist', 'node_modules', 'output', '.git'
 
 // parseArguments 함수는 프로젝트 이름이 숫자로 자동 변환되지 않도록 CLI 인자를 문자열로 파싱한다.
 function parseArguments(args: string[]) {
-  return minimist<CliArguments>(args, {
+  const parsed = minimist<CliArguments>(args, {
     boolean: ['h', 'help'],
-    string: ['_', 'overwrite'],
+    string: ['_', 'overwrite', 't', 'template'],
+    unknown: (argument) => {
+      if (!argument.startsWith('-')) return true
+      throw new Error(`Unknown option: ${argument}`)
+    },
   })
+
+  if (parsed._.length > 1) {
+    throw new Error(`Unexpected positional argument: "${parsed._[1]}"`)
+  }
+
+  return parsed
 }
 
 // printHelp 함수는 create-frontron의 사용법과 지원 옵션을 출력한다.
@@ -102,8 +113,8 @@ Arguments:
   project-name                 Target directory. Defaults to "${defaultTargetDir}".
 
 Options:
-  --overwrite <yes|no|ignore>  Choose how to handle a non-empty target directory.
-  --help, -h                   Print this help message.
+  --overwrite <yes|no>  Replace a non-empty target directory or cancel.
+  --help, -h            Print this help message.
 
 Examples:
   npm create frontron@latest my-app
@@ -128,16 +139,11 @@ function ensureRemovedTemplateOption(
 
 // ensureOverwriteOption 함수는 자동화에서 오타 난 덮어쓰기 값이 병합으로 처리되지 않게 막는다.
 function ensureOverwriteOption(overwrite: string | boolean | undefined) {
-  if (
-    typeof overwrite === 'undefined' ||
-    overwrite === 'yes' ||
-    overwrite === 'no' ||
-    overwrite === 'ignore'
-  ) {
+  if (typeof overwrite === 'undefined' || overwrite === 'yes' || overwrite === 'no') {
     return
   }
 
-  throw new Error('--overwrite must be one of "yes", "no", or "ignore".')
+  throw new Error('--overwrite must be either "yes" or "no".')
 }
 
 // runCreateFrontron 함수는 입력을 수집하고 완성된 템플릿을 대상 폴더에 트랜잭션으로 적용한다.
@@ -197,10 +203,6 @@ export async function runCreateFrontron(args = process.argv.slice(2)) {
               title: 'Cancel operation',
               value: 'no',
             },
-            {
-              title: 'Ignore files and continue',
-              value: 'ignore',
-            },
           ],
         },
         {
@@ -233,6 +235,7 @@ export async function runCreateFrontron(args = process.argv.slice(2)) {
 
   // 프롬프트 결과는 이후 파일 작업에 필요한 값만 꺼내 사용한다.
   const { overwrite, packageName } = result
+  ensureOverwriteOption(overwrite)
 
   const root = resolveTargetRoot(cwd, targetDir)
 
@@ -274,7 +277,13 @@ export async function runCreateFrontron(args = process.argv.slice(2)) {
 
   try {
     stageTemplateProject(templateDir, stagingRoot, pkg)
-    applyStagedProject(stagingRoot, root, overwrite === 'yes' ? 'replace' : 'merge')
+    applyStagedProjectWithPolicy(
+      stagingRoot,
+      root,
+      overwrite === 'yes' ? 'replace' : 'merge',
+      {},
+      'empty-only',
+    )
   } finally {
     removePath(stagingRoot)
   }
@@ -933,7 +942,15 @@ function readScaffoldTransactionLockSnapshot(
     throw new Error(`Scaffold transaction lock is not a regular file: ${lockPath}`)
   }
 
-  const raw = fs.readFileSync(lockPath, 'utf8')
+  let raw: string
+
+  try {
+    raw = fs.readFileSync(lockPath, 'utf8')
+  } catch (error) {
+    // lstat 직후 다른 정상 프로세스가 잠금을 해제한 경우에는 다시 획득을 시도한다.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw error
+  }
   let record: Partial<ScaffoldTransactionLockRecord> | null = null
 
   try {
@@ -1737,11 +1754,12 @@ function cleanupOwnedApplyPaths(
 }
 
 // applyStagedProject 함수는 복구부터 merge 또는 replace commit과 정리까지 target mutex 아래 실행한다.
-export function applyStagedProject(
+function applyStagedProjectWithPolicy(
   stagingRoot: string,
   root: string,
   mode: CommitMode,
-  hooks: ScaffoldCommitHooks = {},
+  hooks: ScaffoldCommitHooks,
+  mergeTargetPolicy: MergeTargetPolicy,
 ) {
   const resolvedRoot = canonicalizeTargetRoot(root)
   fs.mkdirSync(path.dirname(resolvedRoot), { recursive: true })
@@ -1757,11 +1775,18 @@ export function applyStagedProject(
       const preparedStaging = prepareTransactionStaging(stagingRoot, resolvedRoot)
       ownedStagingRoot = preparedStaging.stagingRoot
       transactionId = preparedStaging.transactionId
-      backupRoot = createTransactionDirectory(resolvedRoot, 'backup', preparedStaging.transactionId)
 
       const rootExisted = pathEntryExists(resolvedRoot)
       const stagedEntries = fs.readdirSync(ownedStagingRoot)
       const previousEntries = getPreviousProjectEntries(resolvedRoot)
+
+      if (mode === 'merge' && mergeTargetPolicy === 'empty-only' && previousEntries.length > 0) {
+        throw new Error(
+          `Target directory "${resolvedRoot}" is not empty. Use --overwrite yes to replace its contents.`,
+        )
+      }
+
+      backupRoot = createTransactionDirectory(resolvedRoot, 'backup', preparedStaging.transactionId)
 
       if (mode === 'replace') {
         applyReplaceCommit(
@@ -1798,6 +1823,16 @@ export function applyStagedProject(
 
     if (operationError) throw operationError
   })
+}
+
+// applyStagedProject 함수는 내부 테스트와 라이브러리 사용자가 요청한 merge 정책을 그대로 적용한다.
+export function applyStagedProject(
+  stagingRoot: string,
+  root: string,
+  mode: CommitMode,
+  hooks: ScaffoldCommitHooks = {},
+) {
+  return applyStagedProjectWithPolicy(stagingRoot, root, mode, hooks, 'allow-existing')
 }
 
 // pkgFromUserAgent 함수는 npm user-agent 문자열에서 실행 중인 패키지 매니저를 추론한다.

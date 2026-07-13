@@ -157,10 +157,10 @@ export async function runCreateFrontron(args = process.argv.slice(2)) {
   let targetDir = argTargetDir || defaultTargetDir
   // getProjectName 함수는 현재 대상 경로의 마지막 이름을 제품명 기본값으로 사용한다.
   const getProjectName = () => path.basename(path.resolve(targetDir))
-  const initialTargetRoot = resolveTargetRoot(cwd, targetDir)
+  const knownTargetRoot = argTargetDir ? resolveTargetRoot(cwd, targetDir) : null
 
-  if (recoverScaffoldTransaction(initialTargetRoot)) {
-    console.log(`Recovered an interrupted create-frontron transaction in ${initialTargetRoot}.`)
+  if (knownTargetRoot && recoverScaffoldTransaction(knownTargetRoot)) {
+    console.log(`Recovered an interrupted create-frontron transaction in ${knownTargetRoot}.`)
   }
 
   let result: prompts.Answers<'projectName' | 'overwrite' | 'packageName'>
@@ -236,7 +236,7 @@ export async function runCreateFrontron(args = process.argv.slice(2)) {
 
   const root = resolveTargetRoot(cwd, targetDir)
 
-  if (recoverScaffoldTransaction(root)) {
+  if (!knownTargetRoot && recoverScaffoldTransaction(root)) {
     console.log(`Recovered an interrupted create-frontron transaction in ${root}.`)
   }
 
@@ -1505,8 +1505,7 @@ function recoverScaffoldTransactionUnderLock(root: string) {
 }
 
 // recoverScaffoldTransaction 함수는 정규 target mutex를 원자 획득한 뒤 중단 트랜잭션 전체를 복구한다.
-export function recoverScaffoldTransaction(root: string, preservePaths: string[] = []) {
-  void preservePaths
+export function recoverScaffoldTransaction(root: string) {
   const resolvedRoot = canonicalizeTargetRoot(root)
 
   if (!pathEntryExists(path.dirname(resolvedRoot))) return false

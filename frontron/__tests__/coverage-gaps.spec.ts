@@ -1,4 +1,13 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  linkSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { PassThrough } from 'node:stream'
@@ -115,6 +124,23 @@ describe('public CLI recovery and output paths', () => {
 })
 
 describe('project path public guardrails', () => {
+  test('일반 hard link는 디렉터리 경로 탈출 검사와 파일 nlink 검증의 책임을 섞지 않는다', () => {
+    const projectRoot = fixtures.createTempProject()
+    const outsideRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot, outsideRoot)
+    const outsideFile = join(outsideRoot, 'shared.txt')
+    const linkedFile = join(projectRoot, 'linked.txt')
+    writeFileSync(outsideFile, 'shared\n')
+    linkSync(outsideFile, linkedFile)
+    const realpathSpy = vi.spyOn(realpathSync, 'native')
+
+    expect(inspectProjectPath(projectRoot, linkedFile)).toEqual({
+      safe: true,
+      absolutePath: linkedFile,
+    })
+    expect(realpathSpy).not.toHaveBeenCalledWith(linkedFile)
+  })
+
   test('path inspection and normalization reject every user-visible escape form', () => {
     const projectRoot = fixtures.createTempProject()
     const outsideRoot = fixtures.createTempProject()

@@ -36,6 +36,8 @@ test('starter template restores the template-owned electron structure', () => {
     build?: {
       productName?: string
       appId?: string
+      npmRebuild?: boolean
+      files?: string[]
     }
   }
   const titleBar = fs.readFileSync(join(genPath, 'src/components/TitleBar.tsx'), 'utf-8')
@@ -50,6 +52,8 @@ test('starter template restores the template-owned electron structure', () => {
   const electronPreload = fs.readFileSync(join(genPath, 'src/electron/preload.ts'), 'utf-8')
   const electronWindow = fs.readFileSync(join(genPath, 'src/electron/window.ts'), 'utf-8')
   const electronTypes = fs.readFileSync(join(genPath, 'src/types/electron.d.ts'), 'utf-8')
+  const tasksSource = fs.readFileSync(join(genPath, 'scripts/tasks.mjs'), 'utf-8')
+  const htmlSource = fs.readFileSync(join(genPath, 'index.html'), 'utf-8')
 
   expect(packageJson.scripts.dev).toBe('node scripts/tasks.mjs dev')
   expect(packageJson.scripts.app).toBe('node scripts/tasks.mjs app')
@@ -69,6 +73,8 @@ test('starter template restores the template-owned electron structure', () => {
   expect(packageJson.devDependencies).toHaveProperty('electron')
   expect(packageJson.dependencies).not.toHaveProperty('electron-builder')
   expect(packageJson.devDependencies).toHaveProperty('electron-builder')
+  expect(packageJson.build?.npmRebuild).toBe(false)
+  expect(packageJson.build?.files).toContain('!node_modules{,/**/*}')
   expect(packageJson.devDependencies).not.toHaveProperty('concurrently')
   expect(packageJson.devDependencies).not.toHaveProperty('cross-env')
   expect(packageJson.main).toBe('dist/electron/main.js')
@@ -90,9 +96,22 @@ test('starter template restores the template-owned electron structure', () => {
   expect(viteConfig).not.toContain('}),,')
   expect(electronMain).toContain('createWindow')
   expect(electronMain).toContain('rendererUrl = await waitForUrlReady(rendererUrl)')
+  expect(electronMain).toContain('protocol.registerSchemesAsPrivileged')
+  expect(electronMain).toContain('await registerRendererProtocol(rendererTargetUrl)')
+  expect(electronMain).toContain('ensureRendererCsp(responseHeaders)')
+  expect(electronMain).toContain('rendererUrl = `${rendererOrigin}/`')
   expect(electronServe).toContain('function createLoopbackUrlCandidates')
   expect(electronPreload).toContain('exposeInMainWorld("electron"')
   expect(electronWindow).toContain('preload')
+  expect(electronWindow).toContain('webContents.on("will-frame-navigate"')
+  expect(electronWindow).toContain('setWindowOpenHandler')
+  expect(electronWindow).not.toContain('onHeadersReceived')
+  expect(electronWindow).not.toContain('Content-Security-Policy')
+  expect(tasksSource).toContain('getElectronBuilderArgs(extraArgs)')
+  expect(tasksSource).toContain('["--publish", "never", ...args]')
+  expect(tasksSource).toContain('"--experimental-strip-types"')
+  expect(electronServe).not.toContain('ELECTRON_DISABLE_SECURITY_WARNINGS')
+  expect(htmlSource).toContain('http-equiv="Content-Security-Policy"')
   expect(electronTypes).toContain('interface Window')
   expect(titleBar).toContain('Web preview')
   expect(main).toContain('ThemeProvider')

@@ -103,6 +103,7 @@ test(
     expect(packedFiles.has('template/src/hooks/use-mobile.ts')).toBe(true)
     expect(packedFiles.has('package.json')).toBe(true)
     expect(packedFiles.has('README.md')).toBe(true)
+    expect(packedFiles.has('LICENSE')).toBe(true)
 
     expect(packedFiles.has('src/index.ts')).toBe(false)
     expect(packedFiles.has('__tests__/template-smoke.spec.ts')).toBe(false)
@@ -111,6 +112,12 @@ test(
     expect(packedFiles.has('template/frontron/config.ts')).toBe(false)
     expect(packedFiles.has('template/frontron/rust/Cargo.toml')).toBe(false)
     expect(packedFiles.has('PLANS.md')).toBe(false)
+    expect([...packedFiles].some((path) => path.startsWith('template/dist/'))).toBe(false)
+    expect([...packedFiles].some((path) => path.startsWith('template/dist-ssr/'))).toBe(false)
+    expect([...packedFiles].some((path) => path.startsWith('template/output/'))).toBe(false)
+    expect(packedFiles.has('template/.npmignore')).toBe(false)
+    expect([...packedFiles].some((path) => path.includes('/node_modules/'))).toBe(false)
+    expect([...packedFiles].some((path) => path.endsWith('.tsbuildinfo'))).toBe(false)
   },
 )
 

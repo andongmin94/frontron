@@ -118,6 +118,15 @@ function runLint() {
   formatPackageJson()
 }
 
+// getElectronBuilderArgs 함수는 CI가 빌드를 암묵적으로 배포하지 않도록 기본 publish 정책을 정한다.
+function getElectronBuilderArgs(args) {
+  const hasExplicitPublish = args.some(
+    (argument) => argument === "--publish" || argument.startsWith("--publish="),
+  )
+
+  return hasExplicitPublish ? args : ["--publish", "never", ...args]
+}
+
 switch (command) {
   case "dev":
     runBin("vite", extraArgs)
@@ -125,6 +134,8 @@ switch (command) {
   case "app":
     runNode([
       "--no-deprecation",
+      "--disable-warning=ExperimentalWarning",
+      "--experimental-strip-types",
       "src/electron/serve.ts",
       "--dev-app",
       ...extraArgs,
@@ -138,7 +149,7 @@ switch (command) {
     runBin("tsc", ["-b"])
     runBin("vite", ["build"])
     runBin("tsc", ["-p", "tsconfig.electron.json"])
-    runBin("electron-builder", extraArgs)
+    runBin("electron-builder", getElectronBuilderArgs(extraArgs))
     break
   case "lint":
     runLint()

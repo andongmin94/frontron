@@ -65,10 +65,10 @@ type ScaffoldTransactionLockOwnership = {
 type ScaffoldTransactionLockSnapshot = {
   raw: string
   record: Partial<ScaffoldTransactionLockRecord> | null
-  dev: number
-  ino: number
-  size: number
-  mtimeMs: number
+  dev: bigint
+  ino: bigint
+  size: bigint
+  mtimeMs: bigint
 }
 
 export type ScaffoldCommitHooks = {
@@ -330,6 +330,16 @@ function lstatIfExists(targetPath: string) {
   }
 }
 
+// lstatBigIntIfExists 함수는 Windows의 큰 파일 ID를 반올림 없이 읽어 identity 충돌을 막는다.
+function lstatBigIntIfExists(targetPath: string) {
+  try {
+    return fs.lstatSync(targetPath, { bigint: true })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw error
+  }
+}
+
 // pathEntryExists 함수는 링크 대상이 없어도 링크 자체가 있으면 true를 반환한다.
 function pathEntryExists(targetPath: string) {
   return lstatIfExists(targetPath) !== null
@@ -370,15 +380,22 @@ function normalizedPathIdentity(targetPath: string) {
 function pathsShareIdentity(firstPath: string, secondPath: string) {
   if (normalizedPathIdentity(firstPath) === normalizedPathIdentity(secondPath)) return true
 
-  const firstStats = lstatIfExists(firstPath)
-  const secondStats = lstatIfExists(secondPath)
+  const firstStats = lstatBigIntIfExists(firstPath)
+  const secondStats = lstatBigIntIfExists(secondPath)
 
-  return Boolean(
-    firstStats &&
-    secondStats &&
-    firstStats.dev === secondStats.dev &&
-    firstStats.ino === secondStats.ino,
-  )
+  if (!firstStats || !secondStats || firstStats.ino === 0n || secondStats.ino === 0n) {
+    return false
+  }
+
+  const knownDeviceMatches = firstStats.dev !== 0n && firstStats.dev === secondStats.dev
+  const unknownWindowsDeviceMatches =
+    process.platform === 'win32' &&
+    firstStats.dev === 0n &&
+    secondStats.dev === 0n &&
+    normalizeIdentityText(path.parse(path.resolve(firstPath)).root) ===
+      normalizeIdentityText(path.parse(path.resolve(secondPath)).root)
+
+  return firstStats.ino === secondStats.ino && (knownDeviceMatches || unknownWindowsDeviceMatches)
 }
 
 // assertNoSymlinkAncestors 함수는 대상 경로의 기존 부모가 심볼릭 링크나 정션인지 확인한다.
@@ -770,11 +787,11 @@ function getScaffoldTransactionPaths(root: string) {
   }
 }
 
-// getFileIdentity 함수는 lstat의 장치와 inode로 링크 자체를 포함한 실제 파일 identity를 만든다.
+// getFileIdentity 함수는 정밀 장치와 inode로 링크 자체를 포함한 실제 파일 identity를 만든다.
 function getFileIdentity(targetPath: string) {
-  const stats = lstatIfExists(targetPath)
+  const stats = lstatBigIntIfExists(targetPath)
 
-  if (!stats || (stats.dev === 0 && stats.ino === 0)) return null
+  if (!stats || (stats.dev === 0n && stats.ino === 0n)) return null
   return `${stats.dev}:${stats.ino}`
 }
 
@@ -909,7 +926,7 @@ function sleepSynchronously(milliseconds: number) {
 function readScaffoldTransactionLockSnapshot(
   lockPath: string,
 ): ScaffoldTransactionLockSnapshot | null {
-  const stats = lstatIfExists(lockPath)
+  const stats = lstatBigIntIfExists(lockPath)
 
   if (!stats) return null
   if (!stats.isFile() || stats.isSymbolicLink()) {

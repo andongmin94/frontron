@@ -649,7 +649,7 @@ describe('persistent transaction recovery', () => {
 
     writeFileSync(targetPath, originalSource)
     const expectedHash = createTransactionSourceHash(originalSource)
-    const targetIdentity = lstatSync(targetPath)
+    const targetIdentity = lstatSync(targetPath, { bigint: true })
     const readFileMock = vi.mocked(readFileSync)
     const originalImplementation = readFileMock.getMockImplementation()
     let mutated = false
@@ -662,9 +662,13 @@ describe('persistent transaction recovery', () => {
       let readsTarget = pathOrDescriptor === targetPath
 
       if (typeof pathOrDescriptor === 'number') {
-        const descriptorStats = fstatSync(pathOrDescriptor)
+        const descriptorStats = fstatSync(pathOrDescriptor, { bigint: true })
         readsTarget =
-          descriptorStats.dev === targetIdentity.dev && descriptorStats.ino === targetIdentity.ino
+          descriptorStats.ino !== 0n &&
+          descriptorStats.ino === targetIdentity.ino &&
+          (descriptorStats.dev === 0n ||
+            targetIdentity.dev === 0n ||
+            descriptorStats.dev === targetIdentity.dev)
       }
 
       const result = Reflect.apply(originalImplementation!, undefined, args) as ReturnType<

@@ -23,6 +23,7 @@ vi.mock('node:fs', async (importOriginal) => {
   return {
     ...actual,
     fsyncSync: vi.fn(actual.fsyncSync),
+    readFileSync: vi.fn(actual.readFileSync),
   }
 })
 
@@ -180,7 +181,7 @@ describe('persistent transaction recovery', () => {
     expect(readFileSync(packageJsonPath, 'utf8')).toContain('sample-web-app')
   })
 
-  test('init failure injection rolls back through memory and the persistent journal', () => {
+  test('init failure injection rolls back through the persistent journal', () => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)
     const packageJsonPath = join(projectRoot, 'package.json')
@@ -223,6 +224,55 @@ describe('persistent transaction recovery', () => {
     expect(existsSync(join(projectRoot, 'electron'))).toBe(false)
     expect(existsSync(manifestPath)).toBe(false)
     expect(existsSync(join(projectRoot, TRANSACTION_JOURNAL_PATH))).toBe(false)
+  })
+
+  test('init failure rollback refuses a replacement hard link without overwriting its outside inode', () => {
+    const projectRoot = fixtures.createTempProject()
+    const outsideRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot, outsideRoot)
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const generatedPath = join(projectRoot, 'electron-main.ts')
+    const outsidePath = join(outsideRoot, 'keep.txt')
+    const originalGeneratedSource = 'original generated source\n'
+    const outsideSource = 'outside remains untouched\n'
+
+    writeFileSync(generatedPath, originalGeneratedSource)
+    writeFileSync(outsidePath, outsideSource)
+    const plan = {
+      config: { cwd: projectRoot },
+      files: [
+        {
+          path: generatedPath,
+          action: 'overwrite',
+          reason: 'hard-link swap failure injection',
+          content: 'changed generated source\n',
+        },
+      ],
+      warnings: [],
+      blockers: [],
+    } as unknown as InitPlan
+    const packageJson = { name: 'sample-web-app' } as PackageJson
+
+    Object.defineProperty(packageJson, 'injectedFailure', {
+      enumerable: true,
+      get() {
+        unlinkSync(generatedPath)
+        linkSync(outsidePath, generatedPath)
+        throw new Error('injected hard-link swap failure')
+      },
+    })
+
+    expect(() => applyInitChanges(packageJsonPath, packageJson, plan)).toThrow(
+      'persistent journal: Transaction recovery target must be a regular file with exactly one hard link',
+    )
+    expect(readFileSync(outsidePath, 'utf8')).toBe(outsideSource)
+    expect(existsSync(join(projectRoot, TRANSACTION_JOURNAL_PATH))).toBe(true)
+
+    unlinkSync(generatedPath)
+    writeFileSync(generatedPath, 'ordinary changed file\n')
+    markJournalAsAbandoned(projectRoot)
+    expect(recoverPendingTransaction(projectRoot).recovered).toBe(true)
+    expect(readFileSync(generatedPath, 'utf8')).toBe(originalGeneratedSource)
   })
 
   test('recovery recreates an existing directory and file removed by clean', async () => {
@@ -269,12 +319,63 @@ describe('persistent transaction recovery', () => {
     writeFileSync(tsconfigPath, malformedTsconfig)
 
     expect(() => applyCleanPlan(projectRoot, packageJsonPath, packageJson, plan)).toThrow(
-      'Project files were rolled back from snapshots',
+      'Project files were rolled back from the persistent journal',
     )
     expect(readFileSync(packageJsonPath)).toEqual(packageJsonBefore)
     expect(readFileSync(tsconfigPath, 'utf8')).toBe(malformedTsconfig)
     expect(existsSync(join(projectRoot, 'electron', 'main.ts'))).toBe(true)
     expect(existsSync(join(projectRoot, TRANSACTION_JOURNAL_PATH))).toBe(false)
+  })
+
+  test('clean failure rollback refuses a replacement hard link without overwriting its outside inode', async () => {
+    const projectRoot = fixtures.createTempProject()
+    const outsideRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot, outsideRoot)
+    const tsconfigPath = join(projectRoot, 'tsconfig.json')
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const outsidePath = join(outsideRoot, 'keep.txt')
+    const outsideSource = 'outside remains untouched\n'
+
+    writeFileSync(tsconfigPath, '{\n  "compilerOptions": {},\n}\n')
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const packageJsonBefore = readFileSync(packageJsonPath)
+    const packageJson = JSON.parse(packageJsonBefore.toString('utf8')) as PackageJson
+    const plan = createCleanPlan(projectRoot, packageJson, { yes: true, force: false })
+    const deleteFile = plan.files.find((file) => file.action === 'delete')
+
+    expect(deleteFile).toBeDefined()
+    writeFileSync(outsidePath, outsideSource)
+    const expectedHash = deleteFile?.expectedHash
+    let expectedHashReads = 0
+
+    Object.defineProperty(deleteFile!, 'expectedHash', {
+      configurable: true,
+      get() {
+        expectedHashReads += 1
+
+        if (expectedHashReads === 2) {
+          unlinkSync(packageJsonPath)
+          linkSync(outsidePath, packageJsonPath)
+          throw new Error('injected hard-link swap failure')
+        }
+
+        return expectedHash
+      },
+    })
+
+    expect(() => applyCleanPlan(projectRoot, packageJsonPath, packageJson, plan)).toThrow(
+      'persistent journal: Transaction recovery target must be a regular file with exactly one hard link',
+    )
+    expect(expectedHashReads).toBe(2)
+    expect(readFileSync(outsidePath, 'utf8')).toBe(outsideSource)
+    expect(existsSync(join(projectRoot, TRANSACTION_JOURNAL_PATH))).toBe(true)
+
+    unlinkSync(packageJsonPath)
+    writeFileSync(packageJsonPath, '{"name":"ordinary-changed-file"}\n')
+    markJournalAsAbandoned(projectRoot)
+    expect(recoverPendingTransaction(projectRoot).recovered).toBe(true)
+    expect(readFileSync(packageJsonPath)).toEqual(packageJsonBefore)
   })
 
   test('a crash during journal preparation is cleaned without touching project files', async () => {
@@ -539,6 +640,61 @@ describe('persistent transaction recovery', () => {
     expect(readFileSync(targetPath, 'utf8')).toBe('original project state\n')
   })
 
+  test('expected hash validation and snapshot reject a deterministic in-place mutation race', () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const targetPath = join(projectRoot, 'state.txt')
+    const originalSource = 'original source\n'
+    const mutatedSource = 'mutated while descriptor read was returning\n'
+
+    writeFileSync(targetPath, originalSource)
+    const expectedHash = createTransactionSourceHash(originalSource)
+    const targetIdentity = lstatSync(targetPath)
+    const readFileMock = vi.mocked(readFileSync)
+    const originalImplementation = readFileMock.getMockImplementation()
+    let mutated = false
+
+    expect(originalImplementation).toBeTypeOf('function')
+    readFileMock.mockImplementation(((
+      ...args: Parameters<typeof readFileSync>
+    ): ReturnType<typeof readFileSync> => {
+      const pathOrDescriptor = args[0]
+      let readsTarget = pathOrDescriptor === targetPath
+
+      if (typeof pathOrDescriptor === 'number') {
+        const descriptorStats = fstatSync(pathOrDescriptor)
+        readsTarget =
+          descriptorStats.dev === targetIdentity.dev && descriptorStats.ino === targetIdentity.ino
+      }
+
+      const result = Reflect.apply(originalImplementation!, undefined, args) as ReturnType<
+        typeof readFileSync
+      >
+
+      if (readsTarget && !mutated) {
+        mutated = true
+        writeFileSync(targetPath, mutatedSource)
+      }
+
+      return result
+    }) as typeof readFileSync)
+
+    try {
+      expect(() =>
+        beginTransaction(projectRoot, 'init', [
+          { path: targetPath, safetyRoot: projectRoot, expectedHash },
+        ]),
+      ).toThrow('Transaction snapshot target changed while it was being read')
+    } finally {
+      readFileMock.mockImplementation(originalImplementation!)
+    }
+
+    expect(mutated).toBe(true)
+    expect(readFileSync(targetPath, 'utf8')).toBe(mutatedSource)
+    expect(existsSync(join(projectRoot, TRANSACTION_JOURNAL_PATH))).toBe(false)
+    expect(existsSync(join(projectRoot, TRANSACTION_LOCK_PATH))).toBe(false)
+  })
+
   test.runIf(process.platform === 'win32' || process.platform === 'darwin')(
     'case-insensitive filesystem aliases cannot collide with reserved transaction files',
     () => {
@@ -645,13 +801,13 @@ describe('persistent transaction recovery', () => {
     )
     expect(workerResults.filter((result) => result.result?.recovered).length).toBe(1)
     expect(
-      workerResults.every(
+      workerResults.filter(
         (result) =>
-          result.result?.recovered === true ||
-          result.result?.recovered === false ||
-          result.error?.includes('recovery is active'),
+          result.result?.recovered !== true &&
+          result.result?.recovered !== false &&
+          !/Another Frontron recovery(?: is active| lock is preparing)/.test(result.error ?? ''),
       ),
-    ).toBe(true)
+    ).toEqual([])
     expect(readFileSync(targetPath)).toEqual(originalBytes)
     expect(existsSync(join(projectRoot, TRANSACTION_JOURNAL_PATH))).toBe(false)
   }, 60_000)

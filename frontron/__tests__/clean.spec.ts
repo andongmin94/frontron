@@ -622,7 +622,7 @@ allowBuilds:
     writeFileSync(tsconfigPath, brokenTsconfigSource)
 
     expect(() => applyCleanPlan(projectRoot, packageJsonPath, packageJson, plan)).toThrow(
-      'Project files were rolled back from snapshots',
+      'Project files were rolled back from the persistent journal',
     )
     expect(readFileSync(packageJsonPath, 'utf8')).toBe(packageJsonBefore)
     expect(readFileSync(tsconfigPath, 'utf8')).toBe(brokenTsconfigSource)

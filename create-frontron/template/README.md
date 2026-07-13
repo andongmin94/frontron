@@ -6,7 +6,7 @@ This project was generated from the default Electron + React + Vite starter.
 
 - Electron + React + TypeScript + Vite
 - Tailwind CSS 4
-- Base UI components under `src/components/ui`
+- Focused Base UI primitives (`button` and `dialog`) under `src/components/ui`
 - Template-owned Electron files under `src/electron/`
 - A preload bridge exposed as `window.electron`
 
@@ -50,6 +50,8 @@ This builds the web app, compiles `src/electron/`, and packages the desktop app 
 - The main process preserves an app-provided Content Security Policy and supplies
   a fallback policy when the renderer does not define one.
 - The default Electron source lives under `src/electron/`.
+- The renderer uses Geist from `@fontsource-variable/geist`; the splash screen uses the system sans-serif font without a separate font asset.
+- The main window uses `public/icon.ico` only when it exists. The tray tries the public icon assets first, then falls back to the running app executable icon.
 - The default packaging configuration targets Windows (`msi` and `portable`) because the bundled app icon asset is Windows-first (`public/icon.ico`).
 - Before shipping a real app, replace the default metadata in `package.json` such as `name`, `productName`, `author`, and `build.appId`.
-- You can build on top of the existing component base in `src/components/ui`.
+- The starter intentionally includes only `button.tsx` and `dialog.tsx`; add other UI primitives as the app needs them.

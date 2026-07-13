@@ -154,9 +154,6 @@ switch (command) {
   case "lint":
     runLint()
     break
-  case "format-package-json":
-    formatPackageJson()
-    break
   default:
     console.error(`[tasks] Unknown command: ${command ?? "(missing)"}`)
     process.exit(1)

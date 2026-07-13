@@ -18,6 +18,7 @@ import {
 } from './runtime/renderers'
 import type { InitConfig } from './shared'
 import { usesStarterBridge } from './shared'
+import type { YarnRcOwnershipClaim } from './yarnrc-yaml'
 
 // createInitFileSources 함수는 init이 새 프로젝트에 쓸 Electron 관련 파일 소스를 만든다.
 export function createInitFileSources(config: InitConfig) {
@@ -48,6 +49,7 @@ export function addManifestSource(
   packageJsonClaims: PackageJsonOwnershipClaim[],
   tsconfigJsonClaims: PackageJsonOwnershipClaim[],
   pnpmWorkspaceClaims: PackageJsonOwnershipClaim[],
+  yarnRcClaims: YarnRcOwnershipClaim[],
 ) {
   const manifestPath = join(config.cwd, MANIFEST_PATH)
 
@@ -64,6 +66,7 @@ export function addManifestSource(
         packageJsonClaims,
         tsconfigJsonClaims,
         pnpmWorkspaceClaims,
+        yarnRcClaims,
       ),
     ),
   )

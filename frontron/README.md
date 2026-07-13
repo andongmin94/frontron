@@ -48,6 +48,8 @@ Use `npm run frontron:package` when you are ready to create the packaged desktop
 When using `npm exec` directly, keep the `--` separator: `npm exec -- frontron init`.
 For pnpm, yarn, or bun projects, use the equivalent package-manager commands; after `init`, Frontron prints next steps for the package manager detected from your lockfile.
 
+For Yarn Berry projects, `init` safely sets the nearest `.yarnrc.yml` `nodeLinker` to `node-modules`, which Electron Builder requires. The previous scalar, comments, quoting, and line endings are recorded in the manifest so `doctor` can verify them and `clean` can restore the original file. Complex or ambiguous YAML is left untouched and reported as a blocker.
+
 It auto-detects the current runtime adapter when possible:
 
 - `generic-static` for Vite-style static frontend builds
@@ -89,6 +91,29 @@ It currently walks through:
 
 The default preset is `minimal`. `starter-like` adds `preload.ts`, `ipc.ts`, and `src/types/electron.d.ts` without replacing the app's existing frontend structure.
 
+## How `create-frontron` feeds the retrofit
+
+`frontron` declares the matching `create-frontron` release as a runtime dependency. The `starter-like` preset resolves the installed package's `template/` directory when `init` or `update` runs, validates the required Electron files, and records the source package version in `.frontron/manifest.json`. It does not keep a stale second copy of that template inside `frontron`.
+
+This means Electron fixes made in a compatible `create-frontron` release can reach an existing retrofit project through the normal dependency update followed by a guarded refresh:
+
+```bash
+npm update frontron create-frontron
+npx frontron update --dry-run
+npx frontron update --yes
+```
+
+Only manifest-owned files and values are refreshed. Local edits are reported as conflicts unless `--force` is explicitly used. The `minimal` preset intentionally uses Frontron's smaller built-in Electron sources, so starter-only UI and preload changes do not apply to it.
+
+## Runtime and recovery
+
+- Production windows use the stable `frontron://app` origin while a private loopback server handles static or Node-rendered output behind the protocol handler.
+- The protocol proxy accepts only the registered app origin, rewrites internal origin headers, preserves an app-provided CSP, and adds a conservative fallback CSP when one is missing.
+- Navigation stays inside the app origin. Only explicit `http:` and `https:` links can be handed to the system browser.
+- Generated windows keep Node integration disabled and context isolation enabled.
+- `init`, `update`, and `clean` snapshot every owned file before mutation. A durable journal is published before the first write, and the next CLI invocation automatically restores an interrupted operation.
+- Project paths, manifest paths, pnpm workspace edits, symlink ancestors, and transaction journals are validated before use. An invalid recovery journal stops the command instead of guessing.
+
 ## Doctor
 
 After init, check the generated Electron layer with:
@@ -118,6 +143,24 @@ npx frontron update --dry-run
 ```
 
 Run `npx frontron update --yes` to apply the refresh. Internally this uses the same conflict rules as `frontron init --force`, so only manifest-owned files are overwritten.
+
+## Compatibility verification
+
+The repository tests the minimum Node.js `22.15.0` runtime, active LTS Node.js 24, and current Node.js 26 on Windows, macOS, and Linux. A scheduled compatibility workflow creates public Vite, VitePress, Next.js export/standalone, Nuxt, Remix v2, and SvelteKit static/node projects on Linux, repeats representative Vite, Next standalone, Nuxt, Remix, and SvelteKit node packaging on Windows and macOS, packages native starter artifacts, launches real packaged Electron renderers, and runs pnpm, Yarn, and Bun retrofit lifecycles on all three operating systems.
+
+Detection is intentionally evidence-based rather than magical. Custom monorepos or build pipelines should start with `frontron init --dry-run`, use an explicit adapter when necessary, and run `frontron doctor` before packaging. `generic-node-server` remains the escape hatch for a custom server root and entry.
+
+For repository release verification:
+
+```bash
+node release.mjs verify
+node release.mjs matrix-smoke vite
+node release.mjs package-manager-smoke pnpm
+```
+
+The release command additionally requires aligned package metadata, a clean Git worktree, coverage thresholds, dependency audits, real package tarballs, framework smoke tests, and npm publish dry-runs before it can publish.
+
+Official npm releases run through `.github/workflows/frontron-release.yml`. Configure both npm packages' trusted publisher to that workflow and the `npm` GitHub environment. The job uses short-lived GitHub OIDC credentials and publishes provenance attestations without storing an npm token. A retry after a partial registry publish is accepted only when the already published tarball integrity exactly matches the local candidate. Local token-based publishing is blocked by default; `FRONTRON_ALLOW_LOCAL_PUBLISH=1` exists only as an explicit emergency override.
 
 ## License
 

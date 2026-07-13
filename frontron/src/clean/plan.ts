@@ -1,13 +1,8 @@
 import { existsSync, lstatSync, readFileSync } from 'node:fs'
-import { isAbsolute, join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 
-import { isInsideDirectory } from '../project-paths'
-import {
-  createFileHash,
-  MANIFEST_PATH,
-  type PackageJsonOwnershipClaim,
-  readManifest,
-} from '../init/manifest'
+import { formatProjectPathBlocker, inspectProjectPath, isInsideDirectory } from '../project-paths'
+import { createFileHash, MANIFEST_PATH, readManifest } from '../init/manifest'
 import { readPackageJsonPath, valuesEqual } from '../init/package-json-path'
 import {
   findPnpmWorkspaceYamlPath,
@@ -15,6 +10,11 @@ import {
 } from '../init/pnpm-workspace-yaml'
 import type { PackageJson } from '../init/shared'
 import { readTsconfigJson } from '../init/tsconfig-json'
+import {
+  readYarnRcYamlClaimValue,
+  resolveYarnRcClaimPath,
+  YARN_RC_YAML_PATH,
+} from '../init/yarnrc-yaml'
 import type {
   ClaimReadResult,
   CleanFileChange,
@@ -24,7 +24,14 @@ import type {
   CleanPnpmWorkspaceChange,
   CleanScriptChange,
   CleanTsconfigJsonChange,
+  CleanYarnRcChange,
 } from './types'
+
+type ManifestValueClaim = {
+  path: string
+  action?: 'set' | 'array-value'
+  value: unknown
+}
 
 // uniqueStrings 함수는 문자열 배열에서 중복 값을 제거한다.
 function uniqueStrings(values: string[]) {
@@ -39,7 +46,7 @@ function hasOwnString(record: Record<string, string> | undefined, key: string) {
 // resolveManifestClaimRestore 함수는 clean 시 manifest claim을 복구할지 경고만 남길지 결정한다.
 function resolveManifestClaimRestore(
   label: string,
-  claim: PackageJsonOwnershipClaim,
+  claim: ManifestValueClaim,
   current: ClaimReadResult,
   options: CleanOptions,
 ) {
@@ -125,6 +132,20 @@ function resolveManifestFile(cwd: string, manifestPath: string) {
     }
   }
 
+  const inspection = inspectProjectPath(root, absolutePath)
+
+  if (!inspection.safe) {
+    const blocker =
+      inspection.reason === 'outside'
+        ? `Manifest file entry points outside the project: ${manifestPath}`
+        : `Manifest file entry uses a symbolic link or junction and will not be removed: ${manifestPath}`
+
+    return {
+      absolutePath,
+      blocker,
+    }
+  }
+
   return { absolutePath, blocker: null }
 }
 
@@ -134,6 +155,13 @@ export function createCleanPlan(
   packageJson: PackageJson,
   options: CleanOptions,
 ): CleanPlan {
+  const manifestAbsolutePath = resolve(cwd, MANIFEST_PATH)
+  const manifestInspection = inspectProjectPath(cwd, manifestAbsolutePath)
+
+  if (!manifestInspection.safe) {
+    throw new Error(formatProjectPathBlocker(cwd, 'Frontron manifest', manifestInspection))
+  }
+
   const manifest = readManifest(cwd)
 
   if (!manifest) {
@@ -166,6 +194,7 @@ export function createCleanPlan(
   const packageJsonChanges: CleanPackageJsonChange[] = []
   const tsconfigJsonChanges: CleanTsconfigJsonChange[] = []
   const pnpmWorkspaceChanges: CleanPnpmWorkspaceChange[] = []
+  const yarnRcChanges: CleanYarnRcChange[] = []
   const manifestFiles = uniqueStrings([...manifest.createdFiles, MANIFEST_PATH]).sort(
     (left, right) => {
       if (left === MANIFEST_PATH) return 1
@@ -226,10 +255,9 @@ export function createCleanPlan(
     }
 
     const expectedHash = manifest.fileHashes?.[manifestPath]
+    const currentHash = createFileHash(readFileSync(resolved.absolutePath))
 
     if (expectedHash) {
-      const currentHash = createFileHash(readFileSync(resolved.absolutePath))
-
       if (currentHash !== expectedHash && !options.force) {
         const blocker = `Manifest-owned file was modified and will not be removed without --force: ${manifestPath}`
         blockers.push(blocker)
@@ -256,6 +284,7 @@ export function createCleanPlan(
       absolutePath: resolved.absolutePath,
       action: 'delete',
       reason: 'File is recorded in the Frontron manifest.',
+      expectedHash: currentHash,
     })
   }
 
@@ -316,8 +345,11 @@ export function createCleanPlan(
 
   if (tsconfigJsonClaims.length > 0) {
     const tsconfigPath = join(cwd, 'tsconfig.json')
+    const tsconfigInspection = inspectProjectPath(cwd, tsconfigPath)
 
-    if (!existsSync(tsconfigPath)) {
+    if (!tsconfigInspection.safe) {
+      blockers.push(formatProjectPathBlocker(cwd, 'tsconfig.json', tsconfigInspection))
+    } else if (!existsSync(tsconfigPath)) {
       warnings.push(
         'Manifest-owned tsconfig.json changes are already missing because tsconfig.json is missing.',
       )
@@ -339,6 +371,7 @@ export function createCleanPlan(
 
           if (restore.restore) {
             tsconfigJsonChanges.push({
+              path: tsconfigPath,
               claim,
               action: 'restore',
             })
@@ -354,8 +387,14 @@ export function createCleanPlan(
 
   if (pnpmWorkspaceClaims.length > 0) {
     const pnpmWorkspacePath = findPnpmWorkspaceYamlPath(cwd)
+    const pnpmWorkspaceRoot = dirname(pnpmWorkspacePath)
+    const pnpmWorkspaceInspection = inspectProjectPath(pnpmWorkspaceRoot, pnpmWorkspacePath)
 
-    if (!existsSync(pnpmWorkspacePath)) {
+    if (!pnpmWorkspaceInspection.safe) {
+      blockers.push(
+        formatProjectPathBlocker(pnpmWorkspaceRoot, 'pnpm-workspace.yaml', pnpmWorkspaceInspection),
+      )
+    } else if (!existsSync(pnpmWorkspacePath)) {
       warnings.push(
         'Manifest-owned pnpm-workspace.yaml changes are already missing because pnpm-workspace.yaml is missing.',
       )
@@ -376,11 +415,67 @@ export function createCleanPlan(
 
         if (restore.restore) {
           pnpmWorkspaceChanges.push({
+            path: pnpmWorkspacePath,
             claim,
             action: 'restore',
           })
         }
       }
+    }
+  }
+
+  for (const claim of manifest.yarnRcClaims ?? []) {
+    if (!claim.changed) {
+      continue
+    }
+
+    const resolution = resolveYarnRcClaimPath(cwd, claim.file)
+
+    if (!resolution.safe) {
+      blockers.push(resolution.blocker)
+      continue
+    }
+
+    if (!existsSync(resolution.path)) {
+      warnings.push(
+        `Manifest-owned ${YARN_RC_YAML_PATH} changes are already missing because ${claim.file} is missing.`,
+      )
+      continue
+    }
+
+    const stats = lstatSync(resolution.path)
+
+    if (!stats.isFile()) {
+      blockers.push(`Manifest-owned ${YARN_RC_YAML_PATH} is not a regular file: ${claim.file}`)
+      continue
+    }
+
+    if (stats.nlink !== 1) {
+      blockers.push(
+        `Manifest-owned ${YARN_RC_YAML_PATH} must have exactly one hard link: ${claim.file}`,
+      )
+      continue
+    }
+
+    const current = readYarnRcYamlClaimValue(readFileSync(resolution.path, 'utf8'))
+
+    if (!current.safeToEdit) {
+      blockers.push(current.blocker ?? `Cannot safely inspect ${claim.file}.`)
+      continue
+    }
+
+    const restore = resolveManifestClaimRestore(YARN_RC_YAML_PATH, claim, current, options)
+
+    if (restore.warning) {
+      warnings.push(`${claim.file}: ${restore.warning}`)
+    }
+
+    if (restore.restore) {
+      yarnRcChanges.push({
+        path: resolution.path,
+        claim,
+        action: 'restore',
+      })
     }
   }
 
@@ -390,6 +485,7 @@ export function createCleanPlan(
     packageJsonChanges,
     tsconfigJsonChanges,
     pnpmWorkspaceChanges,
+    yarnRcChanges,
     warnings,
     blockers,
   }

@@ -1,4 +1,5 @@
 import type { PackageJsonOwnershipClaim } from '../init/manifest'
+import type { YarnRcOwnershipClaim } from '../init/yarnrc-yaml'
 
 export interface CleanOptions {
   yes: boolean
@@ -20,6 +21,7 @@ export type CleanFileChange = {
   absolutePath: string
   action: 'delete' | 'missing' | 'blocked'
   reason: string
+  expectedHash?: string
 }
 
 export type CleanScriptChange = {
@@ -33,12 +35,20 @@ export type CleanPackageJsonChange = {
 }
 
 export type CleanTsconfigJsonChange = {
+  path: string
   claim: PackageJsonOwnershipClaim
   action: 'restore'
 }
 
 export type CleanPnpmWorkspaceChange = {
+  path: string
   claim: PackageJsonOwnershipClaim
+  action: 'restore'
+}
+
+export type CleanYarnRcChange = {
+  path: string
+  claim: YarnRcOwnershipClaim
   action: 'restore'
 }
 
@@ -53,6 +63,7 @@ export type CleanPlan = {
   packageJsonChanges: CleanPackageJsonChange[]
   tsconfigJsonChanges: CleanTsconfigJsonChange[]
   pnpmWorkspaceChanges: CleanPnpmWorkspaceChange[]
+  yarnRcChanges: CleanYarnRcChange[]
   warnings: string[]
   blockers: string[]
 }

@@ -4,6 +4,7 @@ import { join, relative } from 'node:path'
 
 import type { InitConfig } from './shared'
 import { normalizePathValue } from './shared'
+import type { YarnRcOwnershipClaim } from './yarnrc-yaml'
 
 export const MANIFEST_PATH = '.frontron/manifest.json'
 
@@ -36,6 +37,7 @@ export type FrontronManifest = {
   packageJsonClaims?: PackageJsonOwnershipClaim[]
   tsconfigJsonClaims?: PackageJsonOwnershipClaim[]
   pnpmWorkspaceClaims?: PackageJsonOwnershipClaim[]
+  yarnRcClaims?: YarnRcOwnershipClaim[]
 }
 
 export type PackageJsonOwnershipClaim = {
@@ -104,6 +106,48 @@ function isPackageJsonOwnershipClaim(value: unknown): value is PackageJsonOwners
   )
 }
 
+// isYarnRcOwnershipClaim 함수는 값이 안전하게 복구 가능한 Yarn 설정 claim 구조인지 검사한다.
+function isYarnRcOwnershipClaim(value: unknown): value is YarnRcOwnershipClaim {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false
+  }
+
+  const candidate = value as Partial<YarnRcOwnershipClaim>
+  const previous = candidate.previous
+
+  if (
+    typeof candidate.file !== 'string' ||
+    candidate.file.length === 0 ||
+    candidate.path !== 'nodeLinker' ||
+    candidate.value !== 'node-modules' ||
+    typeof candidate.created !== 'boolean' ||
+    typeof candidate.changed !== 'boolean' ||
+    (candidate.created && candidate.file !== '.yarnrc.yml') ||
+    !previous ||
+    typeof previous !== 'object' ||
+    Array.isArray(previous)
+  ) {
+    return false
+  }
+
+  if (previous.state === 'missing') {
+    return (
+      candidate.changed === true &&
+      typeof previous.previousHadFinalEol === 'boolean' &&
+      typeof previous.previousSourceHash === 'string' &&
+      /^[a-f0-9]{64}$/.test(previous.previousSourceHash)
+    )
+  }
+
+  return (
+    previous.state === 'value' &&
+    (previous.value === 'pnp' || previous.value === 'node-modules') &&
+    typeof previous.source === 'string' &&
+    !candidate.created &&
+    (candidate.changed || previous.value === 'node-modules')
+  )
+}
+
 // createManifest 함수는 현재 init 설정과 소유권 정보를 Frontron manifest 객체로 만든다.
 export function createManifest(
   config: InitConfig,
@@ -113,6 +157,7 @@ export function createManifest(
   packageJsonClaims: PackageJsonOwnershipClaim[] = [],
   tsconfigJsonClaims: PackageJsonOwnershipClaim[] = [],
   pnpmWorkspaceClaims: PackageJsonOwnershipClaim[] = [],
+  yarnRcClaims: YarnRcOwnershipClaim[] = [],
 ): FrontronManifest {
   const fileHashes: Record<string, string> = {}
 
@@ -151,6 +196,7 @@ export function createManifest(
     packageJsonClaims,
     tsconfigJsonClaims: tsconfigJsonClaims.length > 0 ? tsconfigJsonClaims : undefined,
     pnpmWorkspaceClaims: pnpmWorkspaceClaims.length > 0 ? pnpmWorkspaceClaims : undefined,
+    yarnRcClaims: yarnRcClaims.length > 0 ? yarnRcClaims : undefined,
   }
 }
 
@@ -199,7 +245,10 @@ export function readManifest(cwd: string) {
         parsed.tsconfigJsonClaims.some((entry) => !isPackageJsonOwnershipClaim(entry)))) ||
     (typeof parsed.pnpmWorkspaceClaims !== 'undefined' &&
       (!Array.isArray(parsed.pnpmWorkspaceClaims) ||
-        parsed.pnpmWorkspaceClaims.some((entry) => !isPackageJsonOwnershipClaim(entry))))
+        parsed.pnpmWorkspaceClaims.some((entry) => !isPackageJsonOwnershipClaim(entry)))) ||
+    (typeof parsed.yarnRcClaims !== 'undefined' &&
+      (!Array.isArray(parsed.yarnRcClaims) ||
+        parsed.yarnRcClaims.some((entry) => !isYarnRcOwnershipClaim(entry))))
   ) {
     throw new Error(`${MANIFEST_PATH} is invalid.`)
   }

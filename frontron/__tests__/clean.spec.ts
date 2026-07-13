@@ -1,8 +1,18 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
 import { runCli } from '../src/cli'
+import { applyCleanPlan } from '../src/clean/apply'
+import { createCleanPlan } from '../src/clean/plan'
+import type { PackageJson } from '../src/init/shared'
 import * as fixtures from './helpers/frontron-cli-fixtures'
 
 describe('frontron clean', () => {
@@ -167,6 +177,7 @@ describe('frontron clean', () => {
     const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
       build: {
         files: string[]
+        npmRebuild?: boolean
       }
     }
     packageJson.build.files.push('user-assets{,/**/*}')
@@ -179,11 +190,13 @@ describe('frontron clean', () => {
     const cleanedPackageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
       build: {
         files: string[]
+        npmRebuild?: boolean
       }
     }
 
     expect(cleanExitCode).toBe(0)
     expect(cleanedPackageJson.build.files).toEqual(['user-assets{,/**/*}'])
+    expect(cleanedPackageJson.build.npmRebuild).toBeUndefined()
   })
 
   test('clean --yes restores manifest-owned pnpm workspace build approvals', async () => {
@@ -493,6 +506,128 @@ allowBuilds:
     expect(combined).toContain(
       'Modified manifest-owned script will be removed because --force was used: frontron:dev',
     )
+  })
+
+  test('init and clean preserve tsconfig JSONC comments, trailing commas, and formatting', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const tsconfigPath = join(projectRoot, 'tsconfig.json')
+    const originalSource = `{
+  // keep this compiler comment
+  "compilerOptions": {
+    "strict": true,
+  },
+  "exclude": [
+    "coverage",
+  ],
+}
+`
+
+    writeFileSync(tsconfigPath, originalSource)
+
+    const initExitCode = await runCli(['init', '--yes'], fixtures.createOutput(), {
+      cwd: projectRoot,
+    })
+    expect(initExitCode).toBe(0)
+
+    const initializedSource = readFileSync(tsconfigPath, 'utf8')
+    expect(initializedSource).toContain('// keep this compiler comment')
+    expect(initializedSource).toContain('    "strict": true,')
+    expect(initializedSource).toContain('    "coverage",')
+    expect(initializedSource).toContain('    "electron",')
+    expect(initializedSource).toContain('    "dist-electron",')
+    expect(initializedSource).toContain('    ".frontron",')
+
+    const cleanExitCode = await runCli(['clean', '--yes'], fixtures.createOutput(), {
+      cwd: projectRoot,
+    })
+
+    expect(cleanExitCode).toBe(0)
+    expect(readFileSync(tsconfigPath, 'utf8')).toBe(originalSource)
+  })
+
+  test('clean planning blocks manifest files reached through a parent symbolic link or junction', async () => {
+    const projectRoot = fixtures.createTempProject()
+    const outsideRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot, outsideRoot)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const outsideFile = join(outsideRoot, 'outside.ts')
+    const linkedDirectory = join(projectRoot, 'linked')
+    const manifestPath = join(projectRoot, '.frontron', 'manifest.json')
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      createdFiles: string[]
+    }
+
+    writeFileSync(outsideFile, 'outside data\n')
+    symlinkSync(outsideRoot, linkedDirectory, process.platform === 'win32' ? 'junction' : 'dir')
+    manifest.createdFiles.push('linked/outside.ts')
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+
+    const output = fixtures.createOutput()
+    const exitCode = await runCli(['clean', '--yes'], output, { cwd: projectRoot })
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expect(exitCode).toBe(1)
+    expect(combined).toContain('symbolic link or junction')
+    expect(readFileSync(outsideFile, 'utf8')).toBe('outside data\n')
+    expect(existsSync(join(projectRoot, 'electron', 'main.ts'))).toBe(true)
+    expect(existsSync(manifestPath)).toBe(true)
+  })
+
+  test('clean apply rechecks parent links before deleting planned files', async () => {
+    const projectRoot = fixtures.createTempProject()
+    const outsideRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot, outsideRoot)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const packageJsonBefore = readFileSync(packageJsonPath, 'utf8')
+    const packageJson = JSON.parse(packageJsonBefore) as PackageJson
+    const plan = createCleanPlan(projectRoot, packageJson, { yes: true, force: false })
+    const externalElectronDir = join(outsideRoot, 'external-electron')
+    const projectElectronDir = join(projectRoot, 'electron')
+
+    renameSync(projectElectronDir, externalElectronDir)
+    symlinkSync(
+      externalElectronDir,
+      projectElectronDir,
+      process.platform === 'win32' ? 'junction' : 'dir',
+    )
+
+    expect(() => applyCleanPlan(projectRoot, packageJsonPath, packageJson, plan)).toThrow(
+      'symbolic link or junction',
+    )
+    expect(readFileSync(packageJsonPath, 'utf8')).toBe(packageJsonBefore)
+    expect(existsSync(join(externalElectronDir, 'main.ts'))).toBe(true)
+    expect(existsSync(join(projectRoot, '.frontron', 'manifest.json'))).toBe(true)
+  })
+
+  test('clean rolls back package changes when a later tsconfig apply step fails', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const tsconfigPath = join(projectRoot, 'tsconfig.json')
+
+    writeFileSync(tsconfigPath, '{\n  "compilerOptions": {},\n}\n')
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const packageJsonBefore = readFileSync(packageJsonPath, 'utf8')
+    const packageJson = JSON.parse(packageJsonBefore) as PackageJson
+    const plan = createCleanPlan(projectRoot, packageJson, { yes: true, force: false })
+    const brokenTsconfigSource = '{\n  // changed after planning\n'
+
+    writeFileSync(tsconfigPath, brokenTsconfigSource)
+
+    expect(() => applyCleanPlan(projectRoot, packageJsonPath, packageJson, plan)).toThrow(
+      'Project files were rolled back from snapshots',
+    )
+    expect(readFileSync(packageJsonPath, 'utf8')).toBe(packageJsonBefore)
+    expect(readFileSync(tsconfigPath, 'utf8')).toBe(brokenTsconfigSource)
+    expect(existsSync(join(projectRoot, 'electron', 'main.ts'))).toBe(true)
+    expect(existsSync(join(projectRoot, '.frontron', 'manifest.json'))).toBe(true)
   })
 
   test('clean refuses to run without a manifest', async () => {

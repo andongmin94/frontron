@@ -62,6 +62,7 @@ function splitCommandArgs(command: string) {
   let quote: '"' | "'" | '`' | null = null
   let escaped = false
 
+  // flush 함수는 현재까지 읽은 명령 인자를 결과 배열에 확정한다.
   const flush = () => {
     if (current) {
       args.push(current)
@@ -195,6 +196,15 @@ function readFirstExistingConfigSource(cwd: string, fileNames: string[]) {
   return null
 }
 
+// someConfigSourceIncludes 함수는 여러 설정 파일 중 하나라도 찾는 문자열을 포함하는지 확인한다.
+function someConfigSourceIncludes(cwd: string, fileNames: string[], expectedSource: string) {
+  return fileNames.some((fileName) => {
+    const filePath = join(cwd, fileName)
+
+    return existsSync(filePath) && readFileSync(filePath, 'utf8').includes(expectedSource)
+  })
+}
+
 // hasRemixConfig 함수는 Remix 설정 파일이 프로젝트에 있는지 확인한다.
 export function hasRemixConfig(cwd: string) {
   return Boolean(
@@ -214,16 +224,13 @@ export function hasSvelteKitAdapterConfig(
   cwd: string,
   adapterPackage: '@sveltejs/adapter-static' | '@sveltejs/adapter-node',
 ) {
-  const source = readFirstExistingConfigSource(cwd, [
-    'svelte.config.ts',
-    'svelte.config.mts',
-    'svelte.config.cts',
-    'svelte.config.js',
-    'svelte.config.mjs',
-    'svelte.config.cjs',
+  const extensions = ['ts', 'mts', 'cts', 'js', 'mjs', 'cjs']
+  const fileNames = extensions.flatMap((extension) => [
+    `svelte.config.${extension}`,
+    `vite.config.${extension}`,
   ])
 
-  return Boolean(source && source.includes(adapterPackage))
+  return someConfigSourceIncludes(cwd, fileNames, adapterPackage)
 }
 
 // inferScriptName 함수는 package.json scripts에서 dev 또는 build에 알맞은 script 이름을 추론한다.

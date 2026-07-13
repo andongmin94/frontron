@@ -6,7 +6,7 @@ import { runCli } from '../src/cli'
 import * as fixtures from './helpers/frontron-cli-fixtures'
 
 describe('frontron update', () => {
-  test('update prints the force refresh plan without writing unless --yes is used', async () => {
+  test('update prints the guarded refresh plan without writing unless --yes is used', async () => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)
 
@@ -16,13 +16,8 @@ describe('frontron update', () => {
     expect(initExitCode).toBe(0)
 
     const packageJsonPath = join(projectRoot, 'package.json')
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
-      scripts: Record<string, string>
-    }
-    packageJson.scripts['frontron:dev'] = 'stale generated script'
-    writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
-    writeFileSync(join(projectRoot, 'electron', 'main.ts'), 'stale generated file\n')
     const packageJsonBefore = readFileSync(packageJsonPath, 'utf8')
+    const mainSourceBefore = readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')
 
     const output = fixtures.createOutput()
     const updateExitCode = await runCli(['update'], output, {
@@ -32,16 +27,14 @@ describe('frontron update', () => {
 
     expect(updateExitCode).toBe(0)
     expect(readFileSync(packageJsonPath, 'utf8')).toBe(packageJsonBefore)
-    expect(readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')).toBe(
-      'stale generated file\n',
-    )
+    expect(readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')).toBe(mainSourceBefore)
     expect(combined).toContain('Files to overwrite:')
     expect(combined).toContain('~ electron/main.ts')
-    expect(combined).toContain('~ scripts.frontron:dev')
+    expect(combined).toContain('package.json changes:\n  (none)')
     expect(combined).toContain('Run "frontron update --yes" to apply this plan.')
   })
 
-  test('update --yes refreshes manifest-owned files, scripts, and package metadata claims', async () => {
+  test('update --yes blocks locally edited manifest-owned files and scripts without --force', async () => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)
 
@@ -51,12 +44,6 @@ describe('frontron update', () => {
     expect(initExitCode).toBe(0)
 
     const manifestPath = join(projectRoot, '.frontron', 'manifest.json')
-    const initialManifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
-      fileHashes: Record<string, string>
-      packageJsonClaims: Array<{
-        path: string
-      }>
-    }
     const packageJsonPath = join(projectRoot, 'package.json')
     const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
       scripts: Record<string, string>
@@ -65,30 +52,67 @@ describe('frontron update', () => {
     writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
     writeFileSync(join(projectRoot, 'electron', 'main.ts'), 'stale generated file\n')
 
+    const packageJsonBefore = readFileSync(packageJsonPath, 'utf8')
+    const manifestBefore = readFileSync(manifestPath, 'utf8')
     const output = fixtures.createOutput()
     const updateExitCode = await runCli(['update', '--yes'], output, {
+      cwd: projectRoot,
+    })
+    const combined = output.error.mock.calls.flat().join('\n')
+
+    expect(updateExitCode).toBe(1)
+    expect(readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')).toBe(
+      'stale generated file\n',
+    )
+    expect(readFileSync(packageJsonPath, 'utf8')).toBe(packageJsonBefore)
+    expect(readFileSync(manifestPath, 'utf8')).toBe(manifestBefore)
+    expect(combined).toContain('Manifest-owned file has local edits: electron/main.ts')
+    expect(combined).toContain('Manifest-owned script has local edits: frontron:dev')
+    expect(combined).toContain('Re-run with --force')
+  })
+
+  test('update --yes applies when manifest-owned files and scripts are unchanged', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const exitCode = await runCli(['update', '--yes'], fixtures.createOutput(), {
+      cwd: projectRoot,
+    })
+
+    expect(exitCode).toBe(0)
+    expect(readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')).toContain(
+      'createMainWindow',
+    )
+  })
+
+  test('update --yes --force replaces locally edited manifest-owned files and scripts', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      scripts: Record<string, string>
+    }
+    packageJson.scripts['frontron:dev'] = 'local script edit'
+    writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
+    writeFileSync(join(projectRoot, 'electron', 'main.ts'), 'local file edit\n')
+
+    const exitCode = await runCli(['update', '--yes', '--force'], fixtures.createOutput(), {
       cwd: projectRoot,
     })
     const refreshedPackageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
       scripts: Record<string, string>
     }
-    const refreshedManifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
-      fileHashes: Record<string, string>
-      packageJsonClaims: Array<{
-        path: string
-      }>
-    }
 
-    expect(updateExitCode).toBe(0)
+    expect(exitCode).toBe(0)
     expect(readFileSync(join(projectRoot, 'electron', 'main.ts'), 'utf8')).toContain(
       'createMainWindow',
     )
     expect(refreshedPackageJson.scripts['frontron:dev']).toContain('--dev-app')
-    expect(refreshedManifest.fileHashes['electron/main.ts']).toBe(
-      initialManifest.fileHashes['electron/main.ts'],
-    )
-    expect(refreshedManifest.packageJsonClaims.length).toBeGreaterThan(0)
-    expect(refreshedManifest.packageJsonClaims).toEqual(initialManifest.packageJsonClaims)
   })
 
   test('update preserves custom init settings from the manifest', async () => {
@@ -133,7 +157,7 @@ describe('frontron update', () => {
     writeFileSync(join(projectRoot, 'apps', 'electron', 'main.ts'), 'stale generated file\n')
 
     const output = fixtures.createOutput()
-    const updateExitCode = await runCli(['update', '--yes'], output, {
+    const updateExitCode = await runCli(['update', '--yes', '--force'], output, {
       cwd: projectRoot,
     })
     const refreshedPackageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {

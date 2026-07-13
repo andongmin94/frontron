@@ -219,7 +219,7 @@ async function initializeApp() {
 
   createWindow(rendererUrl)
   runRendererProbe()
-  createTray()
+  await createTray()
   setupIpcHandlers()
 
   if (isDev) setupDevMenu()

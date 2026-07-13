@@ -7,7 +7,7 @@ import { mainWindow } from "./window.js"
 
 let tray: Tray | null = null
 
-function loadTrayIcon() {
+async function loadTrayIcon() {
   const candidatePaths = [
     path.join(__dirname, "../../public/icon.ico"),
     path.join(__dirname, "../../public/logo.svg"),
@@ -25,22 +25,34 @@ function loadTrayIcon() {
     }
   }
 
+  try {
+    const executableIcon = await app.getFileIcon(process.execPath)
+
+    if (!executableIcon.isEmpty()) {
+      return executableIcon
+    }
+  } catch (error) {
+    console.warn(`Failed to load the executable icon at ${process.execPath}.`, error)
+  }
+
   return null
 }
 
-export function createTray() {
+export async function createTray() {
   const window = mainWindow
 
   if (tray || !window) return
 
-  const trayIcon = loadTrayIcon()
+  const trayIcon = await loadTrayIcon()
 
   if (!trayIcon) {
     console.error(
-      "Failed to load a tray icon from public/icon.ico or public/logo.svg."
+      "Failed to load a tray icon from public assets or the app executable."
     )
     return
   }
+
+  if (tray || window.isDestroyed()) return
 
   tray = new Tray(trayIcon)
   tray.setToolTip(app.getName())

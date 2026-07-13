@@ -35,6 +35,7 @@ function openExternalHttpUrl(urlString: string) {
 // createWindow 함수는 렌더러 URL을 로드하는 메인 창을 만든다.
 export function createWindow(rendererUrl: string) {
   const preloadPath = path.join(__dirname, "preload.js")
+  const windowIconPath = path.join(__dirname, "../../public/icon.ico")
 
   if (!existsSync(preloadPath)) {
     console.error(`Preload script not found at ${preloadPath}.`)
@@ -46,7 +47,7 @@ export function createWindow(rendererUrl: string) {
     height: 600,
     frame: false,
     resizable: isDev,
-    icon: path.join(__dirname, "../../public/icon.ico"),
+    ...(existsSync(windowIconPath) ? { icon: windowIconPath } : {}),
     webPreferences: {
       nodeIntegration: false,
       sandbox: true,

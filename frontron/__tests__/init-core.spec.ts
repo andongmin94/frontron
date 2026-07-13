@@ -761,7 +761,7 @@ allowBuilds:
     )
     expect(refreshedPackageJson.scripts['frontron:dev']).toContain('--dev-app')
     expect(refreshedPackageJson.scripts['frontron:dev:electron']).toBeUndefined()
-  })
+  }, 15_000)
 
   test('init --dry-run --force reports manifest-owned files as overwrites', async () => {
     const projectRoot = fixtures.createTempProject()

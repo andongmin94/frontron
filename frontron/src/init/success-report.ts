@@ -1,5 +1,4 @@
 import type { InitConfig } from './shared'
-import { usesStarterBridge } from './shared'
 import { resolveDevServerUrl } from './runtime/renderers'
 
 type InitSuccessOutput = {
@@ -8,14 +7,8 @@ type InitSuccessOutput = {
 
 // createSummary 함수는 init 완료 후 보여줄 핵심 설정 요약 줄을 만든다.
 export function createSummary(config: InitConfig) {
-  const templateSummary =
-    config.templateInfo.source === 'create-frontron'
-      ? `create-frontron${config.templateInfo.packageVersion ? `@${config.templateInfo.packageVersion}` : ''}${
-          config.templateInfo.resolvedFrom ? ` (${config.templateInfo.resolvedFrom})` : ''
-        }`
-      : 'frontron minimal'
+  const templateSummary = `create-frontron@${config.templateInfo.packageVersion} (${config.templateInfo.resolvedFrom})`
   const lines = [
-    `- preset: ${config.preset}`,
     `- Electron template: ${templateSummary}`,
     `- adapter: ${config.adapter}`,
     `- adapter confidence: ${config.adapterConfidence}`,
@@ -29,9 +22,7 @@ export function createSummary(config: InitConfig) {
     `- desktop package script: ${config.packageScript}`,
     `- frontend output: ${config.outDir}`,
     `- package manager: ${config.packageManager}`,
-    usesStarterBridge(config.preset)
-      ? '- preload bridge: window.electron'
-      : '- preload bridge: disabled',
+    '- preload bridge: window.electron',
   ]
 
   if (config.runtimeStrategy === 'node-server') {
@@ -58,7 +49,7 @@ export function writeInitSuccessReport(
   config: InitConfig,
   scriptFallbackWarnings: string[],
 ) {
-  output.info(`[Frontron] Added the ${config.preset} Electron retrofit layer.`)
+  output.info('[Frontron] Added the create-frontron Electron retrofit layer.')
   output.info(createSummary(config))
 
   if (scriptFallbackWarnings.length > 0) {

@@ -5,44 +5,36 @@ import type { PackageJsonOwnershipClaim } from './manifest'
 import { createDesktopScriptCommands } from './package-json'
 import {
   renderElectronPackageSource,
-  renderMainSource,
   renderServeSource,
   renderTsconfigSource,
-  renderWindowSource,
 } from './runtime/renderers'
 import {
+  listCreateFrontronElectronFiles,
   readCreateFrontronTemplateFile,
   renderCreateFrontronElectronFile,
 } from './runtime/create-frontron-template'
 import type { InitConfig } from './shared'
-import { usesStarterBridge } from './shared'
 import type { YarnRcOwnershipClaim } from './yarnrc-yaml'
-
-const STARTER_ELECTRON_FILES = ['preload.ts', 'ipc.ts', 'dev.ts', 'splash.ts', 'tray.ts'] as const
 
 // createInitFileSources 함수는 init이 새 프로젝트에 쓸 Electron 관련 파일 소스를 만든다.
 export function createInitFileSources(config: InitConfig) {
   const filesToWrite = new Map<string, string>([
-    [join(config.cwd, config.desktopDir, 'main.ts'), renderMainSource(config.preset)],
-    [join(config.cwd, config.desktopDir, 'window.ts'), renderWindowSource(config.preset)],
     [join(config.cwd, config.desktopDir, 'serve.ts'), renderServeSource(config)],
     [join(config.cwd, config.desktopDir, 'package.json'), renderElectronPackageSource()],
     [join(config.cwd, 'tsconfig.electron.json'), renderTsconfigSource(config.desktopDir)],
   ])
 
-  if (usesStarterBridge(config.preset)) {
-    for (const fileName of STARTER_ELECTRON_FILES) {
-      filesToWrite.set(
-        join(config.cwd, config.desktopDir, fileName),
-        renderCreateFrontronElectronFile(fileName),
-      )
-    }
-
+  for (const fileName of listCreateFrontronElectronFiles()) {
     filesToWrite.set(
-      join(config.cwd, 'src', 'types', 'electron.d.ts'),
-      readCreateFrontronTemplateFile('src/types/electron.d.ts'),
+      join(config.cwd, config.desktopDir, fileName),
+      renderCreateFrontronElectronFile(fileName),
     )
   }
+
+  filesToWrite.set(
+    join(config.cwd, 'src', 'types', 'electron.d.ts'),
+    readCreateFrontronTemplateFile('src/types/electron.d.ts'),
+  )
 
   return filesToWrite
 }

@@ -53,10 +53,8 @@ export interface InitOptions {
   serverEntry?: string
   productName?: string
   appId?: string
-  preset?: string
 }
 
-export type InitPreset = 'minimal' | 'starter-like'
 export type InitAdapterId =
   | 'generic-static'
   | 'next-export'
@@ -69,14 +67,13 @@ export type InitAdapterId =
 
 export type RuntimeStrategy = 'static-export' | 'node-server'
 export type AdapterConfidence = 'high' | 'medium' | 'low'
-export type InitTemplateSource = 'frontron:minimal' | 'create-frontron'
 export type InitTemplateResolvedFrom = 'env' | 'repo' | 'dependency'
 
 export type InitTemplateInfo = {
-  source: InitTemplateSource
-  packageName?: string
-  packageVersion?: string | null
-  resolvedFrom?: InitTemplateResolvedFrom
+  source: 'create-frontron'
+  packageName: 'create-frontron'
+  packageVersion: string
+  resolvedFrom: InitTemplateResolvedFrom
 }
 
 export type AdapterDetectionResult = {
@@ -129,7 +126,6 @@ export interface InitConfig {
   nodeServerCopyTargets: CopyTarget[]
   productName: string
   appId: string
-  preset: InitPreset
   templateInfo: InitTemplateInfo
   allowExtraMetadataMainOverride: boolean
 }
@@ -140,7 +136,6 @@ export const TYPESCRIPT_VERSION = '~6.0.2'
 export const NODE_TYPES_VERSION = '^25.5.0'
 export const ESBUILD_VERSION = '^0.28.0'
 
-export const VALID_PRESETS: readonly InitPreset[] = ['minimal', 'starter-like']
 export const VALID_ADAPTERS: readonly InitAdapterId[] = [
   'generic-static',
   'next-export',
@@ -201,20 +196,6 @@ export function createDefaultAppId(packageName: string) {
   return `com.local.${slug}`
 }
 
-// normalizePresetValue 함수는 preset 입력값을 검증하고 표준 preset 값으로 정규화한다.
-export function normalizePresetValue(
-  value: string | undefined,
-  fallback: InitPreset = 'minimal',
-): InitPreset {
-  const normalized = normalizeValue(value ?? fallback, fallback).toLowerCase() as InitPreset
-
-  if (VALID_PRESETS.includes(normalized)) {
-    return normalized
-  }
-
-  throw new Error(`Unknown preset "${value}". Expected "minimal" or "starter-like".`)
-}
-
 // normalizeAdapterValue 함수는 어댑터 입력값을 검증하고 표준 어댑터 ID로 정규화한다.
 export function normalizeAdapterValue(
   value: string | undefined,
@@ -229,11 +210,6 @@ export function normalizeAdapterValue(
   throw new Error(
     `Unknown adapter "${value}". Expected "generic-static", "next-export", "next-standalone", "nuxt-node-server", "remix-node-server", "sveltekit-static", "sveltekit-node", or "generic-node-server".`,
   )
-}
-
-// usesStarterBridge 함수는 선택한 preset이 create-frontron 기반 파일을 쓰는지 확인한다.
-export function usesStarterBridge(preset: InitPreset) {
-  return preset === 'starter-like'
 }
 
 type PackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun'

@@ -165,6 +165,29 @@ afterEach(() => {
 })
 
 describe('runCreateFrontron branch coverage', () => {
+  test('retries a transient template file copy lock', async () => {
+    const workspace = createWorkspace('transient-template-copy')
+    const root = join(workspace, 'app')
+    const copyFile = fs.copyFileSync.bind(fs)
+    let injectedLock = false
+    process.chdir(workspace)
+
+    vi.spyOn(fs, 'copyFileSync').mockImplementation((source, destination, mode) => {
+      if (!injectedLock) {
+        injectedLock = true
+        throw Object.assign(new Error('injected transient file lock'), { code: 'EBUSY' })
+      }
+
+      return copyFile(source, destination, mode)
+    })
+
+    await runCreateFrontron(['app'])
+
+    expect(injectedLock).toBe(true)
+    expect(existsSync(join(root, 'package.json'))).toBe(true)
+    expect(transactionArtifacts(root)).toEqual([])
+  })
+
   test('prints help for both aliases and rejects removed or invalid options', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
 

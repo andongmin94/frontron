@@ -454,6 +454,27 @@ function assertSafeDestination(root: string, targetPath: string, allowFinalLink 
   }
 }
 
+const transientCopyErrorCodes = new Set(['EACCES', 'EBUSY', 'EPERM'])
+const templateCopyAttempts = 5
+
+// copyTemplateFile 함수는 파일 스캐너의 짧은 잠금만 제한 횟수로 재시도한다.
+function copyTemplateFile(src: string, dest: string) {
+  for (let attempt = 1; attempt <= templateCopyAttempts; attempt += 1) {
+    try {
+      fs.copyFileSync(src, dest)
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+
+      if (!transientCopyErrorCodes.has(code ?? '') || attempt === templateCopyAttempts) {
+        throw error
+      }
+
+      sleepSynchronously(25 * attempt)
+    }
+  }
+}
+
 // copyTemplatePath 함수는 템플릿 파일을 복사하되 패키지 밖을 가리킬 수 있는 링크는 거부한다.
 function copyTemplatePath(src: string, dest: string, destinationRoot: string) {
   const stat = fs.lstatSync(src)
@@ -478,7 +499,7 @@ function copyTemplatePath(src: string, dest: string, destinationRoot: string) {
     copyTemplateDirectory(src, dest, destinationRoot)
   } else {
     fs.mkdirSync(path.dirname(dest), { recursive: true })
-    fs.copyFileSync(src, dest)
+    copyTemplateFile(src, dest)
   }
 }
 

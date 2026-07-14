@@ -57,6 +57,12 @@ export type ClaimReadResult = {
   value: unknown
 }
 
+// CleanMissingSourceGuard는 계획 당시 없던 설정 파일과 경로 안전 경계를 기록한다.
+export type CleanMissingSourceGuard = {
+  path: string
+  safetyRoot: string
+}
+
 export type CleanPlan = {
   files: CleanFileChange[]
   scripts: CleanScriptChange[]
@@ -64,6 +70,8 @@ export type CleanPlan = {
   tsconfigJsonChanges: CleanTsconfigJsonChange[]
   pnpmWorkspaceChanges: CleanPnpmWorkspaceChange[]
   yarnRcChanges: CleanYarnRcChange[]
+  sourceHashes: Record<string, string>
+  missingSourceGuards: CleanMissingSourceGuard[]
   warnings: string[]
   blockers: string[]
 }

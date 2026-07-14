@@ -2,7 +2,10 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": [],
   "categories": {
-    "correctness": "off"
+    "correctness": "error"
+  },
+  "rules": {
+    "complexity": ["error", 50]
   },
   "env": {
     "node": true,

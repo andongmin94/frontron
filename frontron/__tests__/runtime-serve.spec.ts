@@ -1,4 +1,5 @@
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { existsSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { request as httpRequest, type IncomingHttpHeaders } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -201,6 +202,45 @@ describe('generated renderer runtime source selection', () => {
     expect(source).not.toContain('function parseByteRange')
     expect(source).not.toContain('RemixBundleMetafile')
     expect(source).not.toContain("require.resolve('@remix-run/serve/package.json')")
+  })
+
+  test('generated Node staging rejects overlapping paths immediately before deletion', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'frontron-overlap-runtime-'))
+    const distElectronDir = join(projectRoot, 'dist-electron')
+    const sourceEntryPath = join(projectRoot, 'build', 'server', 'index.js')
+    const config = createNodeConfig(projectRoot)
+
+    tempDirs.push(projectRoot)
+    mkdirSync(distElectronDir, { recursive: true })
+    mkdirSync(join(projectRoot, 'build', 'server'), { recursive: true })
+    writeFileSync(join(projectRoot, 'package.json'), '{"type":"module"}\n', 'utf8')
+    writeFileSync(sourceEntryPath, 'console.log("source runtime")\n', 'utf8')
+    config.outDir = 'build'
+
+    const source = renderServeSource(config)
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ESNext,
+        target: ts.ScriptTarget.ES2022,
+      },
+      fileName: 'serve.ts',
+    })
+    const servePath = join(distElectronDir, 'serve.js')
+    writeFileSync(servePath, transpiled.outputText, 'utf8')
+
+    const result = spawnSync(process.execPath, [servePath, '--prepare-build'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    })
+
+    expect(source).toContain(
+      'assertDisjointNodeServerRuntimePaths(sourceRuntimeDir, stagedRuntimeDir)\n  rmSync(stagedRuntimeDir',
+    )
+    expect(result.status).toBe(1)
+    expect(`${result.stdout}${result.stderr}`).toContain(
+      'Refusing to stage an overlapping node-server runtime',
+    )
+    expect(existsSync(sourceEntryPath)).toBe(true)
   })
 
   test('Remix Node strategy includes Remix preparation without static code or runtime branches', () => {

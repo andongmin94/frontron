@@ -14,3 +14,28 @@ export function mergePackageJsonClaims(
 
   return [...claims.values()]
 }
+
+// replacePackageJsonClaims 함수는 새 템플릿이 계속 소유하는 claim만 남기고 최초 이전 값은 보존한다.
+export function replacePackageJsonClaims(
+  existingClaims: PackageJsonOwnershipClaim[] = [],
+  nextClaims: PackageJsonOwnershipClaim[] = [],
+) {
+  return nextClaims.map((nextClaim) => {
+    const existingClaim = existingClaims.find((candidate) => {
+      if ((candidate.action ?? 'set') !== (nextClaim.action ?? 'set')) return false
+      if (candidate.path !== nextClaim.path) return false
+
+      return (
+        nextClaim.action !== 'array-value' ||
+        JSON.stringify(candidate.value) === JSON.stringify(nextClaim.value)
+      )
+    })
+
+    return existingClaim
+      ? {
+          ...nextClaim,
+          previous: existingClaim.previous,
+        }
+      : nextClaim
+  })
+}

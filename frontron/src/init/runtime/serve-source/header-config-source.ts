@@ -22,6 +22,7 @@ export function renderServeHeaderAndConfigSource(config: InitConfig, devUrl: str
   const nodeServerConstants = usesNodeServer
     ? `
 const NODE_SERVER_SOURCE_ROOT = readEmbeddedJson<string | null>(${embedJson(config.nodeServerSourceRoot)})
+const NODE_SERVER_SOURCE_ENTRY = readEmbeddedJson<string | null>(${embedJson(config.nodeServerSourceEntry ?? null)})
 const NODE_SERVER_ENTRY = readEmbeddedJson<string | null>(${embedJson(config.nodeServerEntry)})
 const NODE_SERVER_COPY_TARGETS = readEmbeddedJson<Array<{ from: string; to: string }>>(${embedJson(config.nodeServerCopyTargets)})`
     : ''

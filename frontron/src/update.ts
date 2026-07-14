@@ -1,238 +1,251 @@
 import { existsSync, lstatSync, readFileSync } from 'node:fs'
-import { isAbsolute, resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 
-import { createFileHash, MANIFEST_PATH, readManifest } from './init/manifest'
-import { hasOwnString } from './init/package-json-path'
 import { runInit, type InitContext, type InitOptions } from './init'
+import { MANIFEST_PATH, readManifest, type FrontronManifest } from './init/manifest'
+import { inspectManifestClaim } from './init/manifest-claim-status'
+import { readPackageJsonPath } from './init/package-json-path'
+import {
+  findPnpmWorkspaceYamlPath,
+  readPnpmWorkspaceYamlClaimValue,
+} from './init/pnpm-workspace-yaml'
+import type { PackageJson } from './init/shared'
+import { readTsconfigJson } from './init/tsconfig-json'
+import {
+  readYarnRcYamlClaimValue,
+  resolveYarnRcClaimPath,
+  YARN_RC_YAML_PATH,
+} from './init/yarnrc-yaml'
+import { createManifestInitOptions } from './manifest-migration'
+import { inspectManagedFile, inspectManagedScript } from './managed-state'
 import {
   assertProjectPathSafe,
   formatProjectPathBlocker,
   inspectProjectPath,
-  isInsideDirectory,
 } from './project-paths'
 
-type Manifest = NonNullable<ReturnType<typeof readManifest>>
 type UpdateOptions = Pick<InitOptions, 'yes' | 'force' | 'dryRun'>
 
-// resolveManifestProjectFile 함수는 manifest 파일 항목을 링크 없는 프로젝트 내부 경로로 해석한다.
-function resolveManifestProjectFile(cwd: string, filePath: string, label: string) {
-  if (isAbsolute(filePath)) {
-    throw new Error(`${label} must be relative: ${filePath}`)
-  }
-
-  const root = resolve(cwd)
-  const absolutePath = resolve(root, filePath)
-
-  if (!isInsideDirectory(root, absolutePath) || absolutePath === root) {
-    throw new Error(`${label} points outside the project: ${filePath}`)
-  }
-
-  const inspection = inspectProjectPath(root, absolutePath)
-
-  if (!inspection.safe) {
-    throw new Error(formatProjectPathBlocker(root, `${label} (${filePath})`, inspection))
-  }
-
-  return absolutePath
+type UpdateInspection = {
+  localChanges: string[]
+  safetyBlockers: string[]
 }
 
-// collectUpdateLocalEditBlockers 함수는 강제 갱신 전에 manifest 기준과 다른 로컬 파일과 script를 찾는다.
-function collectUpdateLocalEditBlockers(cwd: string, manifest: Manifest) {
-  const blockers: string[] = []
+// claim 검사 결과를 update가 사용자에게 보여 줄 덮어쓰기 사유로 바꾼다.
+function addClaimBlocker(
+  blockers: string[],
+  label: string,
+  claimPath: string,
+  state: ReturnType<typeof inspectManifestClaim>['state'],
+) {
+  if (state === 'unchanged') return
+
+  const reason = state === 'missing' ? 'is missing' : 'has local edits'
+  blockers.push(`Manifest-owned ${label} field ${reason}: ${claimPath}`)
+}
+
+// package.json의 manifest 소유 필드를 현재 값과 비교한다.
+function inspectPackageJsonClaims(
+  manifest: FrontronManifest,
+  packageJson: PackageJson,
+  localChanges: string[],
+) {
+  if (!manifest.packageJsonClaims) {
+    localChanges.push('Legacy manifest has no package.json ownership metadata')
+    return
+  }
+
+  for (const claim of manifest.packageJsonClaims) {
+    const status = inspectManifestClaim(
+      'package.json',
+      claim,
+      readPackageJsonPath(packageJson, claim.path),
+    )
+    addClaimBlocker(localChanges, 'package.json', claim.path, status.state)
+  }
+}
+
+// tsconfig.json의 manifest 소유 필드를 검사한다.
+function inspectTsconfigClaims(
+  cwd: string,
+  manifest: FrontronManifest,
+  localChanges: string[],
+  safetyBlockers: string[],
+) {
+  const claims = manifest.tsconfigJsonClaims ?? []
+  if (claims.length === 0) return
+
+  const path = resolve(cwd, 'tsconfig.json')
+  const inspection = inspectProjectPath(cwd, path)
+
+  if (!inspection.safe) {
+    safetyBlockers.push(formatProjectPathBlocker(cwd, 'tsconfig.json', inspection))
+    return
+  }
+  if (!existsSync(path)) return
+
+  try {
+    const tsconfig = readTsconfigJson(path)
+
+    for (const claim of claims) {
+      const status = inspectManifestClaim(
+        'tsconfig.json',
+        claim,
+        readPackageJsonPath(tsconfig, claim.path),
+      )
+      addClaimBlocker(localChanges, 'tsconfig.json', claim.path, status.state)
+    }
+  } catch {
+    localChanges.push('Manifest-owned tsconfig.json cannot be verified because it is invalid')
+  }
+}
+
+// pnpm-workspace.yaml의 manifest 소유 필드를 검사한다.
+function inspectPnpmWorkspaceClaims(
+  cwd: string,
+  manifest: FrontronManifest,
+  localChanges: string[],
+  safetyBlockers: string[],
+) {
+  const claims = manifest.pnpmWorkspaceClaims ?? []
+  if (claims.length === 0) return
+
+  const path = findPnpmWorkspaceYamlPath(cwd)
+  const root = dirname(path)
+  const inspection = inspectProjectPath(root, path)
+
+  if (!inspection.safe) {
+    safetyBlockers.push(formatProjectPathBlocker(root, 'pnpm-workspace.yaml', inspection))
+    return
+  }
+  if (!existsSync(path)) return
+
+  try {
+    const source = readFileSync(path, 'utf8')
+
+    for (const claim of claims) {
+      const current = readPnpmWorkspaceYamlClaimValue(source, claim.path)
+
+      if (!current.safeToEdit) {
+        safetyBlockers.push(current.blocker ?? 'Cannot safely inspect pnpm-workspace.yaml.')
+        continue
+      }
+
+      const status = inspectManifestClaim('pnpm-workspace.yaml', claim, current)
+      addClaimBlocker(localChanges, 'pnpm-workspace.yaml', claim.path, status.state)
+    }
+  } catch {
+    localChanges.push('Manifest-owned pnpm-workspace.yaml cannot be verified because it is invalid')
+  }
+}
+
+// .yarnrc.yml의 manifest 소유 nodeLinker 값을 검사한다.
+function inspectYarnRcClaims(
+  cwd: string,
+  manifest: FrontronManifest,
+  localChanges: string[],
+  safetyBlockers: string[],
+) {
+  for (const claim of manifest.yarnRcClaims ?? []) {
+    const resolution = resolveYarnRcClaimPath(cwd, claim.file)
+
+    if (!resolution.safe) {
+      safetyBlockers.push(resolution.blocker)
+      continue
+    }
+    if (!existsSync(resolution.path)) continue
+
+    const stats = lstatSync(resolution.path)
+    if (!stats.isFile() || stats.nlink !== 1) {
+      safetyBlockers.push(
+        `Manifest-owned ${YARN_RC_YAML_PATH} must be a regular file with one hard link: ${claim.file}`,
+      )
+      continue
+    }
+
+    const current = readYarnRcYamlClaimValue(readFileSync(resolution.path, 'utf8'))
+    if (!current.safeToEdit) {
+      safetyBlockers.push(current.blocker ?? `Cannot safely inspect ${claim.file}.`)
+      continue
+    }
+
+    const status = inspectManifestClaim(YARN_RC_YAML_PATH, claim, current)
+    addClaimBlocker(localChanges, claim.file, claim.path, status.state)
+  }
+}
+
+// update 직전에 모든 manifest 소유 항목을 동일한 상태 규칙으로 검사한다.
+function inspectUpdateState(cwd: string, manifest: FrontronManifest): UpdateInspection {
+  const localChanges: string[] = []
+  const safetyBlockers: string[] = []
   const packageJsonPath = resolve(cwd, 'package.json')
 
   assertProjectPathSafe(cwd, packageJsonPath, 'package.json')
-
-  const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
-    scripts?: Record<string, string>
-  }
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as PackageJson
 
   for (const filePath of new Set(manifest.createdFiles)) {
-    if (filePath === MANIFEST_PATH) {
-      continue
-    }
+    if (filePath === MANIFEST_PATH) continue
 
-    const label = filePath.endsWith('/serve.ts') ? 'Manifest serve entry' : 'Manifest file entry'
-    const absolutePath = resolveManifestProjectFile(cwd, filePath, label)
+    const inspection = inspectManagedFile(cwd, filePath, manifest.fileHashes?.[filePath])
 
-    if (!existsSync(absolutePath)) {
-      continue
-    }
-
-    const stats = lstatSync(absolutePath)
-
-    if (!stats.isFile()) {
-      throw new Error(`Manifest file entry is not a regular file: ${filePath}`)
-    }
-
-    const expectedHash = manifest.fileHashes?.[filePath]
-
-    if (!expectedHash) {
-      blockers.push(`Manifest-owned file has no recorded hash: ${filePath}`)
-      continue
-    }
-
-    if (createFileHash(readFileSync(absolutePath)) !== expectedHash) {
-      blockers.push(`Manifest-owned file has local edits: ${filePath}`)
+    if (inspection.state === 'unsafe') {
+      safetyBlockers.push(inspection.blocker ?? `Manifest file entry is unsafe: ${filePath}`)
+    } else if (inspection.state === 'modified') {
+      localChanges.push(`Manifest-owned file has local edits: ${filePath}`)
+    } else if (inspection.state === 'unverifiable') {
+      localChanges.push(`Manifest-owned file has no recorded hash: ${filePath}`)
     }
   }
 
   for (const scriptName of new Set(manifest.scripts)) {
-    if (!hasOwnString(packageJson.scripts, scriptName)) {
-      continue
-    }
+    const state = inspectManagedScript(packageJson.scripts, manifest.scriptCommands, scriptName)
 
-    if (!hasOwnString(manifest.scriptCommands, scriptName)) {
-      blockers.push(`Manifest-owned script has no recorded command: ${scriptName}`)
-      continue
-    }
-
-    if (packageJson.scripts?.[scriptName] !== manifest.scriptCommands?.[scriptName]) {
-      blockers.push(`Manifest-owned script has local edits: ${scriptName}`)
+    if (state === 'modified') {
+      localChanges.push(`Manifest-owned script has local edits: ${scriptName}`)
+    } else if (state === 'unverifiable') {
+      localChanges.push(`Manifest-owned script has no recorded command: ${scriptName}`)
     }
   }
 
-  return blockers
-}
-
-// inferDesktopDirFromManifest 함수는 manifest의 생성 파일 목록에서 Electron 소스 디렉터리를 추론한다.
-function inferDesktopDirFromManifest(manifest: Manifest) {
-  const mainFile = manifest.createdFiles.find((filePath) => filePath.endsWith('/main.ts'))
-
-  if (!mainFile) {
-    return undefined
-  }
-
-  const directory = mainFile.slice(0, -'/main.ts'.length)
-
-  return directory || undefined
-}
-
-// stripPackageGlob 함수는 패키징 glob에서 원래 디렉터리 경로를 분리한다.
-function stripPackageGlob(value: string) {
-  return value.endsWith('{,/**/*}') ? value.slice(0, -'{,/**/*}'.length) : value
-}
-
-// inferOutDirFromManifest 함수는 manifest의 package.json 소유권 기록에서 렌더러 출력 경로를 추론한다.
-function inferOutDirFromManifest(manifest: Manifest) {
-  for (const claim of manifest.packageJsonClaims ?? []) {
-    if (
-      claim.path !== 'build.files' ||
-      claim.action !== 'array-value' ||
-      typeof claim.value !== 'string'
-    ) {
-      continue
-    }
-
-    const outDir = stripPackageGlob(claim.value)
-
-    if (outDir !== 'dist-electron' && outDir !== 'package.json') {
-      return outDir
-    }
-  }
-
-  return undefined
-}
-
-// readServeSource 함수는 manifest가 가리키는 생성된 serve.ts 원문을 안전하게 읽는다.
-function readServeSource(cwd: string, manifest: Manifest) {
-  const serveFile = manifest.createdFiles.find((filePath) => filePath.endsWith('/serve.ts'))
-
-  if (!serveFile) {
-    return null
-  }
-
-  const servePath = resolveManifestProjectFile(cwd, serveFile, 'Manifest serve entry')
-
-  return existsSync(servePath) ? readFileSync(servePath, 'utf8') : null
-}
-
-// readEmbeddedJson 함수는 생성된 serve.ts에 박힌 JSON 상수 값을 읽는다.
-function readEmbeddedJson(source: string | null, name: string) {
-  const match = source?.match(
-    new RegExp(`const ${name} = readEmbeddedJson<[^>]+>\\((\"(?:\\\\.|[^\"])*\")\\)`),
-  )
-  const encodedValue = match?.[1]
-
-  if (!encodedValue) {
-    return undefined
-  }
-
-  try {
-    return JSON.parse(JSON.parse(encodedValue)) as unknown
-  } catch {
-    return undefined
-  }
-}
-
-// readEmbeddedString 함수는 생성된 serve.ts에서 문자열 상수 값을 읽는다.
-function readEmbeddedString(source: string | null, name: string) {
-  const value = readEmbeddedJson(source, name)
-
-  return typeof value === 'string' ? value : undefined
-}
-
-// readEmbeddedNullableString 함수는 생성된 serve.ts에서 문자열 또는 null 상수 값을 읽는다.
-function readEmbeddedNullableString(source: string | null, name: string) {
-  const value = readEmbeddedJson(source, name)
-
-  return value === null || typeof value === 'string' ? value : undefined
-}
-
-// createManifestOptions 함수는 기존 manifest와 생성된 serve.ts에서 update에 재사용할 init 옵션을 복원한다.
-function createManifestOptions(manifest: Manifest, cwd: string): Partial<InitOptions> {
-  const serveSource = readServeSource(cwd, manifest)
+  inspectPackageJsonClaims(manifest, packageJson, localChanges)
+  inspectTsconfigClaims(cwd, manifest, localChanges, safetyBlockers)
+  inspectPnpmWorkspaceClaims(cwd, manifest, localChanges, safetyBlockers)
+  inspectYarnRcClaims(cwd, manifest, localChanges, safetyBlockers)
 
   return {
-    adapter: manifest.adapter,
-    desktopDir: manifest.desktopDir ?? inferDesktopDirFromManifest(manifest),
-    appScript: manifest.appScript ?? manifest.scripts[0],
-    buildScript: manifest.buildScript ?? manifest.scripts[1],
-    packageScript: manifest.packageScript ?? manifest.scripts[2],
-    webDevScript: manifest.webDevScript ?? readEmbeddedString(serveSource, 'WEB_DEV_SCRIPT'),
-    webBuildScript: manifest.webBuildScript,
-    outDir:
-      manifest.outDir ??
-      readEmbeddedString(serveSource, 'WEB_OUT_DIR') ??
-      inferOutDirFromManifest(manifest),
-    serverRoot:
-      manifest.nodeServerSourceRoot ??
-      readEmbeddedNullableString(serveSource, 'NODE_SERVER_SOURCE_ROOT') ??
-      undefined,
-    serverEntry:
-      manifest.nodeServerEntry ??
-      readEmbeddedNullableString(serveSource, 'NODE_SERVER_ENTRY') ??
-      undefined,
-    productName: manifest.productName,
-    appId: manifest.appId,
+    localChanges: [...new Set(localChanges)],
+    safetyBlockers: [...new Set(safetyBlockers)],
   }
 }
 
-// runUpdate 함수는 manifest 설정을 바탕으로 Frontron 생성 파일과 설정을 갱신한다.
+// manifest 설정을 유지하면서 생성 파일과 프로젝트 설정을 최신 템플릿으로 갱신한다.
 export async function runUpdate(options: UpdateOptions, context: InitContext) {
   const manifestPath = resolve(context.cwd, MANIFEST_PATH)
-
   assertProjectPathSafe(context.cwd, manifestPath, 'Frontron manifest')
 
   const manifest = readManifest(context.cwd)
-
   if (!manifest) {
     throw new Error(`${MANIFEST_PATH} was not found. Run "frontron init" before update.`)
   }
 
-  const localEditBlockers = collectUpdateLocalEditBlockers(context.cwd, manifest)
+  const inspection = inspectUpdateState(context.cwd, manifest)
 
-  if (localEditBlockers.length > 0 && !options.force) {
+  if (inspection.safetyBlockers.length > 0) {
     throw new Error(
-      `Update aborted because manifest-owned local changes would be overwritten: ${localEditBlockers.join('; ')}. Re-run with --force to replace them.`,
+      `Update aborted because managed paths are unsafe: ${inspection.safetyBlockers.join('; ')}`,
+    )
+  }
+
+  if (inspection.localChanges.length > 0 && !options.force) {
+    throw new Error(
+      `Update aborted because manifest-owned local changes would be overwritten: ${inspection.localChanges.join('; ')}. Re-run with --force to replace them.`,
     )
   }
 
   const shouldApply = options.yes && !options.dryRun
-  const manifestOptions = createManifestOptions(manifest, context.cwd)
   const exitCode = await runInit(
     {
-      ...manifestOptions,
+      ...createManifestInitOptions(manifest, context.cwd),
       yes: true,
       force: true,
       dryRun: !shouldApply,

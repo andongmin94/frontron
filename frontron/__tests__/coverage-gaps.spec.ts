@@ -19,6 +19,7 @@ import { runCli } from '../src/cli'
 import { parseJsonc } from '../src/init/jsonc'
 import type { FrontronManifest, PackageJsonOwnershipClaim } from '../src/init/manifest'
 import { createReadlinePrompter } from '../src/init/prompts'
+import { previewTsconfigJsonPatch } from '../src/init/tsconfig-json'
 import {
   assertProjectPathSafe,
   formatProjectPathBlocker,
@@ -123,7 +124,7 @@ describe('public CLI recovery and output paths', () => {
     expect(readFileSync(journalPath, 'utf8')).toBe(journalSource)
   })
 
-  test('the readline prompter trims text and honors default, yes, and no answers', async () => {
+  test('the readline prompter trims text and honors the default answer', async () => {
     const stdin = new PassThrough()
     const stdout = new PassThrough()
     const prompter = createReadlinePrompter(stdin, stdout)
@@ -135,22 +136,6 @@ describe('public CLI recovery and output paths', () => {
     const defaultTextAnswer = prompter.text('Output directory', 'dist-web')
     stdin.write('   \n')
     expect(await defaultTextAnswer).toBe('dist-web')
-
-    const defaultConfirmation = prompter.confirm('Apply changes', true)
-    stdin.write('\n')
-    expect(await defaultConfirmation).toBe(true)
-
-    const yesConfirmation = prompter.confirm('Apply changes', false)
-    stdin.write('YES\n')
-    expect(await yesConfirmation).toBe(true)
-
-    const shortYesConfirmation = prompter.confirm('Apply changes', false)
-    stdin.write('y\n')
-    expect(await shortYesConfirmation).toBe(true)
-
-    const noConfirmation = prompter.confirm('Apply changes', true)
-    stdin.write('no\n')
-    expect(await noConfirmation).toBe(false)
 
     prompter.close()
   })
@@ -243,7 +228,9 @@ describe('update recovery and manifest validation', () => {
     delete legacy.webDevScript
     delete legacy.outDir
     delete legacy.nodeServerSourceRoot
+    delete legacy.nodeServerSourceEntry
     delete legacy.nodeServerEntry
+    legacy.schemaVersion = 1
     writeProjectManifest(projectRoot, legacy)
 
     const exitCode = await runCli(['update', '--yes', '--force'], fixtures.createOutput(), {
@@ -285,6 +272,7 @@ describe('update recovery and manifest validation', () => {
 
     delete legacy.webDevScript
     delete legacy.outDir
+    legacy.schemaVersion = 1
     legacy.packageJsonClaims = [...reservedClaims, ...(legacy.packageJsonClaims ?? [])]
     writeProjectManifest(projectRoot, legacy)
     rmSync(servePath)
@@ -315,6 +303,7 @@ describe('update recovery and manifest validation', () => {
       throw new Error('Expected initialized ownership metadata')
     }
 
+    manifest.schemaVersion = 1
     delete manifest.fileHashes[ownedFile]
     delete manifest.scriptCommands?.[scriptWithoutCommand]
     writeProjectManifest(projectRoot, manifest)
@@ -337,7 +326,7 @@ describe('update recovery and manifest validation', () => {
     expect(readFileSync(packageJsonPath, 'utf8')).toBe(packageJsonBefore)
   })
 
-  test('update rejects manifest-owned paths that are absolute or not regular files', async () => {
+  test('update rejects absolute and out-of-scope generated file claims during parsing', async () => {
     const absoluteProject = fixtures.createTempProject()
     const directoryProject = fixtures.createTempProject()
     fixtures.tempDirs.push(absoluteProject, directoryProject)
@@ -345,21 +334,28 @@ describe('update recovery and manifest validation', () => {
     await initializeProject(directoryProject)
 
     const absoluteManifest = readProjectManifest(absoluteProject)
-    absoluteManifest.createdFiles.unshift(join(absoluteProject, 'electron', 'main.ts'))
+    const absoluteEntry = join(absoluteProject, 'electron', 'main.ts')
+    absoluteManifest.createdFiles.unshift(absoluteEntry)
+    absoluteManifest.fileHashes = {
+      ...absoluteManifest.fileHashes,
+      [absoluteEntry]: '0'.repeat(64),
+    }
     writeProjectManifest(absoluteProject, absoluteManifest)
     const absoluteOutput = fixtures.createOutput()
 
     expect(
       await runCli(['update', '--yes', '--force'], absoluteOutput, { cwd: absoluteProject }),
     ).toBe(1)
-    expect(absoluteOutput.error.mock.calls.flat().join('\n')).toContain('must be relative')
+    expect(absoluteOutput.error.mock.calls.flat().join('\n')).toContain(
+      '.frontron/manifest.json is invalid.',
+    )
 
     const directoryManifest = readProjectManifest(directoryProject)
     mkdirSync(join(directoryProject, 'owned-directory'))
     directoryManifest.createdFiles.unshift('owned-directory')
     directoryManifest.fileHashes = {
       ...directoryManifest.fileHashes,
-      'owned-directory': 'not-a-file-hash',
+      'owned-directory': '0'.repeat(64),
     }
     writeProjectManifest(directoryProject, directoryManifest)
     const directoryOutput = fixtures.createOutput()
@@ -367,10 +363,13 @@ describe('update recovery and manifest validation', () => {
     expect(
       await runCli(['update', '--yes', '--force'], directoryOutput, { cwd: directoryProject }),
     ).toBe(1)
-    expect(directoryOutput.error.mock.calls.flat().join('\n')).toContain('not a regular file')
+    expect(directoryOutput.error.mock.calls.flat().join('\n')).toContain(
+      '.frontron/manifest.json is invalid.',
+    )
+    expect(existsSync(join(directoryProject, 'owned-directory'))).toBe(true)
   })
 
-  test('update refuses to follow a manifest-owned path through a junction', async () => {
+  test('update rejects an out-of-scope generated file claim before following a junction', async () => {
     const projectRoot = fixtures.createTempProject()
     const outsideRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot, outsideRoot)
@@ -386,13 +385,15 @@ describe('update recovery and manifest validation', () => {
     manifest.createdFiles.unshift('linked/external.ts')
     manifest.fileHashes = {
       ...manifest.fileHashes,
-      'linked/external.ts': 'not-relevant',
+      'linked/external.ts': '0'.repeat(64),
     }
     writeProjectManifest(projectRoot, manifest)
     const output = fixtures.createOutput()
 
     expect(await runCli(['update', '--yes', '--force'], output, { cwd: projectRoot })).toBe(1)
-    expect(output.error.mock.calls.flat().join('\n')).toContain('symbolic link or junction')
+    expect(output.error.mock.calls.flat().join('\n')).toContain(
+      '.frontron/manifest.json is invalid.',
+    )
     expect(readFileSync(join(outsideRoot, 'external.ts'), 'utf8')).toBe('outside\n')
   })
 })
@@ -408,7 +409,7 @@ describe('doctor diagnostics for recoverable project damage', () => {
     expect(output.error.mock.calls.flat().join('\n')).toContain('package.json was not found')
   })
 
-  test('doctor combines legacy warnings with unsafe, missing, and invalid project state', async () => {
+  test('doctor rejects forged legacy generated file claims before project diagnostics', async () => {
     const projectRoot = fixtures.createTempProject()
     const outsideRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot, outsideRoot)
@@ -423,6 +424,7 @@ describe('doctor diagnostics for recoverable project damage', () => {
     )
 
     const manifest = readProjectManifest(projectRoot)
+    manifest.schemaVersion = 1
     delete manifest.fileHashes
     delete manifest.scriptCommands
     delete manifest.packageJsonClaims
@@ -475,26 +477,11 @@ describe('doctor diagnostics for recoverable project damage', () => {
 
     const output = fixtures.createOutput()
     const exitCode = await runCli(['doctor'], output, { cwd: projectRoot })
-    const report = output.info.mock.calls.flat().join('\n')
+    const report = output.error.mock.calls.flat().join('\n')
 
     expect(exitCode).toBe(1)
-    expect(report).toContain('Status: blocked')
-    expect(report).toContain('does not include file hashes')
-    expect(report).toContain('does not include script commands')
-    expect(report).toContain('does not include package.json ownership')
-    expect(report).toContain('tsconfig.json is missing')
-    expect(report).toContain('pnpm-workspace.yaml is missing')
-    expect(report).toContain('does not include create-frontron template metadata')
-    expect(report).toContain('Manifest file entry must be relative')
-    expect(report).toContain('Manifest file entry points outside the project')
-    expect(report).toContain('symbolic link or junction')
-    expect(report).toContain('not a regular file')
-    expect(report).toContain(`Missing package.json script: ${manifest.scripts[0]}`)
-    expect(report).toContain('package.json version must be a valid SemVer value')
-    expect(report).toContain('Remix packaging requires @remix-run/serve')
-    expect(report).toContain('Remix packaging requires esbuild')
-    expect(report).toContain('build.extraMetadata.main must point to dist-electron/main.js')
-    expect(report).toContain('Missing tsconfig.electron.json')
+    expect(report).toContain('.frontron/manifest.json is invalid.')
+    expect(existsSync(join(projectRoot, '.frontron', 'manifest.json'))).toBe(true)
   })
 
   test('doctor distinguishes missing ownership entries from local edits', async () => {
@@ -512,6 +499,7 @@ describe('doctor diagnostics for recoverable project damage', () => {
       throw new Error('Expected initialized ownership metadata')
     }
 
+    manifest.schemaVersion = 1
     delete manifest.fileHashes[ownedFile]
     delete manifest.scriptCommands[ownedScript]
     writeProjectManifest(projectRoot, manifest)
@@ -519,8 +507,8 @@ describe('doctor diagnostics for recoverable project damage', () => {
 
     expect(await runCli(['doctor'], output, { cwd: projectRoot })).toBe(0)
     const report = output.info.mock.calls.flat().join('\n')
-    expect(report).toContain(`Manifest file hash is missing for: ${ownedFile}`)
-    expect(report).toContain(`Manifest script command is missing for: ${ownedScript}`)
+    expect(report).toContain(`Manifest-owned file has no recorded hash: ${ownedFile}`)
+    expect(report).toContain(`Manifest-owned script has no recorded command: ${ownedScript}`)
   })
 
   test('doctor checks valid, locally edited, and malformed tsconfig ownership', async () => {
@@ -551,6 +539,41 @@ describe('doctor diagnostics for recoverable project damage', () => {
 })
 
 describe('tsconfig JSONC public transformations', () => {
+  test('rejects invalid JSONC instead of accepting the parser recovery result', () => {
+    expect(() => parseJsonc('[1/*gap*/2]')).toThrow('CommaExpected')
+  })
+
+  test('keeps the JSON.parse-compatible object contract', () => {
+    const parsed = parseJsonc<{ compilerOptions: object }>('{"compilerOptions": {}}')
+
+    expect(Object.getPrototypeOf(parsed)).toBe(Object.prototype)
+    expect(Object.getPrototypeOf(parsed.compilerOptions)).toBe(Object.prototype)
+  })
+
+  test('reports duplicate exclude properties as an explicit planning blocker', () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    writeFileSync(join(projectRoot, 'tsconfig.json'), '{"exclude": [], "exclude": []}\n')
+
+    const plan = previewTsconfigJsonPatch(projectRoot, 'electron')
+
+    expect(plan?.blockers).toEqual(['tsconfig.json contains duplicate "exclude" properties.'])
+    expect(plan?.changes).toEqual([])
+  })
+
+  test('rejects duplicate exclude properties before init or clean edits', () => {
+    const source = '{"exclude": [], "exclude": []}'
+
+    expect(() => addTsconfigExcludeValues(source, ['electron'])).toThrow(
+      'tsconfig.json contains duplicate "exclude" properties.',
+    )
+    expect(() =>
+      restoreTsconfigJsonClaims(source, [
+        ownershipClaim('electron', { state: 'value', value: [] }),
+      ]),
+    ).toThrow('tsconfig.json contains duplicate "exclude" properties.')
+  })
+
   test.each([
     ['compact empty object', '{}'],
     ['compact property', '{"compilerOptions": {}}'],
@@ -599,6 +622,16 @@ describe('tsconfig JSONC public transformations', () => {
     ])
 
     expect(parseTsconfig(restored).exclude).toEqual(['user-cache'])
+  })
+
+  test('clean preserves a user comment between an owned value and the next value', () => {
+    const source = '{"exclude":["electron" /* keep, note */, "coverage"]}'
+    const restored = restoreTsconfigJsonClaims(source, [
+      ownershipClaim('electron', { state: 'value', value: [] }),
+    ])
+
+    expect(parseTsconfig(restored).exclude).toEqual(['coverage'])
+    expect(restored).toContain('/* keep, note */')
   })
 
   test.each([

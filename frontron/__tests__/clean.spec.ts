@@ -3,6 +3,7 @@ import {
   mkdirSync,
   readFileSync,
   renameSync,
+  rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
@@ -235,6 +236,121 @@ allowBuilds:
     expect(pnpmWorkspaceSource).toContain('  esbuild: false')
     expect(pnpmWorkspaceSource).toContain('  electron: set this to true or false')
     expect(pnpmWorkspaceSource).not.toContain('electron-winstaller')
+  })
+
+  test('clean --force blocks an unsafe pnpm workspace and preserves the manifest', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      packageManager?: string
+    }
+    const workspacePath = join(projectRoot, 'pnpm-workspace.yaml')
+
+    packageJson.packageManager = 'pnpm@11.1.2'
+    writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
+    writeFileSync(workspacePath, 'packages:\n  - apps/*\n')
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const unsafeSource =
+      'packages: ["apps/*"]\nallowBuilds: { electron: true, electron-winstaller: true }\n'
+    const packageJsonBefore = readFileSync(packageJsonPath, 'utf8')
+    writeFileSync(workspacePath, unsafeSource)
+    const output = fixtures.createOutput()
+    const cleanExitCode = await runCli(['clean', '--yes', '--force'], output, {
+      cwd: projectRoot,
+    })
+    const combined = output.info.mock.calls.flat().join('\n')
+
+    expect(cleanExitCode).toBe(1)
+    expect(combined).toContain('Cannot safely edit pnpm-workspace.yaml')
+    expect(combined).not.toContain('pnpm-workspace.yaml field is already missing')
+    expect(combined).toContain('No changes were written because blockers were found.')
+    expect(readFileSync(workspacePath, 'utf8')).toBe(unsafeSource)
+    expect(readFileSync(packageJsonPath, 'utf8')).toBe(packageJsonBefore)
+    expect(existsSync(join(projectRoot, '.frontron', 'manifest.json'))).toBe(true)
+    expect(existsSync(join(projectRoot, 'electron', 'main.ts'))).toBe(true)
+  })
+
+  test('clean plan records guards for missing manifest-owned config sources', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const tsconfigPath = join(projectRoot, 'tsconfig.json')
+    const workspacePath = join(projectRoot, 'pnpm-workspace.yaml')
+    const yarnRcPath = join(projectRoot, '.yarnrc.yml')
+    const manifestPath = join(projectRoot, '.frontron', 'manifest.json')
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      packageManager?: string
+    }
+
+    packageJson.packageManager = 'pnpm@11.1.2'
+    writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
+    writeFileSync(tsconfigPath, '{\n  "exclude": ["coverage"]\n}\n')
+    writeFileSync(workspacePath, 'packages:\n  - apps/*\n')
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      yarnRcClaims?: unknown[]
+    }
+    manifest.yarnRcClaims = [
+      {
+        file: '.yarnrc.yml',
+        path: 'nodeLinker',
+        value: 'node-modules',
+        created: false,
+        changed: true,
+        previous: { state: 'value', value: 'pnp', source: 'pnp' },
+      },
+    ]
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+    rmSync(tsconfigPath)
+    rmSync(workspacePath)
+
+    const packageJsonSource = readFileSync(packageJsonPath, 'utf8')
+    const plan = createCleanPlan(
+      projectRoot,
+      JSON.parse(packageJsonSource) as PackageJson,
+      packageJsonSource,
+      { yes: true, force: true },
+    )
+
+    expect(plan.missingSourceGuards).toEqual([
+      { path: tsconfigPath, safetyRoot: projectRoot },
+      { path: workspacePath, safetyRoot: projectRoot },
+      { path: yarnRcPath, safetyRoot: projectRoot },
+    ])
+  })
+
+  test('clean preserves a config file that appears after the plan was created', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const tsconfigPath = join(projectRoot, 'tsconfig.json')
+    const manifestPath = join(projectRoot, '.frontron', 'manifest.json')
+    writeFileSync(tsconfigPath, '{\n  "exclude": ["coverage"]\n}\n')
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    rmSync(tsconfigPath)
+    const packageJsonSource = readFileSync(packageJsonPath, 'utf8')
+    const packageJson = JSON.parse(packageJsonSource) as PackageJson
+    const plan = createCleanPlan(projectRoot, packageJson, packageJsonSource, {
+      yes: true,
+      force: true,
+    })
+    const externalSource = '{\n  "compilerOptions": { "strict": true }\n}\n'
+    writeFileSync(tsconfigPath, externalSource)
+
+    expect(() => applyCleanPlan(projectRoot, packageJsonPath, packageJson, plan)).toThrow(
+      'changed after the transaction plan was created',
+    )
+    expect(readFileSync(tsconfigPath, 'utf8')).toBe(externalSource)
+    expect(readFileSync(packageJsonPath, 'utf8')).toBe(packageJsonSource)
+    expect(existsSync(manifestPath)).toBe(true)
+    expect(existsSync(join(projectRoot, 'electron', 'main.ts'))).toBe(true)
   })
 
   test('clean --yes restores the root pnpm workspace file from a nested package', async () => {
@@ -546,7 +662,7 @@ allowBuilds:
     expect(readFileSync(tsconfigPath, 'utf8')).toBe(originalSource)
   })
 
-  test('clean planning blocks manifest files reached through a parent symbolic link or junction', async () => {
+  test('clean rejects an out-of-scope generated file claim before path inspection', async () => {
     const projectRoot = fixtures.createTempProject()
     const outsideRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot, outsideRoot)
@@ -558,19 +674,21 @@ allowBuilds:
     const manifestPath = join(projectRoot, '.frontron', 'manifest.json')
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
       createdFiles: string[]
+      fileHashes: Record<string, string>
     }
 
     writeFileSync(outsideFile, 'outside data\n')
     symlinkSync(outsideRoot, linkedDirectory, process.platform === 'win32' ? 'junction' : 'dir')
     manifest.createdFiles.push('linked/outside.ts')
+    manifest.fileHashes['linked/outside.ts'] = '0'.repeat(64)
     writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
 
     const output = fixtures.createOutput()
     const exitCode = await runCli(['clean', '--yes'], output, { cwd: projectRoot })
-    const combined = output.info.mock.calls.flat().join('\n')
+    const combined = output.error.mock.calls.flat().join('\n')
 
     expect(exitCode).toBe(1)
-    expect(combined).toContain('symbolic link or junction')
+    expect(combined).toContain('.frontron/manifest.json is invalid.')
     expect(readFileSync(outsideFile, 'utf8')).toBe('outside data\n')
     expect(existsSync(join(projectRoot, 'electron', 'main.ts'))).toBe(true)
     expect(existsSync(manifestPath)).toBe(true)
@@ -630,6 +748,29 @@ allowBuilds:
     expect(existsSync(join(projectRoot, '.frontron', 'manifest.json'))).toBe(true)
   })
 
+  test('clean rejects package.json changes made after planning', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const packageJsonSource = readFileSync(packageJsonPath, 'utf8')
+    const packageJson = JSON.parse(packageJsonSource) as PackageJson
+    const plan = createCleanPlan(projectRoot, packageJson, packageJsonSource, {
+      yes: true,
+      force: false,
+    })
+    const concurrentSource = `${packageJsonSource.trimEnd()}\n `
+    writeFileSync(packageJsonPath, concurrentSource)
+
+    expect(() => applyCleanPlan(projectRoot, packageJsonPath, packageJson, plan)).toThrow(
+      'changed after the transaction plan was created',
+    )
+    expect(readFileSync(packageJsonPath, 'utf8')).toBe(concurrentSource)
+    expect(existsSync(join(projectRoot, '.frontron', 'manifest.json'))).toBe(true)
+  })
+
   test('clean refuses to run without a manifest', async () => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)
@@ -656,20 +797,21 @@ allowBuilds:
     const manifestPath = join(projectRoot, '.frontron', 'manifest.json')
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
       createdFiles: string[]
+      fileHashes: Record<string, string>
     }
     manifest.createdFiles.push('../outside.txt')
+    manifest.fileHashes['../outside.txt'] = '0'.repeat(64)
     writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
 
     const output = fixtures.createOutput()
     const cleanExitCode = await runCli(['clean', '--yes'], output, {
       cwd: projectRoot,
     })
-    const combined = output.info.mock.calls.flat().join('\n')
+    const combined = output.error.mock.calls.flat().join('\n')
 
     expect(cleanExitCode).toBe(1)
     expect(existsSync(join(projectRoot, 'electron', 'main.ts'))).toBe(true)
     expect(existsSync(manifestPath)).toBe(true)
-    expect(combined).toContain('Blockers:')
-    expect(combined).toContain('Manifest file entry points outside the project: ../outside.txt')
+    expect(combined).toContain('.frontron/manifest.json is invalid.')
   })
 })

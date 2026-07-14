@@ -1,416 +1,310 @@
+import {
+  applyEdits,
+  createScanner,
+  modify,
+  SyntaxKind,
+  type Edit,
+  type FormattingOptions,
+  type JSONPath,
+  type ModificationOptions,
+  type Node,
+} from 'jsonc-parser'
+
+import { findUniqueJsoncProperty, parseJsoncTree } from '../init/jsonc'
 import type { PackageJsonOwnershipClaim } from '../init/manifest'
-import { parseJsonc } from '../init/jsonc'
 
-type JsoncToken = {
-  type: 'string' | 'punctuation' | 'literal'
-  value: string
-  start: number
-  end: number
+type TsconfigDocument = {
+  root: Node
+  excludeProperty?: Node
+  excludeArray?: Node
 }
 
-type JsoncProperty = {
-  key: JsoncToken
-  valueStartIndex: number
-  valueEndIndex: number
-  commaBeforeIndex?: number
-  commaAfterIndex?: number
-}
+// jsonc-parser의 트리 offset과 edit API는 원문 전체를 다시 쓰지 않고 exclude 한 곳만 수정하므로 줄바꿈, 들여쓰기, 주석을 보존하기에 적합하다.
 
-type JsoncArrayElement = {
-  tokenIndex: number
-  commaBeforeIndex?: number
-  commaAfterIndex?: number
-}
+// readTsconfigDocument 함수는 유효한 최상위 객체와 하나뿐인 문자열 exclude 배열을 트리로 읽는다.
+function readTsconfigDocument(source: string): TsconfigDocument {
+  let root: Node
 
-type JsoncDocument = {
-  tokens: JsoncToken[]
-  rootOpenIndex: number
-  rootCloseIndex: number
-  properties: JsoncProperty[]
-}
-
-// tokenizeJsonc 함수는 주석과 공백을 건너뛰고 원문 위치를 보존한 JSONC 토큰을 만든다.
-function tokenizeJsonc(source: string) {
-  const tokens: JsoncToken[] = []
-
-  for (let index = 0; index < source.length; ) {
-    const current = source[index]
-    const next = source[index + 1]
-
-    if (/\s/.test(current)) {
-      index += 1
-      continue
-    }
-
-    if (current === '/' && next === '/') {
-      index += 2
-
-      while (index < source.length && source[index] !== '\n' && source[index] !== '\r') {
-        index += 1
-      }
-
-      continue
-    }
-
-    if (current === '/' && next === '*') {
-      const commentEnd = source.indexOf('*/', index + 2)
-
-      if (commentEnd === -1) {
-        throw new Error('tsconfig.json contains an unterminated block comment.')
-      }
-
-      index = commentEnd + 2
-      continue
-    }
-
-    if (current === '"') {
-      const start = index
-      let escaped = false
-      index += 1
-
-      while (index < source.length) {
-        const character = source[index]
-
-        if (escaped) {
-          escaped = false
-        } else if (character === '\\') {
-          escaped = true
-        } else if (character === '"') {
-          index += 1
-          break
-        }
-
-        index += 1
-      }
-
-      if (source[index - 1] !== '"') {
-        throw new Error('tsconfig.json contains an unterminated string.')
-      }
-
-      const rawValue = source.slice(start, index)
-      tokens.push({
-        type: 'string',
-        value: JSON.parse(rawValue) as string,
-        start,
-        end: index,
-      })
-      continue
-    }
-
-    if ('{}[]:,'.includes(current)) {
-      tokens.push({
-        type: 'punctuation',
-        value: current,
-        start: index,
-        end: index + 1,
-      })
-      index += 1
-      continue
-    }
-
-    const start = index
-
-    while (
-      index < source.length &&
-      !/\s/.test(source[index]) &&
-      !'{}[]:,'.includes(source[index]) &&
-      !(source[index] === '/' && (source[index + 1] === '/' || source[index + 1] === '*'))
-    ) {
-      index += 1
-    }
-
-    tokens.push({
-      type: 'literal',
-      value: source.slice(start, index),
-      start,
-      end: index,
-    })
+  try {
+    root = parseJsoncTree(source)
+  } catch (error) {
+    throw new Error(
+      `tsconfig.json could not be parsed as JSON or JSONC: ${(error as Error).message}`,
+      { cause: error },
+    )
   }
 
-  return tokens
-}
-
-// findClosingTokenIndex 함수는 객체나 배열의 여는 토큰과 짝이 되는 닫는 토큰을 찾는다.
-function findClosingTokenIndex(tokens: JsoncToken[], openIndex: number) {
-  const opener = tokens[openIndex]?.value
-  const closer = opener === '{' ? '}' : opener === '[' ? ']' : null
-
-  if (!closer) {
-    return openIndex
-  }
-
-  let depth = 0
-
-  for (let index = openIndex; index < tokens.length; index += 1) {
-    const value = tokens[index].value
-
-    if (value === opener) {
-      depth += 1
-    } else if (value === closer) {
-      depth -= 1
-
-      if (depth === 0) {
-        return index
-      }
-    }
-  }
-
-  throw new Error('tsconfig.json contains an unterminated object or array.')
-}
-
-// readValueEndIndex 함수는 속성 값 하나가 끝나는 토큰 위치를 계산한다.
-function readValueEndIndex(tokens: JsoncToken[], startIndex: number) {
-  const value = tokens[startIndex]?.value
-
-  return value === '{' || value === '[' ? findClosingTokenIndex(tokens, startIndex) : startIndex
-}
-
-// readJsoncDocument 함수는 최상위 객체 속성을 원문 토큰 위치와 함께 읽는다.
-function readJsoncDocument(source: string): JsoncDocument {
-  const tokens = tokenizeJsonc(source)
-  const rootOpenIndex = tokens.findIndex((token) => token.value === '{')
-
-  if (rootOpenIndex === -1) {
+  if (root.type !== 'object') {
     throw new Error('tsconfig.json must contain a top-level object.')
   }
 
-  const rootCloseIndex = findClosingTokenIndex(tokens, rootOpenIndex)
-  const properties: JsoncProperty[] = []
-  let index = rootOpenIndex + 1
-  let commaBeforeIndex: number | undefined
+  const excludeProperty = findUniqueJsoncProperty(root, 'exclude', 'tsconfig.json')
+  const excludeArray = excludeProperty?.children?.[1]
 
-  while (index < rootCloseIndex) {
-    const key = tokens[index]
-
-    if (key.value === ',') {
-      commaBeforeIndex = index
-      index += 1
-      continue
-    }
-
-    if (key.type !== 'string' || tokens[index + 1]?.value !== ':') {
-      throw new Error('tsconfig.json contains an unsupported top-level property.')
-    }
-
-    const valueStartIndex = index + 2
-    const valueEndIndex = readValueEndIndex(tokens, valueStartIndex)
-    const commaAfterIndex = tokens[valueEndIndex + 1]?.value === ',' ? valueEndIndex + 1 : undefined
-
-    properties.push({
-      key,
-      valueStartIndex,
-      valueEndIndex,
-      commaBeforeIndex,
-      commaAfterIndex,
-    })
-
-    index = (commaAfterIndex ?? valueEndIndex) + 1
-    commaBeforeIndex = commaAfterIndex
-  }
-
-  return { tokens, rootOpenIndex, rootCloseIndex, properties }
-}
-
-// readArrayElements 함수는 문자열 배열 원소와 앞뒤 쉼표 위치를 읽는다.
-function readArrayElements(document: JsoncDocument, property: JsoncProperty) {
-  const { tokens } = document
-  const openIndex = property.valueStartIndex
-
-  if (tokens[openIndex]?.value !== '[') {
+  if (
+    excludeProperty &&
+    (excludeArray?.type !== 'array' ||
+      (excludeArray.children ?? []).some((element) => element.type !== 'string'))
+  ) {
     throw new Error('tsconfig.json exclude must remain an array of strings.')
   }
 
-  const closeIndex = findClosingTokenIndex(tokens, openIndex)
-  const elements: JsoncArrayElement[] = []
-  let index = openIndex + 1
-  let commaBeforeIndex: number | undefined
+  return { root, excludeProperty, excludeArray }
+}
 
-  while (index < closeIndex) {
-    const token = tokens[index]
+// detectFormattingOptions 함수는 다중 행 원문의 줄바꿈과 첫 들여쓰기 단위를 edit API에 전달한다.
+function detectFormattingOptions(source: string): FormattingOptions | undefined {
+  const content = source.trimEnd()
 
-    if (token.value === ',') {
-      commaBeforeIndex = index
-      index += 1
-      continue
-    }
-
-    if (token.type !== 'string') {
-      throw new Error('tsconfig.json exclude must remain an array of strings.')
-    }
-
-    const commaAfterIndex = tokens[index + 1]?.value === ',' ? index + 1 : undefined
-    elements.push({ tokenIndex: index, commaBeforeIndex, commaAfterIndex })
-    index = (commaAfterIndex ?? index) + 1
-    commaBeforeIndex = commaAfterIndex
+  if (!/[\r\n]/.test(content)) {
+    return undefined
   }
 
-  return { openIndex, closeIndex, elements }
+  const indent = content.match(/(?:^|\r?\n)([\t ]+)(?=\S)/)?.[1] ?? '  '
+  const insertSpaces = !indent.includes('\t')
+
+  return {
+    insertSpaces,
+    tabSize: insertSpaces ? Math.max(indent.length, 1) : 1,
+    eol: source.includes('\r\n') ? '\r\n' : '\n',
+    keepLines: true,
+  }
 }
 
-// lineIndentAt 함수는 토큰이 있는 줄의 들여쓰기를 반환한다.
-function lineIndentAt(source: string, position: number) {
-  const lineStart =
-    Math.max(source.lastIndexOf('\n', position - 1), source.lastIndexOf('\r', position - 1)) + 1
-  const indent = source.slice(lineStart, position)
+// applyJsoncModification 함수는 modify가 계산한 국소 편집을 적용하고 compact 배열의 기존 쉼표 간격을 유지한다.
+function applyJsoncModification(
+  source: string,
+  path: JSONPath,
+  value: unknown,
+  options: ModificationOptions = {},
+  spaceAfterInsertedComma = false,
+) {
+  const formattingOptions = detectFormattingOptions(source)
+  let edits = modify(source, path, value, { ...options, formattingOptions })
 
-  return /^[\t ]*$/.test(indent) ? indent : ''
+  if (!formattingOptions && spaceAfterInsertedComma) {
+    edits = edits.map((edit) => ({ ...edit, content: edit.content.replace(/^,/, ', ') }))
+  }
+
+  return applyEdits(source, edits)
 }
 
-// lineStartAt 함수는 위치가 속한 줄의 시작 오프셋을 반환한다.
+// findTokenOffset 함수는 jsonc-parser 스캐너로 지정 범위의 실제 구두점 위치만 찾는다.
+function findTokenOffset(source: string, start: number, end: number, kind: SyntaxKind) {
+  const scanner = createScanner(source, true)
+  scanner.setPosition(start)
+
+  for (let token = scanner.scan(); token !== SyntaxKind.EOF; token = scanner.scan()) {
+    if (scanner.getTokenOffset() >= end) {
+      break
+    }
+
+    if (token === kind) {
+      return scanner.getTokenOffset()
+    }
+  }
+
+  return undefined
+}
+
+// hasComment 함수는 지정 범위에 사용자가 남긴 줄 또는 블록 주석이 있는지 확인한다.
+function hasComment(source: string, start: number, end: number) {
+  const scanner = createScanner(source, false)
+  scanner.setPosition(start)
+
+  for (let token = scanner.scan(); token !== SyntaxKind.EOF; token = scanner.scan()) {
+    if (scanner.getTokenOffset() >= end) {
+      break
+    }
+
+    if (token === SyntaxKind.LineCommentTrivia || token === SyntaxKind.BlockCommentTrivia) {
+      return true
+    }
+  }
+
+  return false
+}
+
+// lineStartAt 함수는 위치가 속한 줄의 시작 offset을 반환한다.
 function lineStartAt(source: string, position: number) {
   return (
     Math.max(source.lastIndexOf('\n', position - 1), source.lastIndexOf('\r', position - 1)) + 1
   )
 }
 
-// lineEndAt 함수는 줄바꿈 문자를 포함한 현재 줄의 끝 오프셋을 반환한다.
+// lineEndAt 함수는 현재 줄의 줄바꿈까지 포함한 끝 offset을 반환한다.
 function lineEndAt(source: string, position: number) {
-  const newlineIndex = source.indexOf('\n', position)
-
-  return newlineIndex === -1 ? source.length : newlineIndex + 1
+  const newline = source.indexOf('\n', position)
+  return newline === -1 ? source.length : newline + 1
 }
 
-// detectLineEnding 함수는 원문에서 사용 중인 줄바꿈 형식을 유지한다.
-function detectLineEnding(source: string) {
-  return source.includes('\r\n') ? '\r\n' : '\n'
+// trailingCommaOffset 함수는 배열 마지막 값 뒤의 허용된 trailing comma 위치를 찾는다.
+function trailingCommaOffset(source: string, array: Node) {
+  const lastElement = array.children?.at(-1)
+
+  return lastElement
+    ? findTokenOffset(
+        source,
+        lastElement.offset + lastElement.length,
+        array.offset + array.length - 1,
+        SyntaxKind.CommaToken,
+      )
+    : undefined
 }
 
-// applyTextEdits 함수는 뒤쪽 편집부터 적용해 기존 토큰 위치가 흔들리지 않게 한다.
-function applyTextEdits(
-  source: string,
-  edits: Array<{ start: number; end: number; text: string }>,
-) {
-  let nextSource = source
+// assertPropertyInsertionSafe 함수는 기존 공개 계약대로 닫는 중괄호가 독립 줄이 아닌 다중 행 객체 추가를 거부한다.
+function assertPropertyInsertionSafe(source: string, root: Node) {
+  const closeOffset = root.offset + root.length - 1
 
-  for (const edit of [...edits].sort((left, right) => right.start - left.start)) {
-    nextSource = `${nextSource.slice(0, edit.start)}${edit.text}${nextSource.slice(edit.end)}`
-  }
-
-  return nextSource
-}
-
-// validateJsoncSource 함수는 국소 편집 결과가 여전히 유효한 JSONC인지 확인한다.
-function validateJsoncSource(source: string) {
-  parseJsonc(source)
-  return source
-}
-
-// appendExcludeValues 함수는 기존 exclude 배열의 서식과 trailing comma 스타일을 유지해 값을 추가한다.
-function appendExcludeValues(
-  source: string,
-  document: JsoncDocument,
-  property: JsoncProperty,
-  values: string[],
-) {
-  const { tokens } = document
-  const array = readArrayElements(document, property)
-  const currentValues = new Set(array.elements.map((element) => tokens[element.tokenIndex].value))
-  const missingValues = values.filter((value) => !currentValues.has(value))
-
-  if (missingValues.length === 0) {
-    return source
-  }
-
-  const closeToken = tokens[array.closeIndex]
-  const openToken = tokens[array.openIndex]
-  const lastElement = array.elements.at(-1)
-  const hasTrailingComma = Boolean(lastElement?.commaAfterIndex)
-  const isMultiline = /[\r\n]/.test(source.slice(openToken.end, closeToken.start))
-
-  if (!isMultiline) {
-    const renderedValues = missingValues.map((value) => JSON.stringify(value))
-    const insertion = lastElement
-      ? hasTrailingComma
-        ? `${renderedValues.join(', ')},`
-        : `, ${renderedValues.join(', ')}`
-      : renderedValues.join(', ')
-
-    return `${source.slice(0, closeToken.start)}${insertion}${source.slice(closeToken.start)}`
-  }
-
-  const eol = detectLineEnding(source)
-  const closeLineStart = lineStartAt(source, closeToken.start)
-  const closeIndent = source.slice(closeLineStart, closeToken.start)
-
-  if (!/^[\t ]*$/.test(closeIndent)) {
-    const renderedValues = missingValues.map((value) => JSON.stringify(value)).join(', ')
-    return `${source.slice(0, closeToken.start)}, ${renderedValues}${source.slice(closeToken.start)}`
-  }
-
-  const propertyIndent = lineIndentAt(source, property.key.start)
-  const itemIndent = lastElement
-    ? lineIndentAt(source, tokens[lastElement.tokenIndex].start)
-    : `${propertyIndent}${propertyIndent.includes('\t') ? '\t' : '  '}`
-  const renderedLines = missingValues
-    .map((value, index) => {
-      const comma = hasTrailingComma || index < missingValues.length - 1 ? ',' : ''
-      return `${itemIndent}${JSON.stringify(value)}${comma}${eol}`
-    })
-    .join('')
-  const edits = [
-    {
-      start: closeLineStart,
-      end: closeLineStart,
-      text: renderedLines,
-    },
-  ]
-
-  if (lastElement && !hasTrailingComma) {
-    const lastToken = tokens[lastElement.tokenIndex]
-    edits.push({ start: lastToken.end, end: lastToken.end, text: ',' })
-  }
-
-  return applyTextEdits(source, edits)
-}
-
-// addExcludeProperty 함수는 최상위 객체의 기존 들여쓰기와 trailing comma 스타일로 exclude를 추가한다.
-function addExcludeProperty(source: string, document: JsoncDocument, values: string[]) {
-  const { tokens, properties } = document
-  const rootOpen = tokens[document.rootOpenIndex]
-  const rootClose = tokens[document.rootCloseIndex]
-  const lastProperty = properties.at(-1)
-  const hasTrailingComma = Boolean(lastProperty?.commaAfterIndex)
-  const renderedArray = `[${values.map((value) => JSON.stringify(value)).join(', ')}]`
-  const isMultiline = /[\r\n]/.test(source.slice(rootOpen.end, rootClose.start))
-
-  if (!isMultiline) {
-    const prefix = lastProperty ? (hasTrailingComma ? '' : ', ') : ''
-    const suffix = hasTrailingComma ? ',' : ''
-    const propertySource = `${prefix}"exclude": ${renderedArray}${suffix}`
-
-    return `${source.slice(0, rootClose.start)}${propertySource}${source.slice(rootClose.start)}`
-  }
-
-  const eol = detectLineEnding(source)
-  const closeLineStart = lineStartAt(source, rootClose.start)
-  const closeIndent = source.slice(closeLineStart, rootClose.start)
-
-  if (!/^[\t ]*$/.test(closeIndent)) {
+  if (
+    /[\r\n]/.test(source.slice(root.offset, closeOffset)) &&
+    !/^[\t ]*$/.test(source.slice(lineStartAt(source, closeOffset), closeOffset))
+  ) {
     throw new Error(
       'tsconfig.json closing brace must start on its own line to preserve formatting.',
     )
   }
-
-  const propertyIndent = properties[0]
-    ? lineIndentAt(source, properties[0].key.start)
-    : `${closeIndent}${closeIndent.includes('\t') ? '\t' : '  '}`
-  const edits = [
-    {
-      start: closeLineStart,
-      end: closeLineStart,
-      text: `${propertyIndent}"exclude": ${renderedArray}${hasTrailingComma ? ',' : ''}${eol}`,
-    },
-  ]
-
-  if (lastProperty && !hasTrailingComma) {
-    const lastValue = tokens[lastProperty.valueEndIndex]
-    edits.push({ start: lastValue.end, end: lastValue.end, text: ',' })
-  }
-
-  return applyTextEdits(source, edits)
 }
 
-// addTsconfigExcludeValues 함수는 init 소유 exclude 값만 원문에 국소적으로 추가한다.
+// appendExcludeValue 함수는 배열 끝에 한 값만 추가해 기존 배열 바깥의 원문을 그대로 둔다.
+function appendExcludeValue(
+  source: string,
+  document: TsconfigDocument,
+  value: string,
+  spaceAfterInsertedComma: boolean,
+) {
+  const index = document.excludeArray?.children?.length ?? 0
+
+  return applyJsoncModification(
+    source,
+    ['exclude', index],
+    value,
+    { isArrayInsertion: true },
+    spaceAfterInsertedComma,
+  )
+}
+
+// removeArrayElement 함수는 소유 값의 노드와 구조 쉼표만 지우고 인접한 사용자 주석은 남긴다.
+function removeArrayElement(source: string, array: Node, index: number) {
+  const elements = array.children ?? []
+  const element = elements[index]
+
+  if (!element) {
+    return source
+  }
+
+  const previous = elements[index - 1]
+  const next = elements[index + 1]
+  const elementEnd = element.offset + element.length
+  const commaAfter = findTokenOffset(
+    source,
+    elementEnd,
+    next?.offset ?? array.offset + array.length - 1,
+    SyntaxKind.CommaToken,
+  )
+  const commaBefore = previous
+    ? findTokenOffset(
+        source,
+        previous.offset + previous.length,
+        element.offset,
+        SyntaxKind.CommaToken,
+      )
+    : undefined
+  const structuralEnd = typeof commaAfter === 'number' ? commaAfter + 1 : elementEnd
+  const lineStart = lineStartAt(source, element.offset)
+  const lineEnd = lineEndAt(source, structuralEnd)
+  const lineContentEnd = source.slice(lineStart, lineEnd).replace(/\r?\n$/, '').length + lineStart
+  const commentAfterElement =
+    typeof commaAfter === 'number' && hasComment(source, elementEnd, commaAfter)
+
+  if (
+    !commentAfterElement &&
+    /^[\t ]*$/.test(source.slice(lineStart, element.offset)) &&
+    /^[\t ]*$/.test(source.slice(structuralEnd, lineContentEnd))
+  ) {
+    return applyEdits(source, [{ offset: lineStart, length: lineEnd - lineStart, content: '' }])
+  }
+
+  if (typeof commaAfter === 'number') {
+    const edits: Edit[] = commentAfterElement
+      ? [
+          { offset: element.offset, length: element.length, content: '' },
+          { offset: commaAfter, length: 1, content: '' },
+        ]
+      : [
+          {
+            offset: element.offset,
+            length: commaAfter + 1 - element.offset,
+            content: '',
+          },
+        ]
+
+    return applyEdits(source, edits)
+  }
+
+  if (typeof commaBefore === 'number') {
+    const commentBeforeElement = hasComment(source, commaBefore + 1, element.offset)
+    const edits: Edit[] = commentBeforeElement
+      ? [
+          { offset: commaBefore, length: 1, content: '' },
+          { offset: element.offset, length: element.length, content: '' },
+        ]
+      : [
+          {
+            offset: commaBefore,
+            length: elementEnd - commaBefore,
+            content: '',
+          },
+        ]
+
+    return applyEdits(source, edits)
+  }
+
+  return applyEdits(source, [{ offset: element.offset, length: element.length, content: '' }])
+}
+
+// removeTrailingComma 함수는 init 추가 과정에서 필요해진 마지막 쉼표만 제거한다.
+function removeTrailingComma(source: string) {
+  const { excludeArray } = readTsconfigDocument(source)
+
+  if (!excludeArray) {
+    return source
+  }
+
+  const comma = trailingCommaOffset(source, excludeArray)
+  return typeof comma === 'number'
+    ? applyEdits(source, [{ offset: comma, length: 1, content: '' }])
+    : source
+}
+
+// removeEmptyOwnedProperty 함수는 사용자가 주석이나 값을 남기지 않은 새 exclude 속성만 제거한다.
+function removeEmptyOwnedProperty(source: string) {
+  const { excludeProperty, excludeArray } = readTsconfigDocument(source)
+
+  if (!excludeProperty || !excludeArray || (excludeArray.children?.length ?? 0) > 0) {
+    return source
+  }
+
+  const propertyLineStart = lineStartAt(source, excludeProperty.offset)
+  const propertyLineEnd = lineEndAt(source, excludeProperty.offset + excludeProperty.length)
+
+  if (
+    hasComment(source, excludeArray.offset + 1, excludeArray.offset + excludeArray.length - 1) ||
+    hasComment(source, propertyLineStart, propertyLineEnd)
+  ) {
+    return source
+  }
+
+  return applyJsoncModification(source, ['exclude'], undefined)
+}
+
+// validateTsconfigSource 함수는 편집 결과도 동일한 엄격한 JSONC 및 exclude 규칙을 만족하는지 확인한다.
+function validateTsconfigSource(source: string) {
+  readTsconfigDocument(source)
+  return source
+}
+
+// addTsconfigExcludeValues 함수는 init이 소유할 새 exclude 값만 중복 없이 국소 추가한다.
 export function addTsconfigExcludeValues(source: string, values: string[]) {
   const uniqueValues = [...new Set(values)]
 
@@ -418,165 +312,39 @@ export function addTsconfigExcludeValues(source: string, values: string[]) {
     return source
   }
 
-  const document = readJsoncDocument(source)
-  const excludeProperty = document.properties.find((property) => property.key.value === 'exclude')
-  const nextSource = excludeProperty
-    ? appendExcludeValues(source, document, excludeProperty, uniqueValues)
-    : addExcludeProperty(source, document, uniqueValues)
-
-  return validateJsoncSource(nextSource)
-}
-
-// removeOneExcludeValue 함수는 쉼표 구조를 유지하면서 소유 배열 값 하나만 제거한다.
-function removeOneExcludeValue(source: string, value: string) {
-  const document = readJsoncDocument(source)
-  const property = document.properties.find((entry) => entry.key.value === 'exclude')
-
-  if (!property) {
-    return source
-  }
-
-  const array = readArrayElements(document, property)
-  const element = array.elements.find((entry) => document.tokens[entry.tokenIndex].value === value)
-
-  if (!element) {
-    return source
-  }
-
-  const token = document.tokens[element.tokenIndex]
-  const commaAfter =
-    typeof element.commaAfterIndex === 'number' ? document.tokens[element.commaAfterIndex] : null
-  const structuralEnd = commaAfter?.end ?? token.end
-  const lineStart = lineStartAt(source, token.start)
-  const lineEnd = lineEndAt(source, structuralEnd)
-  const lineContentEnd = source[lineEnd - 1] === '\n' ? lineEnd - 1 : lineEnd
-  const lineContentWithoutCr =
-    source[lineContentEnd - 1] === '\r' ? lineContentEnd - 1 : lineContentEnd
-
-  if (
-    /^[\t ]*$/.test(source.slice(lineStart, token.start)) &&
-    /^[\t ]*$/.test(source.slice(structuralEnd, lineContentWithoutCr))
-  ) {
-    return applyTextEdits(source, [{ start: lineStart, end: lineEnd, text: '' }])
-  }
-
-  if (typeof element.commaAfterIndex === 'number') {
-    return applyTextEdits(source, [
-      {
-        start: token.start,
-        end: document.tokens[element.commaAfterIndex].end,
-        text: '',
-      },
-    ])
-  }
-
-  if (typeof element.commaBeforeIndex === 'number') {
-    return applyTextEdits(source, [
-      {
-        start: document.tokens[element.commaBeforeIndex].start,
-        end: token.end,
-        text: '',
-      },
-    ])
-  }
-
-  return applyTextEdits(source, [{ start: token.start, end: token.end, text: '' }])
-}
-
-// removeExcludeTrailingComma 함수는 init이 구분자로 추가했던 마지막 쉼표를 제거한다.
-function removeExcludeTrailingComma(source: string) {
-  const document = readJsoncDocument(source)
-  const property = document.properties.find((entry) => entry.key.value === 'exclude')
-
-  if (!property) {
-    return source
-  }
-
-  const array = readArrayElements(document, property)
-  const lastElement = array.elements.at(-1)
-
-  if (typeof lastElement?.commaAfterIndex !== 'number') {
-    return source
-  }
-
-  const comma = document.tokens[lastElement.commaAfterIndex]
-  return applyTextEdits(source, [{ start: comma.start, end: comma.end, text: '' }])
-}
-
-// removeEmptyExcludeProperty 함수는 init이 새로 만든 빈 exclude 속성만 제거한다.
-function removeEmptyExcludeProperty(source: string) {
-  const document = readJsoncDocument(source)
-  const property = document.properties.find((entry) => entry.key.value === 'exclude')
-
-  if (!property) {
-    return source
-  }
-
-  const array = readArrayElements(document, property)
-
-  if (array.elements.length > 0) {
-    return source
-  }
-
-  const arrayInnerSource = source.slice(
-    document.tokens[array.openIndex].end,
-    document.tokens[array.closeIndex].start,
+  const document = readTsconfigDocument(source)
+  const currentValues = new Set(
+    document.excludeArray?.children?.map((element) => element.value) ?? [],
   )
+  const missingValues = uniqueValues.filter((value) => !currentValues.has(value))
 
-  // 사용자가 빈 배열 안에 남긴 주석은 소유 데이터가 아니므로 속성과 함께 지우지 않는다.
-  if (/\/\//.test(arrayInnerSource) || /\/\*/.test(arrayInnerSource)) {
+  if (missingValues.length === 0) {
     return source
   }
 
-  const propertyStart = property.key.start
-  const propertyEnd = document.tokens[property.valueEndIndex].end
-  const propertyCommaAfter =
-    typeof property.commaAfterIndex === 'number' ? document.tokens[property.commaAfterIndex] : null
-  const structuralEnd = propertyCommaAfter?.end ?? propertyEnd
-  const lineStart = lineStartAt(source, propertyStart)
-  const lineEnd = lineEndAt(source, structuralEnd)
-  const lineContentEnd = source[lineEnd - 1] === '\n' ? lineEnd - 1 : lineEnd
-  const lineContentWithoutCr =
-    source[lineContentEnd - 1] === '\r' ? lineContentEnd - 1 : lineContentEnd
-
-  if (
-    /^[\t ]*$/.test(source.slice(lineStart, propertyStart)) &&
-    /^[\t ]*$/.test(source.slice(structuralEnd, lineContentWithoutCr))
-  ) {
-    const edits = [{ start: lineStart, end: lineEnd, text: '' }]
-
-    if (!propertyCommaAfter && typeof property.commaBeforeIndex === 'number') {
-      const commaBefore = document.tokens[property.commaBeforeIndex]
-      edits.push({ start: commaBefore.start, end: commaBefore.end, text: '' })
-    }
-
-    return applyTextEdits(source, edits)
+  if (!document.excludeProperty) {
+    assertPropertyInsertionSafe(source, document.root)
+    return validateTsconfigSource(applyJsoncModification(source, ['exclude'], missingValues))
   }
 
-  if (typeof property.commaAfterIndex === 'number') {
-    return applyTextEdits(source, [
-      {
-        start: propertyStart,
-        end: document.tokens[property.commaAfterIndex].end,
-        text: '',
-      },
-    ])
+  const hadTrailingComma = Boolean(
+    document.excludeArray && typeof trailingCommaOffset(source, document.excludeArray) === 'number',
+  )
+  let nextSource = source
+
+  for (const [index, value] of missingValues.entries()) {
+    nextSource = appendExcludeValue(
+      nextSource,
+      readTsconfigDocument(nextSource),
+      value,
+      !hadTrailingComma || index > 0,
+    )
   }
 
-  if (typeof property.commaBeforeIndex === 'number') {
-    return applyTextEdits(source, [
-      {
-        start: document.tokens[property.commaBeforeIndex].start,
-        end: propertyEnd,
-        text: '',
-      },
-    ])
-  }
-
-  return applyTextEdits(source, [{ start: propertyStart, end: propertyEnd, text: '' }])
+  return validateTsconfigSource(nextSource)
 }
 
-// restoreTsconfigJsonClaims 함수는 clean claim을 원문 보존 방식으로 복구한다.
+// restoreTsconfigJsonClaims 함수는 clean claim의 소유 문자열만 제거하고 이전에 없던 빈 속성만 정리한다.
 export function restoreTsconfigJsonClaims(source: string, claims: PackageJsonOwnershipClaim[]) {
   const unsupportedClaim = claims.find(
     (claim) =>
@@ -589,35 +357,34 @@ export function restoreTsconfigJsonClaims(source: string, claims: PackageJsonOwn
     )
   }
 
-  const initialDocument = readJsoncDocument(source)
-  const initialProperty = initialDocument.properties.find((entry) => entry.key.value === 'exclude')
+  const initialDocument = readTsconfigDocument(source)
   const ownedValues = new Set(claims.map((claim) => claim.value as string))
-  let removeAddedTrailingComma = false
-
-  if (initialProperty) {
-    const initialArray = readArrayElements(initialDocument, initialProperty)
-    const lastElement = initialArray.elements.at(-1)
-
-    removeAddedTrailingComma = Boolean(
-      lastElement &&
-      ownedValues.has(initialDocument.tokens[lastElement.tokenIndex].value) &&
-      typeof lastElement.commaAfterIndex !== 'number',
-    )
-  }
-
+  const lastElement = initialDocument.excludeArray?.children?.at(-1)
+  const removeAddedTrailingComma = Boolean(
+    initialDocument.excludeArray &&
+    lastElement &&
+    ownedValues.has(lastElement.value as string) &&
+    typeof trailingCommaOffset(source, initialDocument.excludeArray) !== 'number',
+  )
   let nextSource = source
 
   for (const value of ownedValues) {
-    nextSource = removeOneExcludeValue(nextSource, value)
+    const document = readTsconfigDocument(nextSource)
+    const index =
+      document.excludeArray?.children?.findIndex((element) => element.value === value) ?? -1
+
+    if (document.excludeArray && index >= 0) {
+      nextSource = removeArrayElement(nextSource, document.excludeArray, index)
+    }
   }
 
   if (removeAddedTrailingComma) {
-    nextSource = removeExcludeTrailingComma(nextSource)
+    nextSource = removeTrailingComma(nextSource)
   }
 
   if (claims.some((claim) => claim.previous.state === 'missing')) {
-    nextSource = removeEmptyExcludeProperty(nextSource)
+    nextSource = removeEmptyOwnedProperty(nextSource)
   }
 
-  return validateJsoncSource(nextSource)
+  return validateTsconfigSource(nextSource)
 }

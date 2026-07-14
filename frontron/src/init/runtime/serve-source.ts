@@ -1,5 +1,6 @@
 import type { InitConfig } from '../shared'
 import { resolveDevServerUrl } from './dev-server-url'
+import { assembleServeSource } from './serve-source/assemble-source'
 import { renderServeDevAndBuildSource } from './serve-source/dev-build-source'
 import { renderServeHeaderAndConfigSource } from './serve-source/header-config-source'
 import {
@@ -16,12 +17,10 @@ export function renderServeSource(config: InitConfig) {
       ? renderNodeServerRuntimeSource()
       : renderStaticServerSource()
 
-  return `${renderServeHeaderAndConfigSource(config, devUrl)}
-
-${renderChildProcessRuntimeSource()}
-
-${rendererRuntimeSource}
-
-${renderServeDevAndBuildSource(config)}
-`
+  return assembleServeSource({
+    headerAndConfig: renderServeHeaderAndConfigSource(config, devUrl),
+    childProcessRuntime: renderChildProcessRuntimeSource(),
+    rendererRuntime: rendererRuntimeSource,
+    devAndBuild: renderServeDevAndBuildSource(config),
+  })
 }

@@ -1,14 +1,14 @@
-import {
-  type InitConfig,
-  type PackageJson,
-  ELECTRON_BUILDER_VERSION,
-  ELECTRON_VERSION,
-  NODE_TYPES_VERSION,
-  ESBUILD_VERSION,
-  TYPESCRIPT_VERSION,
-} from './shared'
+import { type InitConfig, type PackageJson, ESBUILD_VERSION } from './shared'
+import { loadCreateFrontronTemplate } from './runtime/create-frontron-template'
+import { inspectToolDependencyDeclarations } from './dependency-compatibility'
 import type { PackageJsonOwnershipClaim } from './manifest'
-import { cloneJsonValue, readPackageJsonPath, valuesEqual } from './package-json-path'
+import {
+  cloneJsonValue,
+  deletePackageJsonPath,
+  readPackageJsonPath,
+  valuesEqual,
+  writePackageJsonPath,
+} from './package-json-path'
 
 const SEMVER_PATTERN =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
@@ -52,19 +52,51 @@ function ensureObject<T extends object>(value: unknown, label: string, fallback:
 }
 
 // parseMajorVersion 함수는 버전 문자열에서 major 버전을 숫자로 읽어낸다.
-function parseMajorVersion(value: string | undefined) {
-  const version = value?.match(/\d+(?:\.\d+){0,2}/)?.[0]
-
-  return version ? Number.parseInt(version.split('.')[0] ?? '', 10) : null
-}
-
 // shouldUseFrontronTypescriptVersion 함수는 프로젝트 TypeScript 버전에 Frontron 기본 버전을 넣어야 하는지 판단한다.
 function shouldUseFrontronTypescriptVersion(packageJson: PackageJson) {
   const declaredVersion =
     packageJson.dependencies?.typescript ?? packageJson.devDependencies?.typescript
-  const major = parseMajorVersion(declaredVersion)
+  return typeof declaredVersion === 'undefined'
+}
 
-  return major === null || major < 5
+// 기존 도구 버전을 보존하면서 템플릿 기준과의 호환 여부를 사용자에게 명시한다.
+function inspectToolVersionCompatibility(config: InitConfig) {
+  const template = config.templateDependencies ?? loadCreateFrontronTemplate().dependencies
+  const warnings: string[] = []
+  const blockers: string[] = []
+
+  for (const inspection of inspectToolDependencyDeclarations(config.packageJson, template)) {
+    const {
+      packageName,
+      declaration: declaredVersion,
+      templateDeclaration: templateVersion,
+      declaredMajor,
+      templateMajor,
+    } = inspection
+    if (!declaredVersion || !templateVersion) continue
+
+    if (declaredMajor === null || templateMajor === null) {
+      warnings.push(
+        `Could not verify ${packageName} version compatibility for "${declaredVersion}"; the existing declaration was preserved.`,
+      )
+      continue
+    }
+
+    if (packageName === 'typescript' && declaredMajor < 5) {
+      blockers.push(
+        `Existing typescript ${declaredVersion} is too old for the generated NodeNext Electron sources. Upgrade to TypeScript 5 or newer.`,
+      )
+      continue
+    }
+
+    if (declaredMajor < templateMajor) {
+      warnings.push(
+        `Existing ${packageName} ${declaredVersion} is older than the create-frontron template baseline ${templateVersion}; it was preserved.`,
+      )
+    }
+  }
+
+  return { warnings, blockers }
 }
 
 export type PackageJsonPatchChangeAction = 'add' | 'update'
@@ -274,15 +306,43 @@ export function formatPackageJsonPatchChange(change: PackageJsonPatchChange) {
 }
 
 // previewPackageJsonPatch 함수는 package.json 패치를 실제 적용 전 미리 계산한다.
-export function previewPackageJsonPatch(config: InitConfig): PackageJsonPatchPlan {
+// removeOwnedPackageJsonValues 함수는 update가 관리하던 값만 baseline에서 걷어 새 템플릿 값으로 다시 계산하게 한다.
+function removeOwnedPackageJsonValues(
+  packageJson: PackageJson,
+  claims: PackageJsonOwnershipClaim[],
+) {
+  for (const claim of claims) {
+    if (claim.action !== 'array-value') {
+      deletePackageJsonPath(packageJson, claim.path)
+      continue
+    }
+
+    const current = readPackageJsonPath(packageJson, claim.path)
+    if (!Array.isArray(current.value)) continue
+    const remaining = current.value.filter((value) => !valuesEqual(value, claim.value))
+
+    if (remaining.length === 0 && claim.previous.state === 'missing') {
+      deletePackageJsonPath(packageJson, claim.path)
+    } else {
+      writePackageJsonPath(packageJson, claim.path, remaining)
+    }
+  }
+}
+
+// previewPackageJsonPatch 함수는 package.json 패치를 실제 적용 전 미리 계산한다.
+export function previewPackageJsonPatch(
+  config: InitConfig,
+  ownedClaims: PackageJsonOwnershipClaim[] = [],
+): PackageJsonPatchPlan {
   const preview = cloneJsonValue(config.packageJson)
-  const blockers: string[] = []
+  removeOwnedPackageJsonValues(preview, ownedClaims)
+  const ownershipBaseline = cloneJsonValue(preview)
+  const previewConfig = { ...config, packageJson: preview }
+  const compatibility = inspectToolVersionCompatibility(previewConfig)
+  const blockers: string[] = [...compatibility.blockers]
 
   try {
-    patchPackageJson({
-      ...config,
-      packageJson: preview,
-    })
+    patchPackageJson(previewConfig)
   } catch (error) {
     blockers.push((error as Error).message)
   }
@@ -292,8 +352,9 @@ export function previewPackageJsonPatch(config: InitConfig): PackageJsonPatchPla
   return {
     packageJson,
     changes: createPackageJsonPatchChanges(config.packageJson, packageJson),
-    ownershipClaims: createPackageJsonOwnershipClaims(config.packageJson, packageJson),
-    warnings: [],
+    ownershipClaims:
+      blockers.length > 0 ? [] : createPackageJsonOwnershipClaims(ownershipBaseline, packageJson),
+    warnings: compatibility.warnings,
     blockers,
   }
 }
@@ -323,6 +384,8 @@ export function patchPackageJson(config: InitConfig) {
     {},
   )
   const files = ensureArray(build.files, 'build.files')
+  const templateDependencies =
+    config.templateDependencies ?? loadCreateFrontronTemplate().dependencies
 
   if (typeof packageJson.version === 'undefined') {
     packageJson.version = '0.0.0'
@@ -335,19 +398,19 @@ export function patchPackageJson(config: InitConfig) {
   Object.assign(scripts, createDesktopScriptCommands(config))
 
   if (!packageJson.dependencies?.electron) {
-    devDependencies.electron ??= ELECTRON_VERSION
+    devDependencies.electron ??= templateDependencies.electron
   }
 
   if (!packageJson.dependencies?.['electron-builder']) {
-    devDependencies['electron-builder'] ??= ELECTRON_BUILDER_VERSION
+    devDependencies['electron-builder'] ??= templateDependencies.electronBuilder
   }
 
   if (!packageJson.dependencies?.['@types/node']) {
-    devDependencies['@types/node'] ??= NODE_TYPES_VERSION
+    devDependencies['@types/node'] ??= templateDependencies.nodeTypes
   }
 
   if (!packageJson.dependencies?.typescript && shouldUseFrontronTypescriptVersion(packageJson)) {
-    devDependencies.typescript = TYPESCRIPT_VERSION
+    devDependencies.typescript = templateDependencies.typescript
   }
 
   if (

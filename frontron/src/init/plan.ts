@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs'
 import { relative } from 'node:path'
 
 import { formatPackageJsonPatchChange, type PackageJsonPatchPlan } from './package-json'
+import { createFileHash } from './manifest'
 import type { TsconfigJsonPatchPlan } from './tsconfig-json'
 import type { PnpmWorkspaceYamlPatchPlan } from './pnpm-workspace-yaml'
 import type { InitConfig, InitOptions, PackageJson } from './shared'
@@ -14,12 +16,21 @@ export type FileChange = {
   action: FileChangeAction
   reason: string
   content: string
+  expectedHash: string | null
+}
+
+export type ObsoleteFileChange = {
+  path: string
+  manifestPath: string
+  expectedHash: string
 }
 
 export type InitPlan = {
   config: InitConfig
   files: FileChange[]
+  obsoleteFiles: ObsoleteFileChange[]
   packageJsonPlan: PackageJsonPatchPlan
+  packageJsonExpectedHash: string
   tsconfigJsonPlan?: TsconfigJsonPatchPlan | null
   pnpmWorkspacePlan?: PnpmWorkspaceYamlPatchPlan | null
   yarnRcPlan?: YarnRcYamlPatchPlan | null
@@ -31,7 +42,9 @@ export type InitPlan = {
 export function createInitPlan(input: {
   config: InitConfig
   filesToWrite: Map<string, string>
+  obsoleteFiles?: ObsoleteFileChange[]
   packageJsonPlan: PackageJsonPatchPlan
+  packageJsonExpectedHash: string
   tsconfigJsonPlan?: TsconfigJsonPatchPlan | null
   pnpmWorkspacePlan?: PnpmWorkspaceYamlPatchPlan | null
   yarnRcPlan?: YarnRcYamlPatchPlan | null
@@ -51,6 +64,7 @@ export function createInitPlan(input: {
         action: 'blocked',
         reason: 'Target file already exists and is not recorded in the Frontron manifest.',
         content,
+        expectedHash: createFileHash(readFileSync(filePath)),
       })
       continue
     }
@@ -61,6 +75,7 @@ export function createInitPlan(input: {
         action: 'overwrite',
         reason: 'File is recorded in the Frontron manifest and --force was used.',
         content,
+        expectedHash: createFileHash(readFileSync(filePath)),
       })
       continue
     }
@@ -70,13 +85,16 @@ export function createInitPlan(input: {
       action: 'create',
       reason: 'File does not exist yet.',
       content,
+      expectedHash: null,
     })
   }
 
   return {
     config: input.config,
     files,
+    obsoleteFiles: input.obsoleteFiles ?? [],
     packageJsonPlan: input.packageJsonPlan,
+    packageJsonExpectedHash: input.packageJsonExpectedHash,
     tsconfigJsonPlan: input.tsconfigJsonPlan,
     pnpmWorkspacePlan: input.pnpmWorkspacePlan,
     yarnRcPlan: input.yarnRcPlan,
@@ -122,6 +140,14 @@ export function createDryRunReport(plan: InitPlan) {
 
     for (const file of overwriteFiles) {
       lines.push(`  ~ ${normalizePathValue(relative(config.cwd, file.path), file.path)}`)
+    }
+  }
+
+  if (plan.obsoleteFiles.length > 0) {
+    lines.push('', 'Files to remove:')
+
+    for (const file of plan.obsoleteFiles) {
+      lines.push(`  - ${file.manifestPath}`)
     }
   }
 

@@ -85,19 +85,12 @@ export function createTempProjectWithScripts(
   return projectRoot
 }
 
-export function createPromptAnswers(
-  answers: string[],
-  confirms: boolean[] = [],
-): CliContext['prompter'] {
+export function createPromptAnswers(answers: string[]): CliContext['prompter'] {
   let textIndex = 0
-  let confirmIndex = 0
 
   return {
     async text(_message, defaultValue) {
       return answers[textIndex++] ?? defaultValue
-    },
-    async confirm(_message, defaultValue) {
-      return confirms[confirmIndex++] ?? defaultValue
     },
     close() {},
   }

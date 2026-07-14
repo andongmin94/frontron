@@ -58,7 +58,7 @@ export function printInitHelp(output: CliOutput) {
   output.info(
     '  --server-root <path>                    Source runtime root for node-server adapters.',
   )
-  output.info('  --server-entry <path>                   Server entry inside that runtime root.')
+  output.info('  --server-entry <path>                   Source entry inside that runtime root.')
   output.info('  --product-name <name>                   Electron product name.')
   output.info('  --app-id <id>                           Electron app id.')
 }

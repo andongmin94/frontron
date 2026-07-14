@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { parseJsonc } from './jsonc'
+import { findUniqueJsoncProperty, parseJsonc, parseJsoncTree } from './jsonc'
 import type { PackageJsonOwnershipClaim } from './manifest'
 import { cloneJsonValue, readPackageJsonPath } from './package-json-path'
 
@@ -18,6 +18,7 @@ export type TsconfigJsonPatchChange = {
 
 export type TsconfigJsonPatchPlan = {
   path: string
+  source: string
   tsconfigJson: TsconfigJson
   changes: TsconfigJsonPatchChange[]
   ownershipClaims: PackageJsonOwnershipClaim[]
@@ -30,9 +31,21 @@ function cloneTsconfigJson(value: TsconfigJson): TsconfigJson {
   return JSON.parse(JSON.stringify(value)) as TsconfigJson
 }
 
+// parseTsconfigJson 함수는 최상위 객체와 단일 exclude 키를 확인한 JSONC만 객체로 변환한다.
+function parseTsconfigJson(source: string) {
+  const root = parseJsoncTree(source)
+
+  if (root.type !== 'object') {
+    throw new Error('tsconfig.json must contain a top-level object.')
+  }
+
+  findUniqueJsoncProperty(root, 'exclude', 'tsconfig.json')
+  return parseJsonc<TsconfigJson>(source)
+}
+
 // readTsconfigJson 함수는 JSONC를 허용해 tsconfig 파일을 읽는다.
 export function readTsconfigJson(path: string) {
-  return parseJsonc<TsconfigJson>(readFileSync(path, 'utf8'))
+  return parseTsconfigJson(readFileSync(path, 'utf8'))
 }
 
 // addArrayValueOwnershipClaim 함수는 tsconfig 배열 필드에 추가할 값의 소유권 기록을 만든다.
@@ -90,18 +103,25 @@ export function previewTsconfigJsonPatch(cwd: string, desktopDir: string) {
 
   const blockers: string[] = []
   const warnings: string[] = []
+  const source = readFileSync(tsconfigPath, 'utf8')
   let original: TsconfigJson
 
   try {
-    original = readTsconfigJson(tsconfigPath)
-  } catch {
+    original = parseTsconfigJson(source)
+  } catch (error) {
+    const parseBlocker =
+      error instanceof Error && error.message.includes('duplicate "exclude" properties')
+        ? error.message
+        : 'tsconfig.json could not be parsed as JSON or JSONC.'
+
     return {
       path: tsconfigPath,
+      source,
       tsconfigJson: {},
       changes: [],
       ownershipClaims: [],
       warnings,
-      blockers: ['tsconfig.json could not be parsed as JSON or JSONC.'],
+      blockers: [parseBlocker],
     }
   }
 
@@ -133,6 +153,7 @@ export function previewTsconfigJsonPatch(cwd: string, desktopDir: string) {
 
   return {
     path: tsconfigPath,
+    source,
     tsconfigJson: blockers.length > 0 ? original : next,
     changes,
     ownershipClaims,

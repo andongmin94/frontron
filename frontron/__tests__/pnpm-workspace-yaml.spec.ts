@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, linkSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
@@ -56,12 +56,12 @@ allowBuilds:
 `,
   ],
   [
-    'duplicate nested workspace key',
-    `catalog:
-  react: ^18.0.0
-  "react": ^19.0.0
+    'anchored target section',
+    `allowBuilds: &approvals
+  electron: false
 `,
   ],
+  ['anchored target value', 'allowBuilds:\n  electron: &approval false\n'],
   [
     'unclosed quoted workspace value',
     `packages:
@@ -196,6 +196,12 @@ describe('pnpm-workspace.yaml safety', () => {
     expect(plan?.blockers).toEqual([])
     expect(plan?.nextSource).toBe(expected)
     expect(plan?.nextSource.replace(/\r\n/g, '')).not.toContain('\n')
+    expect(
+      plan?.ownershipClaims.reduce(
+        (current, claim) => restorePnpmWorkspaceYamlClaim(current, claim),
+        plan.nextSource,
+      ),
+    ).toBe(source)
   })
 
   test('an already-approved block mapping remains byte-for-byte unchanged', () => {
@@ -211,6 +217,135 @@ describe('pnpm-workspace.yaml safety', () => {
 
     expect(plan?.changes).toEqual([])
     expect(plan?.nextSource).toBe(source)
+  })
+
+  test('allows unrelated flow collections, block scalars, anchors, aliases, and duplicate keys', () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const source = [
+      "packages: ['packages/*']",
+      'sharedCatalog: &catalog { react: ^19.0.0 }',
+      'catalog: *catalog',
+      'notes: |',
+      '  Keep [flow] and # text.',
+      'catalog: { vue: ^3.0.0 }',
+      'allowBuilds:',
+      '  electron: false # target comment',
+      'otherFlow: { nested: [one, two] }',
+      '',
+    ].join('\r\n')
+    const expected = source.replace(
+      '  electron: false # target comment\r\n',
+      '  electron: true # target comment\r\n  electron-winstaller: true\r\n',
+    )
+
+    writeFileSync(join(projectRoot, 'pnpm-workspace.yaml'), source)
+    const plan = previewPnpmWorkspaceYamlPatch(projectRoot, 'pnpm')
+
+    expect(plan?.blockers).toEqual([])
+    expect(plan?.nextSource).toBe(expected)
+  })
+
+  test('allows complex unrelated entries inside allowBuilds and inserts after their full ranges', () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const source = `allowBuilds:
+  esbuild:
+    note: |
+      Keep this policy.
+  shared: &approval { enabled: false }
+  copied: *approval
+catalog: [react, vue]
+`
+    const expected = source.replace(
+      '  copied: *approval\n',
+      '  copied: *approval\n  electron: true\n  electron-winstaller: true\n',
+    )
+    writeFileSync(join(projectRoot, 'pnpm-workspace.yaml'), source)
+
+    const plan = previewPnpmWorkspaceYamlPatch(projectRoot, 'pnpm')!
+
+    expect(plan.blockers).toEqual([])
+    expect(plan.nextSource).toBe(expected)
+    expect(
+      plan.ownershipClaims.reduce(
+        (current, claim) => restorePnpmWorkspaceYamlClaim(current, claim),
+        plan.nextSource,
+      ),
+    ).toBe(source)
+  })
+
+  test('blocks a pnpm workspace path that is not a regular file', () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    mkdirSync(join(projectRoot, 'pnpm-workspace.yaml'))
+
+    expect(previewPnpmWorkspaceYamlPatch(projectRoot, 'pnpm')?.blockers.join('\n')).toContain(
+      'target is not a regular file',
+    )
+  })
+
+  test('blocks a hard-linked pnpm workspace before reading or writing it', () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const sharedPath = join(projectRoot, 'shared-workspace.yaml')
+    writeFileSync(sharedPath, 'packages: [packages/*]\n')
+    linkSync(sharedPath, join(projectRoot, 'pnpm-workspace.yaml'))
+
+    const plan = previewPnpmWorkspaceYamlPatch(projectRoot, 'pnpm')
+
+    expect(plan?.blockers.join('\n')).toContain('exactly one hard link')
+    expect(readFileSync(sharedPath, 'utf8')).toBe('packages: [packages/*]\n')
+  })
+
+  test('blocks a pnpm workspace reached through a symbolic link or junction', () => {
+    const projectRoot = fixtures.createTempProject()
+    const outsideRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot, outsideRoot)
+    const outsideConfig = join(outsideRoot, 'workspace-config')
+    mkdirSync(outsideConfig)
+    const workspacePath = join(projectRoot, 'pnpm-workspace.yaml')
+    symlinkSync(outsideConfig, workspacePath, process.platform === 'win32' ? 'junction' : 'dir')
+
+    expect(previewPnpmWorkspaceYamlPatch(projectRoot, 'pnpm')?.blockers.join('\n')).toContain(
+      'symbolic link or junction',
+    )
+  })
+
+  test.each([
+    ['without final newline', 'packages:\r\n  - apps/*'],
+    ['with final newline', 'packages:\r\n  - apps/*\r\n'],
+    ['with an existing blank line', 'packages:\r\n  - apps/*\r\n\r\n'],
+  ])('direct claim restore removes a generated section byte-for-byte %s', (_name, source) => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    writeFileSync(join(projectRoot, 'pnpm-workspace.yaml'), source)
+    const plan = previewPnpmWorkspaceYamlPatch(projectRoot, 'pnpm')!
+    const restored = plan.ownershipClaims.reduce(
+      (current, claim) => restorePnpmWorkspaceYamlClaim(current, claim),
+      plan.nextSource,
+    )
+
+    expect(restored).toBe(source)
+  })
+
+  test('inserts before an explicit document-end marker and restores the exact source', () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const source = "%YAML 1.2\r\n---\r\npackages: ['packages/*']\r\n...\r\n# footer\r\n"
+    writeFileSync(join(projectRoot, 'pnpm-workspace.yaml'), source)
+    const plan = previewPnpmWorkspaceYamlPatch(projectRoot, 'pnpm')!
+
+    expect(plan.blockers).toEqual([])
+    expect(plan.nextSource).toContain(
+      "packages: ['packages/*']\r\n\r\nallowBuilds:\r\n  electron: true\r\n  electron-winstaller: true\r\n...",
+    )
+    expect(
+      plan.ownershipClaims.reduce(
+        (current, claim) => restorePnpmWorkspaceYamlClaim(current, claim),
+        plan.nextSource,
+      ),
+    ).toBe(source)
   })
 
   test.each(UNSAFE_YAML_CASES)('%s returns a blocker without changing source', (_name, source) => {
@@ -258,7 +393,7 @@ describe('pnpm-workspace.yaml safety', () => {
     expect(existsSync(join(projectRoot, '.frontron'))).toBe(false)
   })
 
-  test('clean and doctor warn without rewriting a workspace changed to flow YAML after init', async () => {
+  test('clean and doctor block without rewriting a workspace changed to flow YAML after init', async () => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)
     setPnpmPackageManager(projectRoot)
@@ -282,9 +417,10 @@ allowBuilds: { electron: true, electron-winstaller: true }
     const doctorExitCode = await runCli(['doctor'], doctorOutput, { cwd: projectRoot })
     const doctorReport = doctorOutput.info.mock.calls.flat().join('\n')
 
-    expect(doctorExitCode).toBe(0)
-    expect(doctorReport).toContain('Status: warnings')
-    expect(doctorReport).toContain('Manifest-owned pnpm-workspace.yaml field is missing')
+    expect(doctorExitCode).toBe(1)
+    expect(doctorReport).toContain('Status: blocked')
+    expect(doctorReport).toContain('Cannot safely edit pnpm-workspace.yaml')
+    expect(doctorReport).not.toContain('Manifest-owned pnpm-workspace.yaml field is missing')
     expect(readFileSync(workspacePath, 'utf8')).toBe(complexSource)
 
     const cleanOutput = fixtures.createOutput()
@@ -293,9 +429,13 @@ allowBuilds: { electron: true, electron-winstaller: true }
     })
     const cleanReport = cleanOutput.info.mock.calls.flat().join('\n')
 
-    expect(cleanExitCode).toBe(0)
-    expect(cleanReport).toContain('Manifest-owned pnpm-workspace.yaml field is already missing')
+    expect(cleanExitCode).toBe(1)
+    expect(cleanReport).toContain('Cannot safely edit pnpm-workspace.yaml')
+    expect(cleanReport).not.toContain('Manifest-owned pnpm-workspace.yaml field is already missing')
+    expect(cleanReport).toContain('No changes were written because blockers were found.')
     expect(readFileSync(workspacePath, 'utf8')).toBe(complexSource)
+    expect(existsSync(join(projectRoot, '.frontron', 'manifest.json'))).toBe(true)
+    expect(existsSync(join(projectRoot, 'electron', 'main.ts'))).toBe(true)
   })
 
   test('clean restores the exact scalar spelling and surrounding block mapping formatting', async () => {

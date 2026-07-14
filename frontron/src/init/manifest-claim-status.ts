@@ -1,5 +1,6 @@
 import type { PackageJsonOwnershipClaim } from './manifest'
 import { valuesEqual } from './package-json-path'
+import type { ManagedState } from '../managed-state'
 
 export type ClaimReadResult = {
   exists: boolean
@@ -19,40 +20,47 @@ export function inspectManifestClaim(
       current.value.some((value) => valuesEqual(value, claim.value))
     ) {
       return {
+        state: 'unchanged' as ManagedState,
         check: `${label} ${claim.path} contains manifest-owned value`,
       }
     }
 
     if (!current.exists) {
       return {
+        state: 'missing' as ManagedState,
         warning: `Manifest-owned ${label} field is missing: ${claim.path}`,
       }
     }
 
     if (Array.isArray(current.value)) {
       return {
+        state: 'modified' as ManagedState,
         warning: `Manifest-owned ${label} array value is missing: ${claim.path}`,
       }
     }
 
     return {
+      state: 'modified' as ManagedState,
       warning: `Manifest-owned ${label} field has local edits: ${claim.path}`,
     }
   }
 
   if (current.exists && valuesEqual(current.value, claim.value)) {
     return {
+      state: 'unchanged' as ManagedState,
       check: `${label} ${claim.path} matches manifest`,
     }
   }
 
   if (!current.exists) {
     return {
+      state: 'missing' as ManagedState,
       warning: `Manifest-owned ${label} field is missing: ${claim.path}`,
     }
   }
 
   return {
+    state: 'modified' as ManagedState,
     warning: `Manifest-owned ${label} field has local edits: ${claim.path}`,
   }
 }

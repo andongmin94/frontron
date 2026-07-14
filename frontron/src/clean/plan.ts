@@ -1,9 +1,10 @@
 import { existsSync, lstatSync, readFileSync } from 'node:fs'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
-import { formatProjectPathBlocker, inspectProjectPath, isInsideDirectory } from '../project-paths'
+import { formatProjectPathBlocker, inspectProjectPath } from '../project-paths'
 import { createFileHash, MANIFEST_PATH, readManifest } from '../init/manifest'
-import { hasOwnString, readPackageJsonPath, valuesEqual } from '../init/package-json-path'
+import { readPackageJsonPath, valuesEqual } from '../init/package-json-path'
+import { inspectManagedFile, inspectManagedScript } from '../managed-state'
 import {
   findPnpmWorkspaceYamlPath,
   readPnpmWorkspaceYamlClaimValue,
@@ -18,6 +19,7 @@ import {
 import type {
   ClaimReadResult,
   CleanFileChange,
+  CleanMissingSourceGuard,
   CleanOptions,
   CleanPackageJsonChange,
   CleanPlan,
@@ -33,9 +35,28 @@ type ManifestValueClaim = {
   value: unknown
 }
 
+type Manifest = NonNullable<ReturnType<typeof readManifest>>
+
 // uniqueStrings 함수는 문자열 배열에서 중복 값을 제거한다.
 function uniqueStrings(values: string[]) {
   return [...new Set(values)]
+}
+
+// recordMissingSourceGuard 함수는 같은 부재 경로와 안전 경계를 계획에 한 번만 기록한다.
+function recordMissingSourceGuard(
+  guards: CleanMissingSourceGuard[],
+  path: string,
+  safetyRoot: string,
+) {
+  const guard = { path: resolve(path), safetyRoot: resolve(safetyRoot) }
+
+  if (
+    !guards.some(
+      (current) => current.path === guard.path && current.safetyRoot === guard.safetyRoot,
+    )
+  ) {
+    guards.push(guard)
+  }
 }
 
 // resolveManifestClaimRestore 함수는 clean 시 manifest claim을 복구할지 경고만 남길지 결정한다.
@@ -100,56 +121,165 @@ function resolveManifestClaimRestore(
       }
 }
 
-// resolveManifestFile 함수는 manifest의 상대 파일 경로를 안전한 절대 경로로 해석한다.
-function resolveManifestFile(cwd: string, manifestPath: string) {
-  const root = resolve(cwd)
+// manifest 파일 목록을 안전 상태와 해시 기준으로 삭제 계획에 바꾼다.
+function planManagedFiles(
+  cwd: string,
+  manifest: Manifest,
+  options: CleanOptions,
+  warnings: string[],
+  blockers: string[],
+) {
+  const files: CleanFileChange[] = []
+  const manifestFiles = uniqueStrings([...manifest.createdFiles, MANIFEST_PATH]).sort(
+    (left, right) => {
+      if (left === MANIFEST_PATH) return 1
+      if (right === MANIFEST_PATH) return -1
+      return 0
+    },
+  )
 
-  if (isAbsolute(manifestPath)) {
-    return {
-      absolutePath: resolve(manifestPath),
-      blocker: `Manifest file entry must be relative: ${manifestPath}`,
+  for (const manifestPath of manifestFiles) {
+    // manifest 자체는 파싱한 현재 원문을 계획 기준으로 삼고, 생성 파일은 기록된 해시를 사용한다.
+    const manifestExpectedHash =
+      manifestPath === MANIFEST_PATH && existsSync(resolve(cwd, manifestPath))
+        ? createFileHash(readFileSync(resolve(cwd, manifestPath)))
+        : manifest.fileHashes?.[manifestPath]
+    const inspection = inspectManagedFile(cwd, manifestPath, manifestExpectedHash)
+
+    if (inspection.state === 'unsafe') {
+      const blocker = inspection.blocker ?? `Manifest file entry is unsafe: ${manifestPath}`
+      blockers.push(blocker)
+      files.push({
+        manifestPath,
+        absolutePath: inspection.absolutePath,
+        action: 'blocked',
+        reason: blocker,
+      })
+      continue
     }
+
+    if (inspection.state === 'missing') {
+      warnings.push(`Manifest file is already missing: ${manifestPath}`)
+      files.push({
+        manifestPath,
+        absolutePath: inspection.absolutePath,
+        action: 'missing',
+        reason: 'File is already missing.',
+      })
+      continue
+    }
+
+    if (inspection.state === 'modified' && !options.force) {
+      const blocker = `Manifest-owned file was modified and will not be removed without --force: ${manifestPath}`
+      blockers.push(blocker)
+      files.push({
+        manifestPath,
+        absolutePath: inspection.absolutePath,
+        action: 'blocked',
+        reason: blocker,
+      })
+      continue
+    }
+
+    if (inspection.state === 'unverifiable' && !options.force) {
+      const blocker = `Manifest-owned file has no recorded hash and will not be removed without --force: ${manifestPath}`
+      blockers.push(blocker)
+      files.push({
+        manifestPath,
+        absolutePath: inspection.absolutePath,
+        action: 'blocked',
+        reason: blocker,
+      })
+      continue
+    }
+
+    if (inspection.state === 'modified') {
+      warnings.push(
+        `Modified manifest-owned file will be removed because --force was used: ${manifestPath}`,
+      )
+    } else if (inspection.state === 'unverifiable') {
+      warnings.push(
+        `Unverifiable manifest-owned file will be removed because --force was used: ${manifestPath}`,
+      )
+    }
+
+    files.push({
+      manifestPath,
+      absolutePath: inspection.absolutePath,
+      action: 'delete',
+      reason: 'File is recorded in the Frontron manifest.',
+      expectedHash: inspection.currentHash,
+    })
   }
 
-  const absolutePath = resolve(root, manifestPath)
-
-  if (!isInsideDirectory(root, absolutePath)) {
-    return {
-      absolutePath,
-      blocker: `Manifest file entry points outside the project: ${manifestPath}`,
-    }
-  }
-
-  if (absolutePath === root) {
-    return {
-      absolutePath,
-      blocker: `Manifest file entry cannot target the project root: ${manifestPath}`,
-    }
-  }
-
-  const inspection = inspectProjectPath(root, absolutePath)
-
-  if (!inspection.safe) {
-    const blocker =
-      inspection.reason === 'outside'
-        ? `Manifest file entry points outside the project: ${manifestPath}`
-        : `Manifest file entry uses a symbolic link or junction and will not be removed: ${manifestPath}`
-
-    return {
-      absolutePath,
-      blocker,
-    }
-  }
-
-  return { absolutePath, blocker: null }
+  return files
 }
 
+// manifest script 목록을 현재 package.json 명령과 비교해 제거 계획에 바꾼다.
+function planManagedScripts(
+  packageJson: PackageJson,
+  manifest: Manifest,
+  options: CleanOptions,
+  warnings: string[],
+  blockers: string[],
+) {
+  const scripts: CleanScriptChange[] = []
+
+  for (const scriptName of uniqueStrings(manifest.scripts)) {
+    const state = inspectManagedScript(packageJson.scripts, manifest.scriptCommands, scriptName)
+
+    if (state === 'missing') {
+      warnings.push(`Package script is already missing: ${scriptName}`)
+      scripts.push({ name: scriptName, action: 'missing' })
+      continue
+    }
+
+    if (state === 'modified' && !options.force) {
+      const blocker = `Manifest-owned script was modified and will not be removed without --force: ${scriptName}`
+      blockers.push(blocker)
+      scripts.push({ name: scriptName, action: 'blocked' })
+      continue
+    }
+
+    if (state === 'unverifiable' && !options.force) {
+      const blocker = `Manifest-owned script has no recorded command and will not be removed without --force: ${scriptName}`
+      blockers.push(blocker)
+      scripts.push({ name: scriptName, action: 'blocked' })
+      continue
+    }
+
+    if (state === 'modified') {
+      warnings.push(
+        `Modified manifest-owned script will be removed because --force was used: ${scriptName}`,
+      )
+    } else if (state === 'unverifiable') {
+      warnings.push(
+        `Unverifiable manifest-owned script will be removed because --force was used: ${scriptName}`,
+      )
+    }
+
+    scripts.push({ name: scriptName, action: 'remove' })
+  }
+
+  return scripts
+}
+
+// resolveManifestFile 함수는 manifest의 상대 파일 경로를 안전한 절대 경로로 해석한다.
 // createCleanPlan 함수는 manifest를 기준으로 clean이 지울 항목과 막아야 할 항목을 계산한다.
 export function createCleanPlan(
   cwd: string,
   packageJson: PackageJson,
-  options: CleanOptions,
+  packageJsonSourceOrOptions: string | CleanOptions,
+  maybeOptions?: CleanOptions,
 ): CleanPlan {
+  const packageJsonSource =
+    typeof packageJsonSourceOrOptions === 'string'
+      ? packageJsonSourceOrOptions
+      : readFileSync(resolve(cwd, 'package.json'), 'utf8')
+  const options =
+    typeof packageJsonSourceOrOptions === 'string'
+      ? (maybeOptions as CleanOptions)
+      : packageJsonSourceOrOptions
   const manifestAbsolutePath = resolve(cwd, MANIFEST_PATH)
   const manifestInspection = inspectProjectPath(cwd, manifestAbsolutePath)
 
@@ -184,138 +314,16 @@ export function createCleanPlan(
   }
 
   const blockers: string[] = []
-  const files: CleanFileChange[] = []
-  const scripts: CleanScriptChange[] = []
+  const files = planManagedFiles(cwd, manifest, options, warnings, blockers)
+  const scripts = planManagedScripts(packageJson, manifest, options, warnings, blockers)
   const packageJsonChanges: CleanPackageJsonChange[] = []
   const tsconfigJsonChanges: CleanTsconfigJsonChange[] = []
   const pnpmWorkspaceChanges: CleanPnpmWorkspaceChange[] = []
   const yarnRcChanges: CleanYarnRcChange[] = []
-  const manifestFiles = uniqueStrings([...manifest.createdFiles, MANIFEST_PATH]).sort(
-    (left, right) => {
-      if (left === MANIFEST_PATH) return 1
-      if (right === MANIFEST_PATH) return -1
-      return 0
-    },
-  )
-
-  for (const manifestPath of manifestFiles) {
-    const resolved = resolveManifestFile(cwd, manifestPath)
-
-    if (resolved.blocker) {
-      blockers.push(resolved.blocker)
-      files.push({
-        manifestPath,
-        absolutePath: resolved.absolutePath,
-        action: 'blocked',
-        reason: resolved.blocker,
-      })
-      continue
-    }
-
-    if (!existsSync(resolved.absolutePath)) {
-      warnings.push(`Manifest file is already missing: ${manifestPath}`)
-      files.push({
-        manifestPath,
-        absolutePath: resolved.absolutePath,
-        action: 'missing',
-        reason: 'File is already missing.',
-      })
-      continue
-    }
-
-    const stats = lstatSync(resolved.absolutePath)
-
-    if (stats.isSymbolicLink()) {
-      const blocker = `Manifest file entry points to a symbolic link and will not be removed: ${manifestPath}`
-      blockers.push(blocker)
-      files.push({
-        manifestPath,
-        absolutePath: resolved.absolutePath,
-        action: 'blocked',
-        reason: blocker,
-      })
-      continue
-    }
-
-    if (stats.isDirectory()) {
-      const blocker = `Manifest file entry points to a directory and will not be removed: ${manifestPath}`
-      blockers.push(blocker)
-      files.push({
-        manifestPath,
-        absolutePath: resolved.absolutePath,
-        action: 'blocked',
-        reason: blocker,
-      })
-      continue
-    }
-
-    const expectedHash = manifest.fileHashes?.[manifestPath]
-    const currentHash = createFileHash(readFileSync(resolved.absolutePath))
-
-    if (expectedHash) {
-      if (currentHash !== expectedHash && !options.force) {
-        const blocker = `Manifest-owned file was modified and will not be removed without --force: ${manifestPath}`
-        blockers.push(blocker)
-        files.push({
-          manifestPath,
-          absolutePath: resolved.absolutePath,
-          action: 'blocked',
-          reason: blocker,
-        })
-        continue
-      }
-
-      if (currentHash !== expectedHash) {
-        warnings.push(
-          `Modified manifest-owned file will be removed because --force was used: ${manifestPath}`,
-        )
-      }
-    } else if (manifestPath !== MANIFEST_PATH && manifest.fileHashes) {
-      warnings.push(`Manifest file hash is missing for: ${manifestPath}`)
-    }
-
-    files.push({
-      manifestPath,
-      absolutePath: resolved.absolutePath,
-      action: 'delete',
-      reason: 'File is recorded in the Frontron manifest.',
-      expectedHash: currentHash,
-    })
+  const sourceHashes: Record<string, string> = {
+    [resolve(cwd, 'package.json')]: createFileHash(packageJsonSource),
   }
-
-  for (const scriptName of uniqueStrings(manifest.scripts)) {
-    const currentCommand = packageJson.scripts?.[scriptName]
-
-    if (!hasOwnString(packageJson.scripts, scriptName)) {
-      warnings.push(`Package script is already missing: ${scriptName}`)
-      scripts.push({ name: scriptName, action: 'missing' })
-      continue
-    }
-
-    const expectedCommand = manifest.scriptCommands?.[scriptName]
-
-    if (
-      hasOwnString(manifest.scriptCommands, scriptName) &&
-      currentCommand !== expectedCommand &&
-      !options.force
-    ) {
-      const blocker = `Manifest-owned script was modified and will not be removed without --force: ${scriptName}`
-      blockers.push(blocker)
-      scripts.push({ name: scriptName, action: 'blocked' })
-      continue
-    }
-
-    if (hasOwnString(manifest.scriptCommands, scriptName) && currentCommand !== expectedCommand) {
-      warnings.push(
-        `Modified manifest-owned script will be removed because --force was used: ${scriptName}`,
-      )
-    } else if (!hasOwnString(manifest.scriptCommands, scriptName) && manifest.scriptCommands) {
-      warnings.push(`Manifest script command is missing for: ${scriptName}`)
-    }
-
-    scripts.push({ name: scriptName, action: 'remove' })
-  }
-
+  const missingSourceGuards: CleanMissingSourceGuard[] = []
   for (const claim of manifest.packageJsonClaims ?? []) {
     const restore = resolveManifestClaimRestore(
       'Package.json',
@@ -345,11 +353,13 @@ export function createCleanPlan(
     if (!tsconfigInspection.safe) {
       blockers.push(formatProjectPathBlocker(cwd, 'tsconfig.json', tsconfigInspection))
     } else if (!existsSync(tsconfigPath)) {
+      recordMissingSourceGuard(missingSourceGuards, tsconfigPath, cwd)
       warnings.push(
         'Manifest-owned tsconfig.json changes are already missing because tsconfig.json is missing.',
       )
     } else {
       try {
+        sourceHashes[resolve(tsconfigPath)] = createFileHash(readFileSync(tsconfigPath))
         const tsconfigJson = readTsconfigJson(tsconfigPath)
 
         for (const claim of tsconfigJsonClaims) {
@@ -390,19 +400,24 @@ export function createCleanPlan(
         formatProjectPathBlocker(pnpmWorkspaceRoot, 'pnpm-workspace.yaml', pnpmWorkspaceInspection),
       )
     } else if (!existsSync(pnpmWorkspacePath)) {
+      recordMissingSourceGuard(missingSourceGuards, pnpmWorkspacePath, pnpmWorkspaceRoot)
       warnings.push(
         'Manifest-owned pnpm-workspace.yaml changes are already missing because pnpm-workspace.yaml is missing.',
       )
     } else {
       const pnpmWorkspaceSource = readFileSync(pnpmWorkspacePath, 'utf8')
+      sourceHashes[resolve(pnpmWorkspacePath)] = createFileHash(pnpmWorkspaceSource)
 
       for (const claim of pnpmWorkspaceClaims) {
-        const restore = resolveManifestClaimRestore(
-          'pnpm-workspace.yaml',
-          claim,
-          readPnpmWorkspaceYamlClaimValue(pnpmWorkspaceSource, claim.path),
-          options,
-        )
+        const current = readPnpmWorkspaceYamlClaimValue(pnpmWorkspaceSource, claim.path)
+
+        // 안전하게 판독할 수 없는 YAML은 --force로도 복구하거나 제거하지 않는다.
+        if (!current.safeToEdit) {
+          blockers.push(current.blocker ?? 'Cannot safely inspect pnpm-workspace.yaml.')
+          break
+        }
+
+        const restore = resolveManifestClaimRestore('pnpm-workspace.yaml', claim, current, options)
 
         if (restore.warning) {
           warnings.push(restore.warning)
@@ -432,6 +447,7 @@ export function createCleanPlan(
     }
 
     if (!existsSync(resolution.path)) {
+      recordMissingSourceGuard(missingSourceGuards, resolution.path, resolution.safetyRoot)
       warnings.push(
         `Manifest-owned ${YARN_RC_YAML_PATH} changes are already missing because ${claim.file} is missing.`,
       )
@@ -452,7 +468,9 @@ export function createCleanPlan(
       continue
     }
 
-    const current = readYarnRcYamlClaimValue(readFileSync(resolution.path, 'utf8'))
+    const yarnRcSource = readFileSync(resolution.path, 'utf8')
+    sourceHashes[resolve(resolution.path)] = createFileHash(yarnRcSource)
+    const current = readYarnRcYamlClaimValue(yarnRcSource)
 
     if (!current.safeToEdit) {
       blockers.push(current.blocker ?? `Cannot safely inspect ${claim.file}.`)
@@ -481,6 +499,8 @@ export function createCleanPlan(
     tsconfigJsonChanges,
     pnpmWorkspaceChanges,
     yarnRcChanges,
+    sourceHashes,
+    missingSourceGuards,
     warnings,
     blockers,
   }

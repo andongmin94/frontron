@@ -93,6 +93,22 @@ describe('frontron adapter init flows', () => {
     expect(packageJson.build.files).toContain('desktop dist{,/**/*}')
   })
 
+  test('init formats an inferred IPv6 dev host as a valid URL authority', async () => {
+    const projectRoot = fixtures.createTempProjectWithScripts({
+      dev: 'vite --host ::1 --port 4302',
+      build: 'vite build --outDir dist',
+    })
+    fixtures.tempDirs.push(projectRoot)
+
+    const exitCode = await runCli(['init', '--yes'], fixtures.createOutput(), {
+      cwd: projectRoot,
+    })
+    const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
+
+    expect(exitCode).toBe(0)
+    fixtures.expectEmbeddedString(serveSource, 'DEV_URL', 'http://[::1]:4302')
+  })
+
   test('init reads the first available Vite host and port in config priority order', async () => {
     const projectRoot = fixtures.createTempProjectWithScripts(
       {
@@ -422,6 +438,36 @@ export default withNextIntl(nextConfig)
     expect(combined).toContain('The dev runner waits for http://localhost:3000.')
   })
 
+  test('Next dev URL inference ignores an unrelated root Vite config', async () => {
+    const projectRoot = fixtures.createTempProjectWithScripts(
+      {
+        dev: 'next dev',
+        build: 'next build',
+      },
+      {
+        dependencies: {
+          next: '^16.0.0',
+        },
+        devDependencies: {},
+        extraFiles: {
+          'next.config.ts': `export default { output: 'export' }
+`,
+          'vite.config.ts': `export default { server: { host: 'vite.invalid', port: 6123 } }
+`,
+        },
+      },
+    )
+    fixtures.tempDirs.push(projectRoot)
+
+    const exitCode = await runCli(['init', '--yes'], fixtures.createOutput(), {
+      cwd: projectRoot,
+    })
+    const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
+
+    expect(exitCode).toBe(0)
+    fixtures.expectEmbeddedString(serveSource, 'DEV_URL', 'http://localhost:3000')
+  })
+
   test('init detects Next.js standalone output and stages a packaged node-server runtime', async () => {
     const projectRoot = fixtures.createTempProjectWithScripts(
       {
@@ -657,9 +703,10 @@ export default withNextIntl(nextConfig)
     fixtures.expectEmbeddedString(serveSource, 'DEV_URL', 'http://127.0.0.1:8002')
     fixtures.expectEmbeddedString(serveSource, 'WEB_OUT_DIR', '.frontron/runtime/remix-node-server')
     fixtures.expectEmbeddedNullableString(serveSource, 'NODE_SERVER_SOURCE_ROOT', 'build')
+    fixtures.expectEmbeddedNullableString(serveSource, 'NODE_SERVER_SOURCE_ENTRY', null)
     fixtures.expectEmbeddedNullableString(serveSource, 'NODE_SERVER_ENTRY', 'server.cjs')
     expect(serveSource).toContain(
-      "const sourceServerEntryCandidates = ['index.js', 'server/index.js']",
+      "NODE_SERVER_SOURCE_ENTRY ? [NODE_SERVER_SOURCE_ENTRY] : ['index.js', 'server/index.js']",
     )
     expect(serveSource).toContain("require.resolve('@remix-run/serve/package.json')")
     expect(serveSource).toContain('__frontronCreateRequire(import.meta.url)')

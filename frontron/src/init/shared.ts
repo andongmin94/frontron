@@ -25,7 +25,6 @@ export type PackageJson = {
 
 export interface InitPrompter {
   text(message: string, defaultValue: string): Promise<string>
-  confirm(message: string, defaultValue: boolean): Promise<boolean>
   close(): Promise<void> | void
 }
 
@@ -76,6 +75,13 @@ export type InitTemplateInfo = {
   resolvedFrom: InitTemplateResolvedFrom
 }
 
+export type InitTemplateDependencies = {
+  electron: string
+  electronBuilder: string
+  typescript: string
+  nodeTypes: string
+}
+
 export type AdapterDetectionResult = {
   matched: boolean
   confidence: AdapterConfidence
@@ -93,6 +99,7 @@ export type AdapterDefaults = {
   webBuildScript: string
   outDir: string | null
   nodeServerSourceRoot?: string | null
+  nodeServerSourceEntry?: string | null
   nodeServerEntry?: string | null
   nodeServerCopyTargets?: CopyTarget[]
 }
@@ -122,18 +129,15 @@ export interface InitConfig {
   webBuildCommand: string
   outDir: string
   nodeServerSourceRoot: string | null
+  nodeServerSourceEntry?: string | null
   nodeServerEntry: string | null
   nodeServerCopyTargets: CopyTarget[]
   productName: string
   appId: string
   templateInfo: InitTemplateInfo
+  templateDependencies?: InitTemplateDependencies
   allowExtraMetadataMainOverride: boolean
 }
-
-export const ELECTRON_VERSION = '^40.1.0'
-export const ELECTRON_BUILDER_VERSION = '^26.0.12'
-export const TYPESCRIPT_VERSION = '~6.0.2'
-export const NODE_TYPES_VERSION = '^25.5.0'
 export const ESBUILD_VERSION = '^0.28.0'
 
 export const VALID_ADAPTERS: readonly InitAdapterId[] = [

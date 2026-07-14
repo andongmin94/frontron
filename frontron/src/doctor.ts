@@ -1,28 +1,32 @@
 import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
-import { createFileHash, MANIFEST_PATH, readManifest } from './init/manifest'
+import { MANIFEST_PATH, readManifest, type FrontronManifest } from './init/manifest'
+import {
+  inspectToolDependencyDeclarations,
+  isDependencyProtocol,
+} from './init/dependency-compatibility'
 import { inspectManifestClaim } from './init/manifest-claim-status'
-import { getInitTemplateInfo } from './init/runtime/renderers'
-import { hasOwnString, readPackageJsonPath } from './init/package-json-path'
+import { readPackageJsonPath } from './init/package-json-path'
 import { isValidAppVersion } from './init/package-json'
 import { hasPackageDependency } from './init/detect'
 import {
   findPnpmWorkspaceYamlPath,
   readPnpmWorkspaceYamlClaimValue,
 } from './init/pnpm-workspace-yaml'
-import type { PackageJson } from './init/shared'
+import { loadCreateFrontronTemplate } from './init/runtime/create-frontron-template'
+import type { InitTemplateDependencies, PackageJson } from './init/shared'
 import { readTsconfigJson } from './init/tsconfig-json'
 import {
   readYarnRcYamlClaimValue,
   resolveYarnRcClaimPath,
   YARN_RC_YAML_PATH,
 } from './init/yarnrc-yaml'
+import { inspectManagedFile, inspectManagedScript } from './managed-state'
 import {
   assertProjectPathSafe,
   formatProjectPathBlocker,
   inspectProjectPath,
-  isInsideDirectory,
 } from './project-paths'
 import {
   TRANSACTION_JOURNAL_PATH,
@@ -40,6 +44,12 @@ export interface DoctorOutput {
 export interface DoctorContext {
   cwd: string
   output: DoctorOutput
+}
+
+type DoctorFindings = {
+  checks: string[]
+  warnings: string[]
+  blockers: string[]
 }
 
 // addList 함수는 제목과 항목 목록을 리포트 출력 줄에 추가한다.
@@ -144,36 +154,169 @@ function describePendingTransactionState(entry: string) {
   return `Pending transaction ${isJournal ? 'journal' : 'lock'} detected: ${entry}`
 }
 
-// resolveDoctorManifestFile 함수는 doctor가 읽을 manifest 항목의 실제 경로가 안전한지 확인한다.
-function resolveDoctorManifestFile(cwd: string, filePath: string) {
-  const root = resolve(cwd)
+// claim 판정 결과를 doctor의 check, warning, blocker 분류로 옮긴다.
+function addClaimInspection(
+  findings: DoctorFindings,
+  inspection: ReturnType<typeof inspectManifestClaim>,
+  prefix = '',
+) {
+  const check = inspection.check ? `${prefix}${inspection.check}` : null
+  const warning = inspection.warning ? `${prefix}${inspection.warning}` : null
 
-  if (isAbsolute(filePath)) {
-    return {
-      path: resolve(filePath),
-      blocker: `Manifest file entry must be relative: ${filePath}`,
-    }
+  if (inspection.state === 'unchanged') {
+    if (check) findings.checks.push(check)
+    return
   }
 
-  const absolutePath = resolve(root, filePath)
-
-  if (!isInsideDirectory(root, absolutePath) || absolutePath === root) {
-    return {
-      path: absolutePath,
-      blocker: `Manifest file entry points outside the project: ${filePath}`,
-    }
+  // claim API가 unsafe를 돌려주게 확장되더라도 안전 문제를 단순 경고로 낮추지 않는다.
+  if (inspection.state === 'unsafe') {
+    findings.blockers.push(warning ?? `${prefix}Manifest-owned field is unsafe.`)
+    return
   }
 
-  const inspection = inspectProjectPath(root, absolutePath)
+  findings.warnings.push(warning ?? `${prefix}Manifest-owned field could not be verified.`)
+}
 
-  if (!inspection.safe) {
-    return {
-      path: absolutePath,
-      blocker: formatProjectPathBlocker(root, `Manifest file entry (${filePath})`, inspection),
+// manifest 소유 파일을 update/clean과 같은 공통 상태 판정기로 검사한다.
+function inspectManifestFiles(cwd: string, manifest: FrontronManifest, findings: DoctorFindings) {
+  for (const filePath of new Set(manifest.createdFiles)) {
+    // manifest는 자신을 해시할 수 없고, 위에서 안전한 경로와 유효한 구조를 이미 검증했다.
+    if (filePath === MANIFEST_PATH) continue
+
+    const inspection = inspectManagedFile(cwd, filePath, manifest.fileHashes?.[filePath])
+
+    if (inspection.state === 'unsafe') {
+      findings.blockers.push(inspection.blocker ?? `Manifest file entry is unsafe: ${filePath}`)
+      continue
+    }
+
+    if (inspection.state === 'missing') {
+      findings.blockers.push(`Missing manifest file: ${filePath}`)
+      continue
+    }
+
+    findings.checks.push(`${filePath} exists`)
+
+    if (inspection.state === 'unchanged') {
+      findings.checks.push(`${filePath} hash matches manifest`)
+    } else if (inspection.state === 'modified') {
+      findings.warnings.push(`Manifest-owned file has local edits: ${filePath}`)
+    } else {
+      findings.warnings.push(`Manifest-owned file has no recorded hash: ${filePath}`)
     }
   }
+}
 
-  return { path: absolutePath, blocker: null }
+// manifest 소유 script를 update/clean과 같은 공통 상태 판정기로 검사한다.
+function inspectManifestScripts(
+  packageJson: PackageJson,
+  manifest: FrontronManifest,
+  findings: DoctorFindings,
+) {
+  for (const scriptName of new Set(manifest.scripts)) {
+    const state = inspectManagedScript(packageJson.scripts, manifest.scriptCommands, scriptName)
+
+    if (state === 'missing') {
+      findings.blockers.push(`Missing package.json script: ${scriptName}`)
+      continue
+    }
+
+    if (state === 'unsafe') {
+      findings.blockers.push(`Manifest-owned script could not be inspected safely: ${scriptName}`)
+      continue
+    }
+
+    findings.checks.push(`scripts.${scriptName} exists`)
+
+    if (state === 'unchanged') {
+      findings.checks.push(`scripts.${scriptName} matches manifest`)
+    } else if (state === 'modified') {
+      findings.warnings.push(`Manifest-owned script has local edits: ${scriptName}`)
+    } else {
+      findings.warnings.push(`Manifest-owned script has no recorded command: ${scriptName}`)
+    }
+  }
+}
+
+// 필수 Electron 도구의 존재 여부와 템플릿 기준 major 호환성을 함께 검사한다.
+function inspectToolDependencies(
+  packageJson: PackageJson,
+  templateDependencies: InitTemplateDependencies | null,
+  findings: DoctorFindings,
+) {
+  for (const inspection of inspectToolDependencyDeclarations(packageJson, templateDependencies)) {
+    const { packageName, declaration, templateDeclaration, declaredMajor, templateMajor } =
+      inspection
+
+    if (!declaration) {
+      findings.blockers.push(`Missing required dependency: ${packageName}`)
+      continue
+    }
+
+    findings.checks.push(`${packageName} dependency found`)
+    if (!templateDeclaration) continue
+
+    if (declaredMajor === null || templateMajor === null) {
+      const protocolNote = isDependencyProtocol(declaration)
+        ? ' The protocol declaration is present and is not treated as an error.'
+        : ''
+      findings.warnings.push(
+        `Could not verify ${packageName} version compatibility for "${declaration}" against create-frontron template baseline "${templateDeclaration}".${protocolNote}`,
+      )
+      continue
+    }
+
+    if (declaredMajor !== templateMajor) {
+      findings.warnings.push(
+        `${packageName} major ${declaredMajor} does not match create-frontron template baseline ${templateDeclaration} (major ${templateMajor}).`,
+      )
+      continue
+    }
+
+    findings.checks.push(
+      `${packageName} major matches create-frontron template baseline (${declaredMajor})`,
+    )
+  }
+}
+
+// 동일 버전 create-frontron 템플릿과 manifest 및 도구 의존성을 한 스냅샷으로 대조한다.
+function inspectTemplateState(
+  manifest: FrontronManifest,
+  packageJson: PackageJson,
+  findings: DoctorFindings,
+) {
+  let templateDependencies: InitTemplateDependencies | null = null
+
+  try {
+    const template = loadCreateFrontronTemplate()
+    templateDependencies = template.dependencies
+
+    if (
+      manifest.templateSource === 'create-frontron' &&
+      manifest.templatePackage === 'create-frontron'
+    ) {
+      if (manifest.templateVersion === template.info.packageVersion) {
+        findings.checks.push(
+          `create-frontron template version matches frontron (${template.info.packageVersion})`,
+        )
+      } else {
+        findings.warnings.push(
+          `${MANIFEST_PATH} uses create-frontron@${manifest.templateVersion ?? 'unknown'}, but this frontron release requires create-frontron@${template.info.packageVersion}. Run "frontron update --yes" to refresh it.`,
+        )
+      }
+    } else {
+      findings.warnings.push(
+        `${MANIFEST_PATH} does not include create-frontron template metadata. Run "frontron update --yes" to refresh it.`,
+      )
+    }
+  } catch (error) {
+    findings.blockers.push(
+      `Unable to validate the required create-frontron template: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+
+  // 템플릿 로드가 실패해도 필수 의존성 자체가 빠졌는지는 독립적으로 보고한다.
+  inspectToolDependencies(packageJson, templateDependencies, findings)
 }
 
 // runDoctor 함수는 현재 프로젝트의 Frontron 초기화 상태를 점검한다.
@@ -205,6 +348,7 @@ export async function runDoctor(context: DoctorContext) {
   const warnings: string[] = []
   const blockers: string[] = []
   const checks: string[] = ['package.json found']
+  const findings = { checks, warnings, blockers }
   const manifestPath = resolve(context.cwd, MANIFEST_PATH)
   const manifestInspection = inspectProjectPath(context.cwd, manifestPath)
 
@@ -266,8 +410,7 @@ export async function runDoctor(context: DoctorContext) {
             readPackageJsonPath(tsconfigJson, claim.path),
           )
 
-          if (status.check) checks.push(status.check)
-          if (status.warning) warnings.push(status.warning)
+          addClaimInspection(findings, status)
         }
       } catch {
         warnings.push('tsconfig.json could not be parsed as JSON or JSONC.')
@@ -294,14 +437,17 @@ export async function runDoctor(context: DoctorContext) {
       const pnpmWorkspaceSource = readFileSync(pnpmWorkspacePath, 'utf8')
 
       for (const claim of pnpmWorkspaceClaims) {
-        const status = inspectManifestClaim(
-          'pnpm-workspace.yaml',
-          claim,
-          readPnpmWorkspaceYamlClaimValue(pnpmWorkspaceSource, claim.path),
-        )
+        const current = readPnpmWorkspaceYamlClaimValue(pnpmWorkspaceSource, claim.path)
 
-        if (status.check) checks.push(status.check)
-        if (status.warning) warnings.push(status.warning)
+        // 안전하게 판독할 수 없는 YAML은 누락 경고가 아니라 blocker로 보고한다.
+        if (!current.safeToEdit) {
+          blockers.push(current.blocker ?? 'Cannot safely inspect pnpm-workspace.yaml.')
+          break
+        }
+
+        const status = inspectManifestClaim('pnpm-workspace.yaml', claim, current)
+
+        addClaimInspection(findings, status)
       }
     }
   }
@@ -346,94 +492,12 @@ export async function runDoctor(context: DoctorContext) {
 
     const status = inspectManifestClaim(YARN_RC_YAML_PATH, claim, current)
 
-    if (status.check) checks.push(`${claim.file}: ${status.check}`)
-    if (status.warning) warnings.push(`${claim.file}: ${status.warning}`)
+    addClaimInspection(findings, status, `${claim.file}: `)
   }
 
-  try {
-    const templateInfo = getInitTemplateInfo()
-
-    if (
-      manifest.templateSource === 'create-frontron' &&
-      manifest.templatePackage === 'create-frontron'
-    ) {
-      if (manifest.templateVersion === templateInfo.packageVersion) {
-        checks.push(
-          `create-frontron template version matches frontron (${templateInfo.packageVersion})`,
-        )
-      } else {
-        warnings.push(
-          `${MANIFEST_PATH} uses create-frontron@${manifest.templateVersion ?? 'unknown'}, but this frontron release requires create-frontron@${templateInfo.packageVersion}. Run "frontron update --yes" to refresh it.`,
-        )
-      }
-    } else {
-      warnings.push(
-        `${MANIFEST_PATH} does not include create-frontron template metadata. Run "frontron update --yes" to refresh it.`,
-      )
-    }
-  } catch (error) {
-    blockers.push(
-      `Unable to validate the required create-frontron template: ${error instanceof Error ? error.message : String(error)}`,
-    )
-  }
-
-  for (const filePath of manifest.createdFiles) {
-    const resolvedFile = resolveDoctorManifestFile(context.cwd, filePath)
-
-    if (resolvedFile.blocker) {
-      blockers.push(resolvedFile.blocker)
-      continue
-    }
-
-    const absolutePath = resolvedFile.path
-
-    if (!existsSync(absolutePath)) {
-      blockers.push(`Missing manifest file: ${filePath}`)
-      continue
-    }
-
-    const stats = lstatSync(absolutePath)
-
-    if (!stats.isFile()) {
-      blockers.push(`Manifest file entry is not a regular file: ${filePath}`)
-      continue
-    }
-
-    checks.push(`${filePath} exists`)
-    const expectedHash = manifest.fileHashes?.[filePath]
-
-    if (expectedHash) {
-      const currentHash = createFileHash(readFileSync(absolutePath))
-
-      if (currentHash === expectedHash) {
-        checks.push(`${filePath} hash matches manifest`)
-      } else {
-        warnings.push(`Manifest-owned file has local edits: ${filePath}`)
-      }
-    } else if (filePath !== MANIFEST_PATH && manifest.fileHashes) {
-      warnings.push(`Manifest file hash is missing for: ${filePath}`)
-    }
-  }
-
-  for (const scriptName of manifest.scripts) {
-    if (!hasOwnString(packageJson.scripts, scriptName)) {
-      blockers.push(`Missing package.json script: ${scriptName}`)
-      continue
-    }
-
-    checks.push(`scripts.${scriptName} exists`)
-    const currentCommand = packageJson.scripts?.[scriptName]
-    const hasExpectedCommand = hasOwnString(manifest.scriptCommands, scriptName)
-    const expectedCommand = manifest.scriptCommands?.[scriptName]
-
-    if (hasExpectedCommand && currentCommand === expectedCommand) {
-      checks.push(`scripts.${scriptName} matches manifest`)
-    } else if (hasExpectedCommand) {
-      warnings.push(`Manifest-owned script has local edits: ${scriptName}`)
-    } else if (manifest.scriptCommands) {
-      warnings.push(`Manifest script command is missing for: ${scriptName}`)
-    }
-  }
+  inspectTemplateState(manifest, packageJson, findings)
+  inspectManifestFiles(context.cwd, manifest, findings)
+  inspectManifestScripts(packageJson, manifest, findings)
 
   for (const claim of manifest.packageJsonClaims ?? []) {
     const status = inspectManifestClaim(
@@ -442,16 +506,7 @@ export async function runDoctor(context: DoctorContext) {
       readPackageJsonPath(packageJson, claim.path),
     )
 
-    if (status.check) checks.push(status.check)
-    if (status.warning) warnings.push(status.warning)
-  }
-
-  for (const packageName of ['electron', 'electron-builder', 'typescript', '@types/node']) {
-    if (hasPackageDependency(packageJson, packageName)) {
-      checks.push(`${packageName} dependency found`)
-    } else {
-      blockers.push(`Missing required dependency: ${packageName}`)
-    }
+    addClaimInspection(findings, status)
   }
 
   if (isValidAppVersion(packageJson.version)) {

@@ -100,6 +100,33 @@ describe('Yarn .yarnrc.yml source editing', () => {
     expect(restored).toEqual({ source: originalSource })
   })
 
+  test('allows unrelated flow, block scalar, anchor, alias, and duplicate-key syntax', () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const yarnRcPath = join(projectRoot, '.yarnrc.yml')
+    const originalSource = [
+      'sharedCache: &cache { folder: .yarn/cache }',
+      'cacheSettings: *cache',
+      'notes: |',
+      '  Keep this block scalar.',
+      'checksumBehavior: throw',
+      'checksumBehavior: update',
+      "nodeLinker: 'pnp' # target comment",
+      '',
+    ].join('\r\n')
+    writeFileSync(yarnRcPath, originalSource)
+
+    const plan = previewYarnRcYamlPatch(projectRoot, 'yarn')
+
+    expect(plan?.blockers).toEqual([])
+    expect(plan?.nextSource).toBe(
+      originalSource.replace("nodeLinker: 'pnp'", "nodeLinker: 'node-modules'"),
+    )
+    expect(restoreYarnRcYamlClaim(plan!.nextSource, plan!.ownershipClaims[0])).toEqual({
+      source: originalSource,
+    })
+  })
+
   test('creates a minimal project config when no .yarnrc.yml exists', () => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)
@@ -152,6 +179,23 @@ describe('Yarn .yarnrc.yml source editing', () => {
     expect(plan?.nextSource).toBe('enableGlobalCache: false\nnodeLinker: node-modules')
     expect(plan?.changes[0].action).toBe('add')
     expect(restoreYarnRcYamlClaim(plan!.nextSource, plan!.ownershipClaims[0])).toEqual({
+      source: originalSource,
+    })
+  })
+
+  test('inserts before an explicit document-end marker and restores the exact source', () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const originalSource = '---\ncacheSettings: [global]\n...\n# footer\n'
+    writeFileSync(join(projectRoot, '.yarnrc.yml'), originalSource)
+
+    const plan = previewYarnRcYamlPatch(projectRoot, 'yarn')!
+
+    expect(plan.blockers).toEqual([])
+    expect(plan.nextSource).toBe(
+      '---\ncacheSettings: [global]\nnodeLinker: node-modules\n...\n# footer\n',
+    )
+    expect(restoreYarnRcYamlClaim(plan.nextSource, plan.ownershipClaims[0])).toEqual({
       source: originalSource,
     })
   })
@@ -211,12 +255,15 @@ describe('Yarn .yarnrc.yml source editing', () => {
   test.each([
     ['duplicate key', 'nodeLinker: pnp\nnodeLinker: node-modules\n', 'duplicate top-level key'],
     ['alias value', 'nodeLinker: *sharedLinker\n', 'aliases are not supported safely'],
+    ['anchor key', '&linkerKey nodeLinker: pnp\n', 'anchors are not supported safely'],
+    ['anchor value', 'nodeLinker: &linker pnp\n', 'anchors are not supported safely'],
+    ['tagged value', 'nodeLinker: !!str pnp\n', 'tags are not supported safely'],
     ['flow value', 'nodeLinker: [pnp]\n', 'flow collections are not supported safely'],
     ['complex value', 'nodeLinker:\n  mode: pnp\n', 'simple pnp or node-modules scalar'],
     [
       'nested content after scalar',
       'enableGlobalCache: false\n  invalid: true\n',
-      'nested content follows a top-level scalar',
+      'Nested mappings are not allowed in compact mappings',
     ],
   ])('blocks %s without changing the source', (_label, source, expectedReason) => {
     const projectRoot = fixtures.createTempProject()

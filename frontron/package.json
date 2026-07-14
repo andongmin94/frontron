@@ -8,6 +8,15 @@
   "bin": {
     "frontron": "index.js"
   },
+  "main": "./dist/cli.mjs",
+  "types": "./dist/cli.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.mjs"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "index.js",
     "dist",
@@ -36,7 +45,9 @@
   },
   "homepage": "https://andongmin.com/frontron/",
   "dependencies": {
-    "create-frontron" : "0.13.4"
+    "create-frontron" : "0.13.4",
+    "jsonc-parser"    : "^3.3.1",
+    "yaml"            : "^2.9.0"
   },
   "devDependencies": {
     "@types/node"         : "^24.10.13",

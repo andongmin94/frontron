@@ -1,19 +1,9 @@
-import { getInitTemplateInfo, renderCreateFrontronElectronFile } from './create-frontron-template'
+import { getInitTemplateInfo } from './create-frontron-template'
 import { resolveDevServerUrl } from './dev-server-url'
 import { renderServeSource } from './serve-source'
 
 export { getInitTemplateInfo }
 export { resolveDevServerUrl, renderServeSource }
-
-// renderMainSource 함수는 create-frontron 템플릿의 Electron main.ts 소스를 만든다.
-export function renderMainSource() {
-  return renderCreateFrontronElectronFile('main.ts')
-}
-
-// renderWindowSource 함수는 create-frontron 템플릿의 Electron window.ts 소스를 만든다.
-export function renderWindowSource() {
-  return renderCreateFrontronElectronFile('window.ts')
-}
 
 // renderTsconfigSource 함수는 Electron 전용 tsconfig.electron.json 내용을 만든다.
 export function renderTsconfigSource(desktopDir: string) {
@@ -23,6 +13,7 @@ export function renderTsconfigSource(desktopDir: string) {
         target: 'ES2020',
         module: 'NodeNext',
         moduleResolution: 'NodeNext',
+        moduleDetection: 'legacy',
         rootDir: `./${desktopDir}`,
         outDir: './dist-electron',
         strict: true,

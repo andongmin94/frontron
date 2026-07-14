@@ -1,120 +1,59 @@
-// stripJsonComments 함수는 JSONC 원문에서 문자열은 보존하고 주석만 제거한다.
-function stripJsonComments(source: string) {
-  let result = ''
-  let inString = false
-  let escaped = false
-  let inLineComment = false
-  let inBlockComment = false
+import {
+  parse,
+  parseTree,
+  printParseErrorCode,
+  type Node,
+  type ParseError,
+  type ParseOptions,
+} from 'jsonc-parser'
 
-  for (let index = 0; index < source.length; index += 1) {
-    const current = source[index]
-    const next = source[index + 1]
+const JSONC_PARSE_OPTIONS = { allowTrailingComma: true } satisfies ParseOptions
 
-    if (inLineComment) {
-      if (current === '\n' || current === '\r') {
-        inLineComment = false
-        result += current
-      }
-      continue
-    }
+// jsonc-parser는 주석과 trailing comma를 원문 위치와 함께 처리하며, 오류 복구 결과와 오류 목록을 분리해 손상된 JSONC도 확실히 거부할 수 있다.
 
-    if (inBlockComment) {
-      if (current === '*' && next === '/') {
-        inBlockComment = false
-        index += 1
-      } else if (current === '\n' || current === '\r') {
-        result += current
-      }
-      continue
-    }
+// createJsoncSyntaxError 함수는 첫 파서 오류를 호출자가 진단할 수 있는 SyntaxError로 바꾼다.
+function createJsoncSyntaxError(error?: ParseError) {
+  const detail = error
+    ? `${printParseErrorCode(error.error)} at offset ${error.offset}`
+    : 'ValueExpected at offset 0'
 
-    if (inString) {
-      result += current
-
-      if (escaped) {
-        escaped = false
-      } else if (current === '\\') {
-        escaped = true
-      } else if (current === '"') {
-        inString = false
-      }
-
-      continue
-    }
-
-    if (current === '"') {
-      inString = true
-      result += current
-      continue
-    }
-
-    if (current === '/' && next === '/') {
-      inLineComment = true
-      index += 1
-      continue
-    }
-
-    if (current === '/' && next === '*') {
-      inBlockComment = true
-      index += 1
-      continue
-    }
-
-    result += current
-  }
-
-  return result
+  return new SyntaxError(`Invalid JSONC: ${detail}.`)
 }
 
-// stripTrailingCommas 함수는 JSONC 원문에서 trailing comma를 제거한다.
-function stripTrailingCommas(source: string) {
-  let result = ''
-  let inString = false
-  let escaped = false
+// parseJsoncTree 함수는 허용된 JSONC 문법만 트리로 읽고 복구형 파싱에서 나온 오류를 빠짐없이 거부한다.
+export function parseJsoncTree(source: string): Node {
+  const errors: ParseError[] = []
+  const tree = parseTree(source, errors, JSONC_PARSE_OPTIONS)
 
-  for (let index = 0; index < source.length; index += 1) {
-    const current = source[index]
-
-    if (inString) {
-      result += current
-
-      if (escaped) {
-        escaped = false
-      } else if (current === '\\') {
-        escaped = true
-      } else if (current === '"') {
-        inString = false
-      }
-
-      continue
-    }
-
-    if (current === '"') {
-      inString = true
-      result += current
-      continue
-    }
-
-    if (current === ',') {
-      let nextIndex = index + 1
-
-      while (/\s/.test(source[nextIndex] ?? '')) {
-        nextIndex += 1
-      }
-
-      if (source[nextIndex] === '}' || source[nextIndex] === ']') {
-        continue
-      }
-    }
-
-    result += current
+  if (!tree || errors.length > 0) {
+    throw createJsoncSyntaxError(errors[0])
   }
 
-  return result
+  return tree
 }
 
-// parseJsonc 함수는 JSONC 원문에서 주석과 trailing comma를 제거한 뒤 JSON으로 파싱한다.
+// findUniqueJsoncProperty 함수는 최상위 객체에서 이름이 같은 속성을 찾아 중복 키의 모호성을 차단한다.
+export function findUniqueJsoncProperty(root: Node, key: string, label: string) {
+  const properties =
+    root.type === 'object'
+      ? (root.children ?? []).filter((property) => property.children?.[0]?.value === key)
+      : []
+
+  if (properties.length > 1) {
+    throw new Error(`${label} contains duplicate "${key}" properties.`)
+  }
+
+  return properties[0]
+}
+
+// parseJsonc 함수는 파서 오류를 확인한 뒤 기존 공개 계약과 같은 일반 JavaScript 값을 반환한다.
 export function parseJsonc<T>(source: string) {
-  // tsconfig.json의 주석과 trailing comma만 정규화한 뒤 JSON.parse에 전달한다.
-  return JSON.parse(stripTrailingCommas(stripJsonComments(source))) as T
+  const errors: ParseError[] = []
+  const value = parse(source, errors, JSONC_PARSE_OPTIONS)
+
+  if (errors.length > 0) {
+    throw createJsoncSyntaxError(errors[0])
+  }
+
+  return value as T
 }

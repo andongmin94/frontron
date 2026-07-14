@@ -104,6 +104,19 @@ function runNpm(args: string[], cwd: string) {
   return result.stdout
 }
 
+function runNode(args: string[], cwd: string) {
+  const result = spawnSync(process.execPath, args, {
+    cwd,
+    encoding: 'utf8',
+  })
+
+  if (result.status !== 0) {
+    throw new Error(result.stderr || result.stdout || 'node command failed')
+  }
+
+  return result.stdout
+}
+
 function ensureBuildOutput() {
   withBuildLock(() => {
     runNpm(['run', 'build'], packageRoot)
@@ -213,12 +226,21 @@ test(
 
     const packageJson = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as {
       version: string
+      main?: string
+      types?: string
+      exports?: Record<string, unknown>
       dependencies?: Record<string, string>
       engines?: Record<string, string>
     }
     const createFrontronDependency = packageJson.dependencies?.['create-frontron']
 
     expect(packageJson.engines?.node).toBe('>=22.15.0')
+    expect(packageJson.main).toBe('./dist/cli.mjs')
+    expect(packageJson.types).toBe('./dist/cli.d.ts')
+    expect(packageJson.exports?.['.']).toEqual({
+      types: './dist/cli.d.ts',
+      import: './dist/cli.mjs',
+    })
     expect(createFrontronDependency).toBe(packageJson.version)
   },
 )
@@ -229,6 +251,82 @@ test('frontron can produce a real publish tarball', { timeout: 60_000 }, () => {
   expect(existsSync(tarballPath)).toBe(true)
   expect(tarballPath.endsWith('.tgz')).toBe(true)
 })
+
+test(
+  'installed frontron tarball exposes runCli through ESM and NodeNext types',
+  { timeout: 120_000 },
+  () => {
+    const tarballPath = packPackageForReal()
+    const appRoot = mkdtempSync(join(tmpdir(), 'frontron-package-consumer-'))
+    tempDirs.push(appRoot)
+
+    writeFileSync(
+      join(appRoot, 'package.json'),
+      `${JSON.stringify(
+        {
+          name: 'frontron-package-consumer',
+          private: true,
+          type: 'module',
+        },
+        null,
+        2,
+      )}\n`,
+    )
+
+    installPackedFrontron(appRoot, tarballPath)
+
+    const importOutput = runNode(
+      [
+        '--input-type=module',
+        '--eval',
+        "const frontron = await import('frontron'); process.stdout.write(typeof frontron.runCli)",
+      ],
+      appRoot,
+    )
+
+    expect(importOutput).toBe('function')
+
+    writeFileSync(
+      join(appRoot, 'consumer.ts'),
+      `import { runCli, type CliContext } from 'frontron'
+
+const context: CliContext = { cwd: process.cwd() }
+const exitCode: Promise<number> = runCli([], undefined, context)
+
+void exitCode
+`,
+    )
+    writeFileSync(
+      join(appRoot, 'tsconfig.json'),
+      `${JSON.stringify(
+        {
+          compilerOptions: {
+            module: 'NodeNext',
+            moduleResolution: 'NodeNext',
+            target: 'ES2022',
+            strict: true,
+            noEmit: true,
+            types: ['node'],
+            typeRoots: [join(packageRoot, 'node_modules', '@types')],
+          },
+          files: ['consumer.ts'],
+        },
+        null,
+        2,
+      )}\n`,
+    )
+
+    runNode(
+      [
+        join(packageRoot, 'node_modules', 'typescript', 'bin', 'tsc'),
+        '--noEmit',
+        '--project',
+        'tsconfig.json',
+      ],
+      appRoot,
+    )
+  },
+)
 
 test(
   'packed frontron CLI reads its exact-version create-frontron template',

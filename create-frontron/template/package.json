@@ -31,7 +31,7 @@
     "@types/react"         : "^19.2.14",
     "@types/react-dom"     : "^19.2.3",
     "@vitejs/plugin-react" : "^6.0.1",
-    "electron"             : "^40.1.0",
+    "electron"             : "^43.1.1",
     "electron-builder"     : "^26.0.12",
     "oxfmt"                : "^0.42.0",
     "oxlint"               : "^1.57.0",

@@ -52,7 +52,7 @@
   "devDependencies": {
     "@types/node"         : "^24.10.13",
     "@vitest/coverage-v8" : "^4.0.7",
-    "oxfmt"               : "^0.42.0",
+    "oxfmt"               : "^0.59.0",
     "oxlint"              : "^1.57.0",
     "typescript"          : "^5.9.3",
     "unbuild"             : "^3.6.1",

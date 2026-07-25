@@ -226,9 +226,10 @@ function validateNamedCandidate(
   try {
     return validateCandidate(candidate, frontronVersion)
   } catch (error) {
-    throw new Error(`${label} must provide create-frontron@${frontronVersion}: ${(error as Error).message}`, {
-      cause: error,
-    })
+    throw new Error(
+      `${label} must provide create-frontron@${frontronVersion}: ${(error as Error).message}`,
+      { cause: error },
+    )
   }
 }
 

@@ -29,9 +29,9 @@ bun create frontron my-app
 ```
 
 Requires Node.js `22.15+`.
-When no project name is passed, the default target directory is `desktop-app`.
+When no project name is passed, the target directory is `desktop-app`.
 
-Generation is transactional. The complete project is prepared beside the destination, existing entries are backed up before replacement, and a durable journal plus process lock protects merge and overwrite operations. If the process is interrupted, the next run restores the previous destination before scaffolding again. Symlinked destination ancestors and filesystem roots are rejected.
+The target path must not already exist. The generator never deletes, merges into, or replaces an existing directory. If generation fails during a normal run, the newly created target is removed and existing files elsewhere are left untouched. Filesystem roots, symlinked target ancestors, and symlinked template entries are rejected.
 
 ## After generation
 

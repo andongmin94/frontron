@@ -39,19 +39,9 @@
     "url": "https://github.com/andongmin94/frontron/issues"
   },
   "homepage": "https://andongmin.com/frontron/",
-  "dependencies": {
-    "kolorist" : "^1.8.0",
-    "minimist" : "^1.2.8",
-    "prompts"  : "^2.4.2"
-  },
   "devDependencies": {
-    "@types/fs-extra"     : "^11.0.4",
-    "@types/minimist"     : "^1.2.5",
     "@types/node"         : "^24.10.13",
-    "@types/prompts"      : "^2.4.9",
     "@vitest/coverage-v8" : "^4.0.7",
-    "execa"               : "^9.6.0",
-    "fs-extra"            : "^11.3.2",
     "oxfmt"               : "^0.42.0",
     "oxlint"              : "^1.57.0",
     "typescript"          : "^5.9.3",

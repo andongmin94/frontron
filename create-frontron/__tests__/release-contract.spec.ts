@@ -50,12 +50,14 @@ test('release metadata check accepts the aligned package pair', () => {
   expect(result.status, result.stderr || result.stdout).toBe(0)
 })
 
-test('official publish refuses local execution before registry access', () => {
-  const result = runNode([releaseScript, 'publish'], workspaceRoot, localReleaseEnvironment())
+test('release auth check requires a complete trusted publishing environment', () => {
+  const env = localReleaseEnvironment()
+  env.FRONTRON_TRUSTED_PUBLISHING = '1'
+  const result = runNode([releaseScript, 'check-auth'], workspaceRoot, env)
 
   expect(result.status).toBe(1)
   expect(`${result.stdout}${result.stderr}`).toContain(
-    'Official releases must run through .github/workflows/frontron-release.yml',
+    'requires a GitHub-hosted Actions job with id-token: write',
   )
 })
 

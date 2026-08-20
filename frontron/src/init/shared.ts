@@ -44,7 +44,6 @@ export interface InitOptions {
   desktopDir?: string
   appScript?: string
   buildScript?: string
-  packageScript?: string
   webDevScript?: string
   webBuildScript?: string
   outDir?: string
@@ -123,7 +122,6 @@ export interface InitConfig {
   desktopDir: string
   appScript: string
   buildScript: string
-  packageScript: string
   webDevScript: string
   webBuildScript: string
   webBuildCommand: string
@@ -158,20 +156,17 @@ export const DEFAULT_SVELTEKIT_STATIC_OUT_DIR = 'build'
 export const DEFAULT_SVELTEKIT_NODE_OUT_DIR = '.frontron/runtime/sveltekit-node'
 export const DEFAULT_GENERIC_NODE_SERVER_OUT_DIR = '.frontron/runtime/node-server'
 
-// normalizeValue 함수는 문자열 입력을 trim하고 비어 있으면 fallback을 사용한다.
 export function normalizeValue(value: string, fallback: string) {
   const normalized = value.trim()
   return normalized || fallback
 }
 
-// normalizePathValue 함수는 사용자 입력 경로를 slash 기준의 상대 경로 형태로 정규화한다.
 export function normalizePathValue(value: string, fallback: string) {
   return normalizeValue(value, fallback)
     .replace(/\\/g, '/')
     .replace(/^\.\/+/, '')
 }
 
-// slugify 함수는 패키지 이름을 appId에 쓸 수 있는 slug로 바꾼다.
 function slugify(value: string) {
   return value
     .trim()
@@ -182,7 +177,6 @@ function slugify(value: string) {
     .replace(/^-+|-+$/g, '')
 }
 
-// titleCase 함수는 패키지 이름을 사람이 읽는 제품명 형태로 바꾼다.
 export function titleCase(value: string) {
   return value
     .replace(/^@/, '')
@@ -194,13 +188,11 @@ export function titleCase(value: string) {
     .join(' ')
 }
 
-// createDefaultAppId 함수는 패키지 이름을 바탕으로 기본 Electron appId를 만든다.
 export function createDefaultAppId(packageName: string) {
   const slug = slugify(packageName || 'desktop-app') || 'desktop-app'
   return `com.local.${slug}`
 }
 
-// normalizeAdapterValue 함수는 어댑터 입력값을 검증하고 표준 어댑터 ID로 정규화한다.
 export function normalizeAdapterValue(
   value: string | undefined,
   fallback: InitAdapterId = 'generic-static',
@@ -218,7 +210,6 @@ export function normalizeAdapterValue(
 
 type PackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun'
 
-// parseDeclaredPackageManager 함수는 packageManager 필드에서 패키지 매니저 이름을 읽는다.
 function parseDeclaredPackageManager(value: unknown): PackageManager | null {
   if (typeof value !== 'string') {
     return null
@@ -228,7 +219,6 @@ function parseDeclaredPackageManager(value: unknown): PackageManager | null {
   return name ? (name as PackageManager) : null
 }
 
-// inferLockfilePackageManager 함수는 상위 디렉터리의 lockfile을 보고 패키지 매니저를 추론한다.
 function inferLockfilePackageManager(cwd: string): PackageManager | null {
   let currentDir = resolve(cwd)
 
@@ -256,7 +246,6 @@ function inferLockfilePackageManager(cwd: string): PackageManager | null {
   return null
 }
 
-// inferPackageManager 함수는 package.json과 lockfile을 기준으로 사용할 패키지 매니저를 정한다.
 export function inferPackageManager(cwd: string, packageJson?: PackageJson): PackageManager {
   const declaredPackageManager = parseDeclaredPackageManager(packageJson?.packageManager)
 

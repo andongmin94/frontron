@@ -15,21 +15,16 @@ const SEMVER_PATTERN =
 
 const ROOT_RUNTIME_DEPENDENCY_ADAPTERS = new Set(['generic-node-server', 'sveltekit-node'])
 
-// isValidAppVersion 함수는 electron-builder가 받을 수 있는 SemVer 앱 버전인지 확인한다.
 export function isValidAppVersion(value: unknown): value is string {
   return typeof value === 'string' && SEMVER_PATTERN.test(value)
 }
 
-// usesRootRuntimeDependencies 함수는 패키지 루트의 production dependency가 실행 시 필요한 어댑터인지 확인한다.
 function usesRootRuntimeDependencies(config: InitConfig) {
   return ROOT_RUNTIME_DEPENDENCY_ADAPTERS.has(config.adapter)
 }
 
-// ensureArray 함수는 기존 설정 값이 문자열 배열인지 확인하고 복사본을 돌려준다.
 function ensureArray(value: unknown, label: string) {
-  if (typeof value === 'undefined') {
-    return []
-  }
+  if (typeof value === 'undefined') return []
 
   if (!Array.isArray(value) || value.some((entry) => typeof entry !== 'string')) {
     throw new Error(`${label} must be an array of strings to preserve existing packaging rules.`)
@@ -38,11 +33,8 @@ function ensureArray(value: unknown, label: string) {
   return [...value]
 }
 
-// ensureObject 함수는 기존 설정 값이 객체인지 확인하고 아니면 기본 객체를 사용한다.
 function ensureObject<T extends object>(value: unknown, label: string, fallback: T) {
-  if (typeof value === 'undefined') {
-    return fallback
-  }
+  if (typeof value === 'undefined') return fallback
 
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     return value as T
@@ -51,15 +43,12 @@ function ensureObject<T extends object>(value: unknown, label: string, fallback:
   throw new Error(`${label} must be an object to preserve existing packaging rules.`)
 }
 
-// parseMajorVersion 함수는 버전 문자열에서 major 버전을 숫자로 읽어낸다.
-// shouldUseFrontronTypescriptVersion 함수는 프로젝트 TypeScript 버전에 Frontron 기본 버전을 넣어야 하는지 판단한다.
 function shouldUseFrontronTypescriptVersion(packageJson: PackageJson) {
   const declaredVersion =
     packageJson.dependencies?.typescript ?? packageJson.devDependencies?.typescript
   return typeof declaredVersion === 'undefined'
 }
 
-// 기존 도구 버전을 보존하면서 템플릿 기준과의 호환 여부를 사용자에게 명시한다.
 function inspectToolVersionCompatibility(config: InitConfig) {
   const template = config.templateDependencies ?? loadCreateFrontronTemplate().dependencies
   const warnings: string[] = []
@@ -115,7 +104,6 @@ export type PackageJsonPatchPlan = {
   blockers: string[]
 }
 
-// addRecordChanges 함수는 객체 필드에서 추가되거나 바뀐 키를 변경 목록에 추가한다.
 function addRecordChanges(
   changes: PackageJsonPatchChange[],
   before: Record<string, string> | undefined,
@@ -123,9 +111,7 @@ function addRecordChanges(
   prefix: string,
 ) {
   for (const [name, value] of Object.entries(after ?? {})) {
-    if (before?.[name] === value) {
-      continue
-    }
+    if (before?.[name] === value) continue
 
     changes.push({
       action: typeof before?.[name] === 'undefined' ? 'add' : 'update',
@@ -134,16 +120,13 @@ function addRecordChanges(
   }
 }
 
-// addScalarChange 함수는 스칼라 값 변경을 package.json 변경 목록에 추가한다.
 function addScalarChange(
   changes: PackageJsonPatchChange[],
   before: unknown,
   after: unknown,
   path: string,
 ) {
-  if (typeof after === 'undefined' || before === after) {
-    return
-  }
+  if (typeof after === 'undefined' || before === after) return
 
   changes.push({
     action: typeof before === 'undefined' ? 'add' : 'update',
@@ -151,7 +134,6 @@ function addScalarChange(
   })
 }
 
-// addArrayValueChanges 함수는 배열 필드에 새로 추가된 값들을 변경 목록으로 기록한다.
 function addArrayValueChanges(
   changes: PackageJsonPatchChange[],
   before: unknown,
@@ -163,16 +145,11 @@ function addArrayValueChanges(
 
   for (const value of afterValues) {
     if (typeof value === 'string' && !beforeValues.includes(value)) {
-      changes.push({
-        action: 'add',
-        path,
-        value,
-      })
+      changes.push({ action: 'add', path, value })
     }
   }
 }
 
-// createPackageJsonPatchChanges 함수는 package.json 패치 전후 차이를 dry-run용 변경 목록으로 만든다.
 function createPackageJsonPatchChanges(before: PackageJson, after: PackageJson) {
   const changes: PackageJsonPatchChange[] = []
 
@@ -184,12 +161,7 @@ function createPackageJsonPatchChanges(before: PackageJson, after: PackageJson) 
   addScalarChange(changes, before.build?.productName, after.build?.productName, 'build.productName')
   addScalarChange(changes, before.build?.npmRebuild, after.build?.npmRebuild, 'build.npmRebuild')
   addArrayValueChanges(changes, before.build?.files, after.build?.files, 'build.files')
-  addArrayValueChanges(
-    changes,
-    before.build?.asarUnpack,
-    after.build?.asarUnpack,
-    'build.asarUnpack',
-  )
+  addArrayValueChanges(changes, before.build?.asarUnpack, after.build?.asarUnpack, 'build.asarUnpack')
   addScalarChange(
     changes,
     before.build?.directories?.output,
@@ -206,7 +178,6 @@ function createPackageJsonPatchChanges(before: PackageJson, after: PackageJson) 
   return changes
 }
 
-// addOwnershipClaim 함수는 package.json의 단일 필드 변경에 대한 소유권 기록을 추가한다.
 function addOwnershipClaim(
   claims: PackageJsonOwnershipClaim[],
   before: PackageJson,
@@ -216,26 +187,18 @@ function addOwnershipClaim(
   const beforeValue = readPackageJsonPath(before, path)
   const afterValue = readPackageJsonPath(after, path)
 
-  if (!afterValue.exists || valuesEqual(beforeValue.value, afterValue.value)) {
-    return
-  }
+  if (!afterValue.exists || valuesEqual(beforeValue.value, afterValue.value)) return
 
   claims.push({
     path,
     action: 'set',
     value: cloneJsonValue(afterValue.value),
     previous: beforeValue.exists
-      ? {
-          state: 'value',
-          value: cloneJsonValue(beforeValue.value),
-        }
-      : {
-          state: 'missing',
-        },
+      ? { state: 'value', value: cloneJsonValue(beforeValue.value) }
+      : { state: 'missing' },
   })
 }
 
-// addArrayValueOwnershipClaims 함수는 배열 필드에 Frontron이 추가한 값들의 소유권 기록을 만든다.
 function addArrayValueOwnershipClaims(
   claims: PackageJsonOwnershipClaim[],
   before: PackageJson,
@@ -248,27 +211,19 @@ function addArrayValueOwnershipClaims(
   const afterValues = Array.isArray(afterValue.value) ? afterValue.value : []
 
   for (const value of afterValues) {
-    if (typeof value !== 'string' || beforeValues.includes(value)) {
-      continue
-    }
+    if (typeof value !== 'string' || beforeValues.includes(value)) continue
 
     claims.push({
       path,
       action: 'array-value',
       value,
       previous: beforeValue.exists
-        ? {
-            state: 'value',
-            value: cloneJsonValue(beforeValue.value),
-          }
-        : {
-            state: 'missing',
-          },
+        ? { state: 'value', value: cloneJsonValue(beforeValue.value) }
+        : { state: 'missing' },
     })
   }
 }
 
-// createPackageJsonOwnershipClaims 함수는 package.json 패치가 Frontron 소유로 추가한 필드 기록을 만든다.
 function createPackageJsonOwnershipClaims(before: PackageJson, after: PackageJson) {
   const claims: PackageJsonOwnershipClaim[] = []
 
@@ -297,7 +252,6 @@ function createPackageJsonOwnershipClaims(before: PackageJson, after: PackageJso
   return claims
 }
 
-// formatPackageJsonPatchChange 함수는 package.json 변경 항목을 dry-run 리포트 한 줄로 만든다.
 export function formatPackageJsonPatchChange(change: PackageJsonPatchChange) {
   const marker = change.action === 'add' ? '+' : '~'
   const value = change.value ? `: ${change.value}` : ''
@@ -305,8 +259,6 @@ export function formatPackageJsonPatchChange(change: PackageJsonPatchChange) {
   return `  ${marker} ${change.path}${value}`
 }
 
-// previewPackageJsonPatch 함수는 package.json 패치를 실제 적용 전 미리 계산한다.
-// removeOwnedPackageJsonValues 함수는 update가 관리하던 값만 baseline에서 걷어 새 템플릿 값으로 다시 계산하게 한다.
 function removeOwnedPackageJsonValues(
   packageJson: PackageJson,
   claims: PackageJsonOwnershipClaim[],
@@ -329,7 +281,6 @@ function removeOwnedPackageJsonValues(
   }
 }
 
-// previewPackageJsonPatch 함수는 package.json 패치를 실제 적용 전 미리 계산한다.
 export function previewPackageJsonPatch(
   config: InitConfig,
   ownedClaims: PackageJsonOwnershipClaim[] = [],
@@ -359,18 +310,15 @@ export function previewPackageJsonPatch(
   }
 }
 
-// createDesktopScriptCommands 함수는 Electron 개발, 빌드, 패키징에 필요한 npm script 명령을 만든다.
 export function createDesktopScriptCommands(config: InitConfig) {
   const prepareRuntimePackageCommand = `node -e "const fs=require('node:fs');fs.mkdirSync('dist-electron',{recursive:true});fs.writeFileSync('dist-electron/package.json', JSON.stringify({type:'module'}, null, 2) + '\\n')"`
 
   return {
     [config.appScript]: `tsc -p tsconfig.electron.json && ${prepareRuntimePackageCommand} && node --no-deprecation dist-electron/serve.js --dev-app`,
-    [config.buildScript]: `${config.webBuildCommand} && tsc -p tsconfig.electron.json && ${prepareRuntimePackageCommand} && node --no-deprecation dist-electron/serve.js --prepare-build`,
-    [config.packageScript]: `${config.webBuildCommand} && tsc -p tsconfig.electron.json && ${prepareRuntimePackageCommand} && node --no-deprecation dist-electron/serve.js --prepare-build && electron-builder --publish never`,
+    [config.buildScript]: `${config.webBuildCommand} && tsc -p tsconfig.electron.json && ${prepareRuntimePackageCommand} && node --no-deprecation dist-electron/serve.js --prepare-build && electron-builder --publish never`,
   }
 }
 
-// patchPackageJson 함수는 package.json에 Electron 실행과 패키징 설정을 반영한다.
 export function patchPackageJson(config: InitConfig) {
   const packageJson = config.packageJson
   const scripts = { ...(packageJson.scripts ?? {}) }
@@ -435,7 +383,6 @@ export function patchPackageJson(config: InitConfig) {
   const packageRootRuntimeDependencies = usesRootRuntimeDependencies(config)
 
   if (!packageRootRuntimeDependencies) {
-    // 자급식 산출물에는 웹 프레임워크의 빌드 전용 의존성을 다시 포함하거나 재빌드하지 않는다.
     build.npmRebuild ??= false
   }
 
@@ -448,9 +395,7 @@ export function patchPackageJson(config: InitConfig) {
   filePatterns.push('public{,/**/*}')
 
   for (const pattern of filePatterns) {
-    if (!files.includes(pattern)) {
-      files.push(pattern)
-    }
+    if (!files.includes(pattern)) files.push(pattern)
   }
 
   build.files = files
@@ -459,10 +404,7 @@ export function patchPackageJson(config: InitConfig) {
     const asarUnpack = ensureArray(build.asarUnpack, 'build.asarUnpack')
     const unpackPattern = `${config.outDir}{,/**/*}`
 
-    if (!asarUnpack.includes(unpackPattern)) {
-      asarUnpack.push(unpackPattern)
-    }
-
+    if (!asarUnpack.includes(unpackPattern)) asarUnpack.push(unpackPattern)
     build.asarUnpack = asarUnpack
   }
 

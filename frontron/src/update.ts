@@ -206,7 +206,6 @@ function createUpdateInitOptions(manifest: FrontronManifest): Partial<InitOption
     desktopDir: manifest.desktopDir,
     appScript: manifest.appScript,
     buildScript: manifest.buildScript,
-    packageScript: manifest.packageScript,
     webDevScript: manifest.webDevScript,
     webBuildScript: manifest.webBuildScript,
     outDir: manifest.outDir,

@@ -98,7 +98,7 @@ function printHelp() {
   console.log(`Usage: node scripts/package-manager-matrix-smoke.mjs [all|pnpm|yarn|bun] [options]
 
 Options:
-  --package, --package-dir  frontron:package --dir까지 실행한다.
+  --package, --package-dir  frontron:build --dir까지 실행한다.
   --no-package             환경 변수로 켠 패키징을 끈다.
   --keep                   디버깅을 위해 임시 디렉터리를 보존한다.
   -h, --help               도움말을 출력한다.
@@ -993,7 +993,7 @@ function assertInitResult(manager, managerVersion, appRoot) {
     throw new Error(`${manager.name} packageManager 필드가 init 중 예기치 않게 변경되었습니다.`)
   }
 
-  for (const scriptName of ['frontron:dev', 'frontron:build', 'frontron:package']) {
+  for (const scriptName of ['frontron:dev', 'frontron:build']) {
     if (typeof packageJson.scripts?.[scriptName] !== 'string') {
       throw new Error(`${manager.name} init이 scripts.${scriptName}을 생성하지 않았습니다.`)
     }
@@ -1095,7 +1095,7 @@ async function runManagerCase(manager, tarballs, registryOrigin, packageDirector
   if (packageDirectory) {
     await runPackageScript(
       manager,
-      'frontron:package',
+      'frontron:build',
       ['--dir'],
       appRoot,
       `${manager.name} electron-builder --dir`,

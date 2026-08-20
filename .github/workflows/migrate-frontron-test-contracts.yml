@@ -1,16 +1,20 @@
 name: migrate-frontron-test-contracts
 
 on:
-  push:
+  pull_request:
     branches:
-      - refactor/unify-build-native-runtime
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
 
 permissions:
   contents: write
 
 jobs:
   migrate:
-    if: github.actor != 'github-actions[bot]'
+    if: github.actor != 'github-actions[bot]' && github.event.pull_request.head.ref == 'refactor/unify-build-native-runtime'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0

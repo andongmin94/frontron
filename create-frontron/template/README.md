@@ -14,13 +14,7 @@ npm run build     # build and package the desktop app
 
 ## Window behavior
 
-The app uses the operating system's native title bar. The generated BrowserWindow keeps:
-
-```ts
-nodeIntegration: false
-sandbox: true
-contextIsolation: true
-```
+The app uses the operating system's native title bar. The generated BrowserWindow keeps Node integration disabled, sandboxing enabled, and context isolation enabled.
 
 External HTTP and HTTPS links open in the system browser. Other cross-origin navigation and new Electron windows are blocked.
 
@@ -50,8 +44,4 @@ src/electron/ipc.ts
 src/types/electron.d.ts
 ```
 
-Keep preload methods narrow, validate every IPC sender and argument in the main process, and prefer user-selected file dialogs over arbitrary path access.
-
-## UI
-
-The template includes Tailwind CSS, Base UI primitives, theme support, and only the `button.tsx` and `dialog.tsx` local UI components.
+The renderer intentionally starts as a small React screen with plain CSS. Add a component library or styling system only when the application needs one.

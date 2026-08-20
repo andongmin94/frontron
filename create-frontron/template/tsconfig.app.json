@@ -7,25 +7,18 @@
     "module": "ESNext",
     "types": ["vite/client"],
     "skipLibCheck": true,
-
-    /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "react-jsx",
-
-    /* Linting */
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true,
-    "paths": {
-      "@/*": ["./src/*"]
-    }
+    "noUncheckedSideEffectImports": true
   },
   "include": ["src", "src/types/**/*.d.ts"]
 }

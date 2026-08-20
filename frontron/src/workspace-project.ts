@@ -253,12 +253,11 @@ export function resolveWorkspaceProject(
         relativeProject,
         'Workspace project',
       )
-      const packageJson = readPackageJson(join(projectRoot, 'package.json'))
 
       return {
+        packageJsonPath: join(projectRoot, 'package.json'),
         projectRoot,
         initialized: existsSync(join(projectRoot, MANIFEST_PATH)),
-        frontend: isFrontendWorkspaceProject(projectRoot, packageJson),
       }
     },
   )
@@ -279,7 +278,14 @@ export function resolveWorkspaceProject(
 
   const frontendProject = chooseUniqueProject(
     invocationRoot,
-    candidates.filter((candidate) => candidate.frontend).map((candidate) => candidate.projectRoot),
+    candidates
+      .filter((candidate) =>
+        isFrontendWorkspaceProject(
+          candidate.projectRoot,
+          readPackageJson(candidate.packageJsonPath),
+        ),
+      )
+      .map((candidate) => candidate.projectRoot),
     'frontend',
   )
 

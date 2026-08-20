@@ -80,6 +80,11 @@ function formatTargetDir(targetDir: string | undefined) {
   if (targetDir === undefined) return undefined
 
   const trimmed = targetDir.trim()
+
+  if (path.parse(trimmed).root === trimmed) {
+    return trimmed
+  }
+
   const withoutTrailingSeparators = trimmed.replace(/[\\/]+$/g, '')
   return withoutTrailingSeparators || trimmed
 }

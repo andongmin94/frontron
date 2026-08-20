@@ -169,8 +169,6 @@ describe('frontron doctor', () => {
     const output = fixtures.createOutput()
 
     expect(await runCli(['doctor'], output, { cwd: projectRoot })).toBe(1)
-    expect(output.error.mock.calls.flat().join('\n')).toContain(
-      'uses unsupported schema version 1',
-    )
+    expect(output.error.mock.calls.flat().join('\n')).toContain('uses unsupported schema version 1')
   })
 })

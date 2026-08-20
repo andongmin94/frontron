@@ -43,9 +43,7 @@ describe('frontron update', () => {
       'Run "frontron update --yes" to apply this plan.',
     )
 
-    expect(
-      await runCli(['update', '--yes'], fixtures.createOutput(), { cwd: projectRoot }),
-    ).toBe(0)
+    expect(await runCli(['update', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
     expect(readFileSync(mainPath, 'utf8')).toContain('createWindow')
   })
 
@@ -57,9 +55,7 @@ describe('frontron update', () => {
     const mainPath = join(projectRoot, 'electron', 'main.ts')
     rmSync(mainPath)
 
-    expect(
-      await runCli(['update', '--yes'], fixtures.createOutput(), { cwd: projectRoot }),
-    ).toBe(0)
+    expect(await runCli(['update', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
     expect(existsSync(mainPath)).toBe(true)
     expect(readFileSync(mainPath, 'utf8')).toContain('createWindow')
   })
@@ -137,9 +133,7 @@ describe('frontron update', () => {
     writeFileSync(join(projectRoot, 'pnpm-workspace.yaml'), 'allowBuilds: *sharedBuilds\n')
     const output = fixtures.createOutput()
 
-    expect(
-      await runCli(['update', '--yes', '--force'], output, { cwd: projectRoot }),
-    ).toBe(1)
+    expect(await runCli(['update', '--yes', '--force'], output, { cwd: projectRoot })).toBe(1)
     expect(output.error.mock.calls.flat().join('\n')).toContain('aliases are not supported safely')
   })
 
@@ -161,9 +155,7 @@ describe('frontron update', () => {
       'com.example.recorded-product',
     ])
 
-    expect(
-      await runCli(['update', '--yes'], fixtures.createOutput(), { cwd: projectRoot }),
-    ).toBe(0)
+    expect(await runCli(['update', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
 
     const manifest = JSON.parse(
       readFileSync(join(projectRoot, '.frontron', 'manifest.json'), 'utf8'),
@@ -188,8 +180,6 @@ describe('frontron update', () => {
     const output = fixtures.createOutput()
 
     expect(await runCli(['update'], output, { cwd: projectRoot })).toBe(1)
-    expect(output.error.mock.calls.flat().join('\n')).toContain(
-      'uses unsupported schema version 1',
-    )
+    expect(output.error.mock.calls.flat().join('\n')).toContain('uses unsupported schema version 1')
   })
 })

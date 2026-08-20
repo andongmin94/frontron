@@ -72,12 +72,6 @@ jobs:
       - name: Dependency tree
         run: npm ls --all
 
-      - name: Capture formatter output
-        if: matrix.package == 'frontron'
-        run: |
-          npm run lint
-          git diff -- src/init/manifest.ts __tests__/doctor.spec.ts __tests__/update.spec.ts
-
       - name: Check lint and formatting
         run: npm run check
 

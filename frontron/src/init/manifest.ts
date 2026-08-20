@@ -200,9 +200,7 @@ function isPackageJsonOwnershipClaim(value: unknown): value is PackageJsonOwners
 function isClaimArray(value: unknown, pathAllowlist: ReadonlySet<string>) {
   return (
     Array.isArray(value) &&
-    value.every(
-      (claim) => isPackageJsonOwnershipClaim(claim) && pathAllowlist.has(claim.path),
-    )
+    value.every((claim) => isPackageJsonOwnershipClaim(claim) && pathAllowlist.has(claim.path))
   )
 }
 

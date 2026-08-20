@@ -20,6 +20,15 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: refactor/unify-build-native-runtime
+      - name: Prepare sequential duplicate replacements
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/migrate-frontron-test-contracts.mjs')
+          source = path.read_text()
+          source = source.replace("\n  if (source.indexOf(before, firstIndex + before.length) !== -1) {\n    throw new Error(`Migration target is ambiguous: ${label}`)\n  }\n", "\n")
+          path.write_text(source)
+          PY
       - name: Update tests to the current contract
         run: node .github/scripts/migrate-frontron-test-contracts.mjs
       - name: Commit migrated tests

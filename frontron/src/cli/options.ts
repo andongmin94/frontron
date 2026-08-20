@@ -7,6 +7,7 @@ export type CliCommand = (typeof CLI_COMMANDS)[number]
 export type ParsedCliOptions = {
   command: CliCommand | null
   help: boolean
+  project?: string
   options: InitOptions
 }
 
@@ -103,6 +104,7 @@ export function parseCliOptions(argv: string[]): ParsedCliOptions {
   if (!isCliCommand(rawCommand)) throwUnknownCommand(rawCommand)
 
   let help = false
+  let project: string | undefined
   const commandArguments = argv.slice(1)
 
   for (let index = 0; index < commandArguments.length; index += 1) {
@@ -115,6 +117,14 @@ export function parseCliOptions(argv: string[]): ParsedCliOptions {
     if (argument === '--help' || argument === '-h') {
       rejectInlineValue(argument, inlineValue)
       help = true
+      continue
+    }
+
+    if (argument === '--project') {
+      if (project !== undefined) throw new Error('--project may be specified only once.')
+      const next = readOptionValue(argument, inlineValue, commandArguments, index)
+      project = next.value
+      index = next.nextIndex
       continue
     }
 
@@ -155,5 +165,5 @@ export function parseCliOptions(argv: string[]): ParsedCliOptions {
     index = next.nextIndex
   }
 
-  return { command: rawCommand, help, options }
+  return { command: rawCommand, help, project, options }
 }

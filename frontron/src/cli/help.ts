@@ -6,6 +6,12 @@ const HELP_LINES = [
   '[Frontron] The retrofit flow stays app-owned and avoids replacing the existing frontend structure.',
 ] as const
 
+function printProjectOption(output: CliOutput) {
+  output.info(
+    '  --project <path>                       Select a frontend package from a monorepo root.',
+  )
+}
+
 export function printHelp(output: CliOutput) {
   output.info('Usage: frontron <init|doctor|clean|update> [options]')
   output.info('')
@@ -32,6 +38,7 @@ export function printInitHelp(output: CliOutput) {
   output.info('Add a conservative Electron layer to an existing web frontend project.')
   output.info('')
   output.info('Options:')
+  printProjectOption(output)
   output.info(
     '  --dry-run                              Show the plan without applying it; pending recovery runs first.',
   )
@@ -59,11 +66,14 @@ export function printInitHelp(output: CliOutput) {
 }
 
 export function printDoctorHelp(output: CliOutput) {
-  output.info('Usage: frontron doctor')
+  output.info('Usage: frontron doctor [options]')
   output.info('')
   output.info(
     'Check an initialized Electron retrofit layer and report missing or locally edited manifest-owned parts.',
   )
+  output.info('')
+  output.info('Options:')
+  printProjectOption(output)
 }
 
 export function printCleanHelp(output: CliOutput) {
@@ -74,6 +84,7 @@ export function printCleanHelp(output: CliOutput) {
   )
   output.info('')
   output.info('Options:')
+  printProjectOption(output)
   output.info(
     '  --dry-run                              Show the cleanup plan without applying it; pending recovery runs first.',
   )
@@ -91,6 +102,7 @@ export function printUpdateHelp(output: CliOutput) {
   )
   output.info('')
   output.info('Options:')
+  printProjectOption(output)
   output.info(
     '  --dry-run                              Show the refresh plan without applying it; pending recovery runs first.',
   )

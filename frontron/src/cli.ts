@@ -1,3 +1,5 @@
+import { relative } from 'node:path'
+
 import { runInit, type InitPrompter } from './init'
 import { runDoctor } from './doctor'
 import { runClean } from './clean'
@@ -12,6 +14,7 @@ import {
 } from './cli/help'
 import { parseCliOptions } from './cli/options'
 import { recoverPendingTransaction } from './transaction-journal'
+import { resolveWorkspaceProject } from './workspace-project'
 
 export type { CliOutput } from './cli-output'
 
@@ -23,23 +26,20 @@ export interface CliContext {
 }
 
 const defaultOutput: CliOutput = {
-  // info 메서드는 일반 안내 메시지를 표준 출력으로 보낸다.
   info(message: string) {
     console.log(message)
   },
-  // error 메서드는 오류 메시지를 표준 에러로 보낸다.
   error(message: string) {
     console.error(message)
   },
 }
 
-// runCli 함수는 CLI 인자를 해석해 init, doctor, clean, update 명령으로 라우팅한다.
 export async function runCli(
   argv = process.argv.slice(2),
   output: CliOutput = defaultOutput,
   context: CliContext = {},
 ) {
-  const cwd = context.cwd ?? process.cwd()
+  const invocationCwd = context.cwd ?? process.cwd()
   let parsed: ReturnType<typeof parseCliOptions>
 
   try {
@@ -75,6 +75,25 @@ export async function runCli(
   if (!command) {
     printHelp(output)
     return 0
+  }
+
+  let cwd: string
+
+  try {
+    const resolution = resolveWorkspaceProject(invocationCwd, command, parsed.project)
+    cwd = resolution.projectRoot
+
+    if (resolution.projectRoot !== resolution.invocationRoot) {
+      output.info(
+        `[Frontron] Using workspace project: ${relative(
+          resolution.invocationRoot,
+          resolution.projectRoot,
+        ).replace(/\\/g, '/')}`,
+      )
+    }
+  } catch (error) {
+    output.error(`[Frontron] ${(error as Error).message}`)
+    return 1
   }
 
   if (command !== 'doctor') {

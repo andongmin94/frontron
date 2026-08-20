@@ -71,10 +71,36 @@ function readRequiredString(
   return result
 }
 
+function readTextContent(value: unknown) {
+  if (typeof value !== "string") {
+    throw new Error("content must be a string.")
+  }
+
+  if (Buffer.byteLength(value, "utf8") > maximumTextFileBytes) {
+    throw new Error("content is larger than 16 MiB.")
+  }
+
+  return value
+}
+
+function readClipboardInput(value: unknown) {
+  if (typeof value !== "string") {
+    throw new Error("clipboard text must be a string.")
+  }
+
+  if (value.length > maximumClipboardCharacters) {
+    throw new Error("clipboard text is too long.")
+  }
+
+  return value
+}
+
 function readTextExtensions(value: unknown) {
   if (typeof value === "undefined") return defaultTextExtensions
   if (!Array.isArray(value) || value.length === 0 || value.length > 20) {
-    throw new Error("extensions must be a non-empty array with at most 20 entries.")
+    throw new Error(
+      "extensions must be a non-empty array with at most 20 entries."
+    )
   }
 
   const extensions = value.map((entry) => {
@@ -163,11 +189,7 @@ export function setupIpcHandlers() {
   ipcMain.handle(saveTextFileChannel, async (event, value: unknown) => {
     assertTrustedSender(event, window)
     const options = readRecord(value)
-    const content = readRequiredString(
-      options.content,
-      "content",
-      maximumTextFileBytes
-    )
+    const content = readTextContent(options.content)
     const result = await dialog.showSaveDialog(window, {
       title: readOptionalString(options.title, "title", 200),
       defaultPath: readOptionalString(
@@ -189,12 +211,7 @@ export function setupIpcHandlers() {
 
   ipcMain.handle(writeClipboardTextChannel, (event, value: unknown) => {
     assertTrustedSender(event, window)
-    const text = readRequiredString(
-      value,
-      "clipboard text",
-      maximumClipboardCharacters
-    )
-    clipboard.writeText(text)
+    clipboard.writeText(readClipboardInput(value))
   })
 
   ipcMain.handle(showNotificationChannel, (event, value: unknown) => {

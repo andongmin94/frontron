@@ -55,7 +55,11 @@ function readPackageJson(packageJsonPath: string) {
 }
 
 function normalizeProjectPath(value: string, label: string) {
-  const normalized = value.trim().replace(/\\/g, '/').replace(/^\.\/+/, '').replace(/\/+$/g, '')
+  const normalized = value
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\.\/+/, '')
+    .replace(/\/+$/g, '')
 
   if (!normalized || normalized.includes('\0')) {
     throw new Error(`${label} must be a non-empty relative path.`)
@@ -139,7 +143,10 @@ function readWorkspacePatterns(invocationRoot: string, rootPackageJson: PackageJ
 }
 
 function toPackageJsonPattern(pattern: string) {
-  const normalized = pattern.replace(/\\/g, '/').replace(/^\.\/+/, '').replace(/\/+$/g, '')
+  const normalized = pattern
+    .replace(/\\/g, '/')
+    .replace(/^\.\/+/, '')
+    .replace(/\/+$/g, '')
   return normalized.endsWith('package.json') ? normalized : `${normalized}/package.json`
 }
 
@@ -162,7 +169,10 @@ function findWorkspacePackageJsonPaths(invocationRoot: string, patterns: string[
 }
 
 function hasStringScript(packageJson: PackageJson, name: string) {
-  return typeof packageJson.scripts?.[name] === 'string' && packageJson.scripts[name].trim().length > 0
+  return (
+    typeof packageJson.scripts?.[name] === 'string' &&
+    packageJson.scripts[name].trim().length > 0
+  )
 }
 
 function isFrontendWorkspaceProject(projectRoot: string, packageJson: PackageJson) {
@@ -205,7 +215,9 @@ export function resolveWorkspaceProject(
 ): WorkspaceProjectResolution {
   const invocationRoot = realpathSync.native(resolve(cwd))
   const rootPackageJsonPath = join(invocationRoot, 'package.json')
-  const rootPackageJson = existsSync(rootPackageJsonPath) ? readPackageJson(rootPackageJsonPath) : null
+  const rootPackageJson = existsSync(rootPackageJsonPath)
+    ? readPackageJson(rootPackageJsonPath)
+    : null
   const configuredProject = requestedProject ?? readConfiguredProject(rootPackageJson)
 
   if (configuredProject) {
@@ -236,7 +248,9 @@ export function resolveWorkspaceProject(
 
   const candidates = findWorkspacePackageJsonPaths(invocationRoot, workspacePatterns).map(
     (packageJsonPath) => {
-      const relativeProject = packageJsonPath.replace(/\/package\.json$/, '')
+      const relativeProject = packageJsonPath
+        .replace(/\\/g, '/')
+        .replace(/\/package\.json$/, '')
       const projectRoot = assertProjectDirectory(
         invocationRoot,
         relativeProject,
@@ -255,7 +269,9 @@ export function resolveWorkspaceProject(
   if (command !== 'init') {
     const initializedProject = chooseUniqueProject(
       invocationRoot,
-      candidates.filter((candidate) => candidate.initialized).map((candidate) => candidate.projectRoot),
+      candidates
+        .filter((candidate) => candidate.initialized)
+        .map((candidate) => candidate.projectRoot),
       'initialized',
     )
 

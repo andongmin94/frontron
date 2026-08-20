@@ -161,7 +161,12 @@ function createPackageJsonPatchChanges(before: PackageJson, after: PackageJson) 
   addScalarChange(changes, before.build?.productName, after.build?.productName, 'build.productName')
   addScalarChange(changes, before.build?.npmRebuild, after.build?.npmRebuild, 'build.npmRebuild')
   addArrayValueChanges(changes, before.build?.files, after.build?.files, 'build.files')
-  addArrayValueChanges(changes, before.build?.asarUnpack, after.build?.asarUnpack, 'build.asarUnpack')
+  addArrayValueChanges(
+    changes,
+    before.build?.asarUnpack,
+    after.build?.asarUnpack,
+    'build.asarUnpack',
+  )
   addScalarChange(
     changes,
     before.build?.directories?.output,
@@ -194,8 +199,13 @@ function addOwnershipClaim(
     action: 'set',
     value: cloneJsonValue(afterValue.value),
     previous: beforeValue.exists
-      ? { state: 'value', value: cloneJsonValue(beforeValue.value) }
-      : { state: 'missing' },
+      ? {
+          state: 'value',
+          value: cloneJsonValue(beforeValue.value),
+        }
+      : {
+          state: 'missing',
+        },
   })
 }
 
@@ -218,8 +228,13 @@ function addArrayValueOwnershipClaims(
       action: 'array-value',
       value,
       previous: beforeValue.exists
-        ? { state: 'value', value: cloneJsonValue(beforeValue.value) }
-        : { state: 'missing' },
+        ? {
+            state: 'value',
+            value: cloneJsonValue(beforeValue.value),
+          }
+        : {
+            state: 'missing',
+          },
     })
   }
 }
@@ -314,8 +329,14 @@ export function createDesktopScriptCommands(config: InitConfig) {
   const prepareRuntimePackageCommand = `node -e "const fs=require('node:fs');fs.mkdirSync('dist-electron',{recursive:true});fs.writeFileSync('dist-electron/package.json', JSON.stringify({type:'module'}, null, 2) + '\\n')"`
 
   return {
-    [config.appScript]: `tsc -p tsconfig.electron.json && ${prepareRuntimePackageCommand} && node --no-deprecation dist-electron/serve.js --dev-app`,
-    [config.buildScript]: `${config.webBuildCommand} && tsc -p tsconfig.electron.json && ${prepareRuntimePackageCommand} && node --no-deprecation dist-electron/serve.js --prepare-build && electron-builder --publish never`,
+    [config.appScript]:
+      `tsc -p tsconfig.electron.json && ${prepareRuntimePackageCommand} && ` +
+      'node --no-deprecation dist-electron/serve.js --dev-app',
+    [config.buildScript]:
+      `${config.webBuildCommand} && tsc -p tsconfig.electron.json && ` +
+      `${prepareRuntimePackageCommand} && ` +
+      'node --no-deprecation dist-electron/serve.js --prepare-build && ' +
+      'electron-builder --publish never',
   }
 }
 
@@ -324,8 +345,16 @@ export function patchPackageJson(config: InitConfig) {
   const scripts = { ...(packageJson.scripts ?? {}) }
   const dependencies = { ...(packageJson.dependencies ?? {}) }
   const devDependencies = { ...(packageJson.devDependencies ?? {}) }
-  const build = ensureObject<NonNullable<PackageJson['build']>>(packageJson.build, 'build', {})
-  const directories = ensureObject<{ output?: string }>(build.directories, 'build.directories', {})
+  const build = ensureObject<NonNullable<PackageJson['build']>>(
+    packageJson.build,
+    'build',
+    {},
+  )
+  const directories = ensureObject<{ output?: string }>(
+    build.directories,
+    'build.directories',
+    {},
+  )
   const extraMetadata = ensureObject<Record<string, unknown>>(
     build.extraMetadata,
     'build.extraMetadata',

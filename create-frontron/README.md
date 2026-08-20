@@ -1,68 +1,91 @@
-<div align="center">
+# create-frontron
 
-<a href="https://andongmin.com/frontron/">
-<img src="https://andongmin.com/frontron/logo.svg" alt="logo" height="200" />
-</a>
-
-</div>
-
-# create-frontron <a href="https://npmjs.com/package/create-frontron"><img src="https://img.shields.io/npm/v/create-frontron" alt="npm package"></a>
-
-`create-frontron` scaffolds the default Electron + React + Vite starter.
-
-It generates the default starter shape:
-
-- `src/electron/` for main, preload, tray, splash, and window wiring
-- `window.electron` preload bridge
-- an `app` script for Electron development
-- a `build` script for web build + Electron packaging
-- a React + Vite starter with a small UI/component base
-
-## Usage
+Create a new Electron + React + Vite desktop app.
 
 ```bash
 npm create frontron@latest my-app
-npx create-frontron@latest my-app
-pnpm create frontron my-app
-yarn create frontron my-app
-bun create frontron my-app
-```
-
-Requires Node.js `22.15+`.
-When no project name is passed, the target directory is `desktop-app`.
-
-The target path must not already exist. The generator never deletes, merges into, or replaces an existing directory. If generation fails during a normal run, the newly created target is removed and existing files elsewhere are left untouched. Filesystem roots, symlinked target ancestors, and symlinked template entries are rejected.
-
-## After generation
-
-```bash
 cd my-app
 npm install
 npm run app
 ```
 
-Use the equivalent `pnpm`, `yarn`, or `bun` install/run commands when you created the app with another package manager. The generator also prints package-manager-specific next steps.
+Equivalent commands work with pnpm, Yarn, and Bun.
 
-- `npm run dev`: web preview only
-- `npm run app`: Electron runtime + web dev server
-- `npm run typecheck`: fast TypeScript verification without packaging
-- `npm run build`: production web build + Electron packaging
+Requires Node.js `22.15+`.
 
-The packaged renderer loads from the stable `frontron://app` origin. The Electron main process proxies that origin to a private loopback renderer server, preserves an app CSP or supplies a fallback policy, and restricts external navigation to explicit HTTP(S) URLs. The generated window uses context isolation with Node integration disabled.
+## Directory contract
 
-## Output shape
+The target path must not already exist. `create-frontron` never merges into, replaces, or deletes an existing directory.
+
+```bash
+npm create frontron@latest my-app
+```
+
+When the project name is omitted, the target directory is `desktop-app`.
+
+## Generated scripts
+
+```bash
+npm run dev       # browser-only Vite development
+npm run app       # Vite development inside Electron
+npm run typecheck
+npm run lint
+npm run build     # build and package the desktop app
+```
+
+## Desktop runtime
+
+The generated app uses the operating system's native title bar and a sandboxed preload bridge. Node integration is disabled and context isolation is enabled.
+
+The bridge is available as `window.electron` in Electron mode:
+
+```ts
+const info = await window.electron?.getAppInfo()
+const file = await window.electron?.openTextFile()
+await window.electron?.saveTextFile({
+  defaultPath: 'note.txt',
+  content: 'Hello from Electron\n',
+})
+await window.electron?.writeClipboardText('Copied text')
+const clipboardText = await window.electron?.readClipboardText()
+await window.electron?.showNotification({
+  title: 'My app',
+  body: 'Done',
+})
+```
+
+Text-file access always goes through a native user-selected dialog and is limited to 16 MiB. The bridge does not expose arbitrary filesystem paths or Node.js APIs to the renderer.
+
+## Generated structure
 
 ```text
-my-app/
-  src/
-    electron/
-  public/
-  package.json
-  vite.config.ts
+src/
+  electron/
+    main.ts
+    window.ts
+    preload.ts
+    ipc.ts
+    serve.ts
+    splash.ts
+    tray.ts
+  types/
+    electron.d.ts
+scripts/
+  tasks.mjs
+```
+
+The project owns these files directly and can extend `preload.ts`, `ipc.ts`, and `electron.d.ts` for app-specific native features.
+
+## Existing web projects
+
+Use the separate `frontron` package to retrofit an existing compatible frontend without replacing its structure:
+
+```bash
+npm install -D frontron
+npx frontron init --dry-run
+npx frontron init
 ```
 
 ## License
 
-MIT
-
-Docs: https://andongmin.com/frontron/
+MIT. See [`LICENSE`](LICENSE).

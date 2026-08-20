@@ -50,7 +50,6 @@ const runtimeVariants = [
   },
 ] as const satisfies readonly RuntimeVariant[]
 
-// createRuntimeConfig 함수는 생성 런타임의 세 코드 경로를 검증할 최소 설정을 만든다.
 function createRuntimeConfig(variant: RuntimeVariant): InitConfig {
   return {
     cwd: process.cwd(),
@@ -63,7 +62,6 @@ function createRuntimeConfig(variant: RuntimeVariant): InitConfig {
     desktopDir: 'electron',
     appScript: 'frontron:dev',
     buildScript: 'frontron:build',
-    packageScript: 'frontron:package',
     webDevScript: 'dev',
     webBuildScript: 'build',
     webBuildCommand: 'npm run build',
@@ -84,14 +82,11 @@ function createRuntimeConfig(variant: RuntimeVariant): InitConfig {
   }
 }
 
-// normalizeCompilerPath 함수는 TypeScript가 Windows 구분자를 바꿔도 가상 파일을 식별하게 한다.
 function normalizeCompilerPath(fileName: string) {
   const normalized = fileName.replaceAll('\\', '/')
-
   return ts.sys.useCaseSensitiveFileNames ? normalized : normalized.toLowerCase()
 }
 
-// collectSemanticDiagnostics 함수는 문자열 생성 결과를 실제 파일처럼 strict TypeScript로 검사한다.
 function collectSemanticDiagnostics(source: string) {
   const virtualFileName = join(process.cwd(), '.frontron-contract', 'electron', 'serve.ts')
   const normalizedVirtualFileName = normalizeCompilerPath(virtualFileName)
@@ -126,7 +121,6 @@ function collectSemanticDiagnostics(source: string) {
   return ts.getPreEmitDiagnostics(program)
 }
 
-// formatDiagnostics 함수는 실패 시 생성 런타임의 정확한 파일 위치와 원인을 보여준다.
 function formatDiagnostics(diagnostics: readonly ts.Diagnostic[]) {
   const formatHost: ts.FormatDiagnosticsHost = {
     getCanonicalFileName: (fileName) => fileName,

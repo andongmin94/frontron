@@ -38,7 +38,6 @@ export type InitPlan = {
   blockers: string[]
 }
 
-// createInitPlan 함수는 생성 파일, 패키지 패치, 경고와 차단 사유를 하나의 init 계획으로 묶는다.
 export function createInitPlan(input: {
   config: InitConfig
   filesToWrite: Map<string, string>
@@ -103,7 +102,6 @@ export function createInitPlan(input: {
   }
 }
 
-// createDryRunReport 함수는 init dry-run 결과를 사람이 읽을 수 있는 리포트로 만든다.
 export function createDryRunReport(plan: InitPlan) {
   const config = plan.config
   const lines = [
@@ -126,10 +124,7 @@ export function createDryRunReport(plan: InitPlan) {
   lines.push('', 'Files to create:')
 
   for (const file of plan.files) {
-    if (file.action !== 'create') {
-      continue
-    }
-
+    if (file.action !== 'create') continue
     lines.push(`  + ${normalizePathValue(relative(config.cwd, file.path), file.path)}`)
   }
 
@@ -211,14 +206,12 @@ export function createDryRunReport(plan: InitPlan) {
   return lines.join('\n')
 }
 
-// createScriptFallbackWarnings 함수는 기본 script 이름이 이미 있어 대체 이름을 쓴 경우 경고를 만든다.
 export function createScriptFallbackWarnings(
   packageJson: PackageJson,
   options: InitOptions,
   scripts: {
     appScript: string
     buildScript: string
-    packageScript: string
   },
 ) {
   const warnings: string[] = []
@@ -233,11 +226,6 @@ export function createScriptFallbackWarnings(
       label: 'frontron:build',
       selected: scripts.buildScript,
       explicit: Boolean(options.buildScript),
-    },
-    {
-      label: 'frontron:package',
-      selected: scripts.packageScript,
-      explicit: Boolean(options.packageScript),
     },
   ]) {
     if (!entry.explicit && entry.selected !== entry.label && packageJson.scripts?.[entry.label]) {

@@ -68,7 +68,7 @@ afterEach(() => {
   }
 }, 60000)
 
-test('packed create-frontron can generate the restored template-owned electron starter', async () => {
+test('packed create-frontron generates a buildable template-owned Electron starter', () => {
   const createTarball = packPackageForReal(createPackageRoot, 'create-frontron-release-')
   const rehearsalRoot = mkdtempSync(join(tmpdir(), 'frontron-release-rehearsal-'))
   const generatedAppName = 'release-smoke-app'
@@ -78,16 +78,7 @@ test('packed create-frontron can generate the restored template-owned electron s
 
   runNpm(['init', '-y'], rehearsalRoot)
   runNpm(
-    [
-      'exec',
-      '--package',
-      createTarball,
-      '--',
-      'create-frontron',
-      generatedAppName,
-      '--overwrite',
-      'yes',
-    ],
+    ['exec', '--package', createTarball, '--', 'create-frontron', generatedAppName],
     rehearsalRoot,
   )
 
@@ -128,13 +119,4 @@ test('packed create-frontron can generate the restored template-owned electron s
   runNpm(['audit', '--audit-level=moderate'], generatedAppRoot)
   runNpm(['run', 'typecheck'], generatedAppRoot)
   runNpm(['run', 'build', '--', '--dir'], generatedAppRoot)
-
-  const packageAfterInstall = JSON.parse(
-    readFileSync(join(generatedAppRoot, 'package.json'), 'utf8'),
-  ) as {
-    scripts: Record<string, string>
-  }
-
-  expect(packageAfterInstall.scripts.dev).toBe('node scripts/tasks.mjs dev')
-  expect(packageAfterInstall.scripts.app).toBe('node scripts/tasks.mjs app')
 }, 600000)

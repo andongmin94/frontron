@@ -146,6 +146,22 @@ test('lifecycle commands prefer the only initialized workspace package', () => {
   expect(resolveWorkspaceProject(root, 'doctor').projectRoot).toBe(adminRoot)
 })
 
+test('selects an initialized package before parsing its possibly interrupted package.json', () => {
+  const root = createWorkspace('initialized-corrupt')
+  writeJson(join(root, 'package.json'), {
+    name: 'workspace-root',
+    private: true,
+    workspaces: ['apps/*'],
+  })
+  writePackage(root, 'apps/customer', frontendPackage('customer'))
+  const adminRoot = join(root, 'apps/admin')
+  mkdirSync(join(adminRoot, '.frontron'), { recursive: true })
+  writeFileSync(join(adminRoot, 'package.json'), '{partial', 'utf8')
+  writeFileSync(join(adminRoot, '.frontron', 'manifest.json'), '{}\n', 'utf8')
+
+  expect(resolveWorkspaceProject(root, 'update').projectRoot).toBe(adminRoot)
+})
+
 test('rejects project paths outside the workspace root', () => {
   const root = createWorkspace('escape')
   writeJson(join(root, 'package.json'), {

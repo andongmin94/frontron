@@ -144,7 +144,7 @@ npx frontron update --dry-run
 
 Run `npx frontron update --yes` to apply the refresh. Use `npx frontron update --yes --force` only when locally edited manifest-owned files or scripts should be overwritten.
 
-`update` always reuses the adapter, paths, script names, product name, and app id recorded by `init`; migration override options are intentionally not accepted. Older manifests that used a preset are migrated to the single exact-version template flow. The public `init --force` flow has been removed in favor of `update --yes` and `update --yes --force`.
+`update` always reuses the adapter, paths, script names, product name, and app id recorded by `init`; migration override options are intentionally not accepted. Older manifest schemas are rejected instead of migrated; remove the old generated retrofit layer and run `frontron init` again with the current release. The public `init --force` flow has been removed in favor of `update --yes` and `update --yes --force`.
 
 ## Compatibility verification
 

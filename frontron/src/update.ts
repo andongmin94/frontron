@@ -16,7 +16,6 @@ import {
   resolveYarnRcClaimPath,
   YARN_RC_YAML_PATH,
 } from './init/yarnrc-yaml'
-import { createManifestInitOptions } from './manifest-migration'
 import { inspectManagedFile, inspectManagedScript } from './managed-state'
 import {
   assertProjectPathSafe,
@@ -31,7 +30,6 @@ type UpdateInspection = {
   safetyBlockers: string[]
 }
 
-// claim 검사 결과를 update가 사용자에게 보여 줄 덮어쓰기 사유로 바꾼다.
 function addClaimBlocker(
   blockers: string[],
   label: string,
@@ -44,17 +42,11 @@ function addClaimBlocker(
   blockers.push(`Manifest-owned ${label} field ${reason}: ${claimPath}`)
 }
 
-// package.json의 manifest 소유 필드를 현재 값과 비교한다.
 function inspectPackageJsonClaims(
   manifest: FrontronManifest,
   packageJson: PackageJson,
   localChanges: string[],
 ) {
-  if (!manifest.packageJsonClaims) {
-    localChanges.push('Legacy manifest has no package.json ownership metadata')
-    return
-  }
-
   for (const claim of manifest.packageJsonClaims) {
     const status = inspectManifestClaim(
       'package.json',
@@ -65,15 +57,13 @@ function inspectPackageJsonClaims(
   }
 }
 
-// tsconfig.json의 manifest 소유 필드를 검사한다.
 function inspectTsconfigClaims(
   cwd: string,
   manifest: FrontronManifest,
   localChanges: string[],
   safetyBlockers: string[],
 ) {
-  const claims = manifest.tsconfigJsonClaims ?? []
-  if (claims.length === 0) return
+  if (manifest.tsconfigJsonClaims.length === 0) return
 
   const path = resolve(cwd, 'tsconfig.json')
   const inspection = inspectProjectPath(cwd, path)
@@ -87,7 +77,7 @@ function inspectTsconfigClaims(
   try {
     const tsconfig = readTsconfigJson(path)
 
-    for (const claim of claims) {
+    for (const claim of manifest.tsconfigJsonClaims) {
       const status = inspectManifestClaim(
         'tsconfig.json',
         claim,
@@ -100,15 +90,13 @@ function inspectTsconfigClaims(
   }
 }
 
-// pnpm-workspace.yaml의 manifest 소유 필드를 검사한다.
 function inspectPnpmWorkspaceClaims(
   cwd: string,
   manifest: FrontronManifest,
   localChanges: string[],
   safetyBlockers: string[],
 ) {
-  const claims = manifest.pnpmWorkspaceClaims ?? []
-  if (claims.length === 0) return
+  if (manifest.pnpmWorkspaceClaims.length === 0) return
 
   const path = findPnpmWorkspaceYamlPath(cwd)
   const root = dirname(path)
@@ -123,7 +111,7 @@ function inspectPnpmWorkspaceClaims(
   try {
     const source = readFileSync(path, 'utf8')
 
-    for (const claim of claims) {
+    for (const claim of manifest.pnpmWorkspaceClaims) {
       const current = readPnpmWorkspaceYamlClaimValue(source, claim.path)
 
       if (!current.safeToEdit) {
@@ -139,14 +127,13 @@ function inspectPnpmWorkspaceClaims(
   }
 }
 
-// .yarnrc.yml의 manifest 소유 nodeLinker 값을 검사한다.
 function inspectYarnRcClaims(
   cwd: string,
   manifest: FrontronManifest,
   localChanges: string[],
   safetyBlockers: string[],
 ) {
-  for (const claim of manifest.yarnRcClaims ?? []) {
+  for (const claim of manifest.yarnRcClaims) {
     const resolution = resolveYarnRcClaimPath(cwd, claim.file)
 
     if (!resolution.safe) {
@@ -174,7 +161,6 @@ function inspectYarnRcClaims(
   }
 }
 
-// update 직전에 모든 manifest 소유 항목을 동일한 상태 규칙으로 검사한다.
 function inspectUpdateState(cwd: string, manifest: FrontronManifest): UpdateInspection {
   const localChanges: string[] = []
   const safetyBlockers: string[] = []
@@ -186,14 +172,12 @@ function inspectUpdateState(cwd: string, manifest: FrontronManifest): UpdateInsp
   for (const filePath of new Set(manifest.createdFiles)) {
     if (filePath === MANIFEST_PATH) continue
 
-    const inspection = inspectManagedFile(cwd, filePath, manifest.fileHashes?.[filePath])
+    const inspection = inspectManagedFile(cwd, filePath, manifest.fileHashes[filePath])
 
     if (inspection.state === 'unsafe') {
       safetyBlockers.push(inspection.blocker ?? `Manifest file entry is unsafe: ${filePath}`)
     } else if (inspection.state === 'modified') {
       localChanges.push(`Manifest-owned file has local edits: ${filePath}`)
-    } else if (inspection.state === 'unverifiable') {
-      localChanges.push(`Manifest-owned file has no recorded hash: ${filePath}`)
     }
   }
 
@@ -202,8 +186,6 @@ function inspectUpdateState(cwd: string, manifest: FrontronManifest): UpdateInsp
 
     if (state === 'modified') {
       localChanges.push(`Manifest-owned script has local edits: ${scriptName}`)
-    } else if (state === 'unverifiable') {
-      localChanges.push(`Manifest-owned script has no recorded command: ${scriptName}`)
     }
   }
 
@@ -218,7 +200,26 @@ function inspectUpdateState(cwd: string, manifest: FrontronManifest): UpdateInsp
   }
 }
 
-// manifest 설정을 유지하면서 생성 파일과 프로젝트 설정을 최신 템플릿으로 갱신한다.
+function createUpdateInitOptions(manifest: FrontronManifest): Partial<InitOptions> {
+  return {
+    adapter: manifest.adapter,
+    desktopDir: manifest.desktopDir,
+    appScript: manifest.appScript,
+    buildScript: manifest.buildScript,
+    packageScript: manifest.packageScript,
+    webDevScript: manifest.webDevScript,
+    webBuildScript: manifest.webBuildScript,
+    outDir: manifest.outDir,
+    serverRoot: manifest.nodeServerSourceRoot ?? undefined,
+    serverEntry:
+      manifest.adapter === 'remix-node-server'
+        ? (manifest.nodeServerSourceEntry ?? undefined)
+        : (manifest.nodeServerEntry ?? undefined),
+    productName: manifest.productName,
+    appId: manifest.appId,
+  }
+}
+
 export async function runUpdate(options: UpdateOptions, context: InitContext) {
   const manifestPath = resolve(context.cwd, MANIFEST_PATH)
   assertProjectPathSafe(context.cwd, manifestPath, 'Frontron manifest')
@@ -245,7 +246,7 @@ export async function runUpdate(options: UpdateOptions, context: InitContext) {
   const shouldApply = options.yes && !options.dryRun
   const exitCode = await runInit(
     {
-      ...createManifestInitOptions(manifest, context.cwd),
+      ...createUpdateInitOptions(manifest),
       yes: true,
       force: true,
       dryRun: !shouldApply,

@@ -345,16 +345,8 @@ export function patchPackageJson(config: InitConfig) {
   const scripts = { ...(packageJson.scripts ?? {}) }
   const dependencies = { ...(packageJson.dependencies ?? {}) }
   const devDependencies = { ...(packageJson.devDependencies ?? {}) }
-  const build = ensureObject<NonNullable<PackageJson['build']>>(
-    packageJson.build,
-    'build',
-    {},
-  )
-  const directories = ensureObject<{ output?: string }>(
-    build.directories,
-    'build.directories',
-    {},
-  )
+  const build = ensureObject<NonNullable<PackageJson['build']>>(packageJson.build, 'build', {})
+  const directories = ensureObject<{ output?: string }>(build.directories, 'build.directories', {})
   const extraMetadata = ensureObject<Record<string, unknown>>(
     build.extraMetadata,
     'build.extraMetadata',

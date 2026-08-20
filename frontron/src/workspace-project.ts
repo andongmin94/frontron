@@ -89,7 +89,9 @@ function assertProjectDirectory(invocationRoot: string, projectPath: string, lab
   const packageStats = lstatSync(packageJsonPath)
 
   if (!packageStats.isFile() || packageStats.isSymbolicLink() || packageStats.nlink !== 1) {
-    throw new Error(`${label} must contain a regular package.json with one hard link: ${normalized}`)
+    throw new Error(
+      `${label} must contain a regular package.json with one hard link: ${normalized}`,
+    )
   }
 
   return projectRoot
@@ -134,9 +136,7 @@ function readWorkspacePatterns(invocationRoot: string, rootPackageJson: PackageJ
       throw new Error('pnpm-workspace.yaml must contain a packages array for workspace discovery.')
     }
 
-    patterns.push(
-      ...value.packages.filter((entry): entry is string => typeof entry === 'string'),
-    )
+    patterns.push(...value.packages.filter((entry): entry is string => typeof entry === 'string'))
   }
 
   return [...new Set(patterns.map((entry) => entry.trim()).filter(Boolean))]
@@ -170,8 +170,7 @@ function findWorkspacePackageJsonPaths(invocationRoot: string, patterns: string[
 
 function hasStringScript(packageJson: PackageJson, name: string) {
   return (
-    typeof packageJson.scripts?.[name] === 'string' &&
-    packageJson.scripts[name].trim().length > 0
+    typeof packageJson.scripts?.[name] === 'string' && packageJson.scripts[name].trim().length > 0
   )
 }
 
@@ -248,9 +247,7 @@ export function resolveWorkspaceProject(
 
   const candidates = findWorkspacePackageJsonPaths(invocationRoot, workspacePatterns).map(
     (packageJsonPath) => {
-      const relativeProject = packageJsonPath
-        .replace(/\\/g, '/')
-        .replace(/\/package\.json$/, '')
+      const relativeProject = packageJsonPath.replace(/\\/g, '/').replace(/\/package\.json$/, '')
       const projectRoot = assertProjectDirectory(
         invocationRoot,
         relativeProject,

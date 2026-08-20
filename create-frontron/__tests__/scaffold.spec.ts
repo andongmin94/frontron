@@ -19,7 +19,9 @@ import { resolveTargetRoot, scaffoldProject } from '../src/scaffold'
 const tempDirs: string[] = []
 
 function createWorkspace(label: string) {
-  const root = realpathSync.native(mkdtempSync(join(tmpdir(), `create-frontron-scaffold-${label}-`)))
+  const root = realpathSync.native(
+    mkdtempSync(join(tmpdir(), `create-frontron-scaffold-${label}-`)),
+  )
   tempDirs.push(root)
   return root
 }

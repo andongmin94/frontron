@@ -90,9 +90,7 @@ test('rejects every existing target without changing it', async () => {
   writeFileSync(join(target, 'keep.txt'), 'user data\n')
   process.chdir(workspace)
 
-  await expect(runCreateFrontron(['existing-app'])).rejects.toThrow(
-    'Target path already exists',
-  )
+  await expect(runCreateFrontron(['existing-app'])).rejects.toThrow('Target path already exists')
 
   expect(readFileSync(join(target, 'keep.txt'), 'utf8')).toBe('user data\n')
   expect(existsSync(join(target, 'package.json'))).toBe(false)
@@ -116,9 +114,7 @@ test('rejects removed options, unknown options, and extra arguments', async () =
   await expect(runCreateFrontron(['app', '--template', 'react'])).rejects.toThrow(
     'Template selection has been removed',
   )
-  await expect(runCreateFrontron(['app', '--unknown'])).rejects.toThrow(
-    'Unknown option: --unknown',
-  )
+  await expect(runCreateFrontron(['app', '--unknown'])).rejects.toThrow('Unknown option: --unknown')
   await expect(runCreateFrontron(['app', 'extra'])).rejects.toThrow(
     'Unexpected positional argument: "extra"',
   )

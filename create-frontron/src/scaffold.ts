@@ -5,13 +5,7 @@ const renamedTemplateEntries: Record<string, string> = {
   _gitignore: '.gitignore',
 }
 
-const ignoredTemplateEntries = new Set([
-  '.git',
-  '.npmignore',
-  'dist',
-  'node_modules',
-  'output',
-])
+const ignoredTemplateEntries = new Set(['.git', '.npmignore', 'dist', 'node_modules', 'output'])
 
 function lstatIfExists(targetPath: string) {
   try {

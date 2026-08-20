@@ -35,11 +35,7 @@ function parseArguments(args: string[]): CliArguments {
       throw new Error('The --overwrite option was removed. Choose a new target directory.')
     }
 
-    if (
-      argument === '--template' ||
-      argument === '-t' ||
-      argument.startsWith('--template=')
-    ) {
+    if (argument === '--template' || argument === '-t' || argument.startsWith('--template=')) {
       throw new Error(
         'Template selection has been removed. create-frontron generates the React template.',
       )

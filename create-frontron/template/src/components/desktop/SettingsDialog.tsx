@@ -19,27 +19,7 @@ import {
   DialogPortal,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  type CloseButtonBehavior,
-  useCloseButtonBehavior,
-} from "@/lib/desktop-settings"
 import { cn } from "@/lib/utils"
-
-const TITLE_BAR_HEIGHT = 40
-
-const closeButtonOptions: Array<{
-  value: CloseButtonBehavior
-  label: string
-}> = [
-  {
-    value: "hide",
-    label: "System tray",
-  },
-  {
-    value: "quit",
-    label: "Quit",
-  },
-]
 
 const themeOptions: Array<{
   value: Theme
@@ -93,34 +73,6 @@ function SettingsRow({ label, children }: SettingsRowProps) {
   )
 }
 
-type SettingsChoiceButtonProps = {
-  active: boolean
-  children: ReactNode
-  onClick: () => void
-}
-
-function SettingsChoiceButton({
-  active,
-  children,
-  onClick,
-}: SettingsChoiceButtonProps) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        "min-w-[108px] cursor-pointer rounded-lg px-3 py-2 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
-        active
-          ? "bg-foreground text-background"
-          : "text-muted-foreground hover:bg-background hover:text-foreground"
-      )}
-      aria-pressed={active}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  )
-}
-
 type ThemeIconButtonProps = {
   active: boolean
   icon: LucideIcon
@@ -160,11 +112,8 @@ type SettingsDialogContentProps = {
 function SettingsDialogContent({ children }: SettingsDialogContentProps) {
   return (
     <DialogPortal>
-      <DialogOverlay className="top-10 bg-black/18 supports-backdrop-filter:backdrop-blur-[2px]" />
-      <div
-        className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-center p-5"
-        style={{ top: TITLE_BAR_HEIGHT }}
-      >
+      <DialogOverlay className="bg-black/18 supports-backdrop-filter:backdrop-blur-[2px]" />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-5">
         <DialogPrimitive.Popup
           data-slot="desktop-settings-dialog-content"
           className="relative grid w-full max-w-[28rem] gap-0 overflow-hidden rounded-[20px] border border-border/80 bg-background/95 shadow-[0_24px_70px_-34px_rgba(15,23,42,0.42)] ring-1 ring-black/5 duration-100 outline-none data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 supports-backdrop-filter:backdrop-blur-md dark:ring-white/10"
@@ -191,7 +140,6 @@ function SettingsDialogContent({ children }: SettingsDialogContentProps) {
 
 export default function DesktopSettingsDialog() {
   const [open, setOpen] = useState(false)
-  const [closeButtonBehavior, setCloseButtonBehavior] = useCloseButtonBehavior()
   const { theme, setTheme } = useTheme()
 
   return (
@@ -225,22 +173,6 @@ export default function DesktopSettingsDialog() {
                       label={option.label}
                       onClick={() => setTheme(option.value)}
                     />
-                  ))}
-                </div>
-              </SettingsRow>
-            </SettingsSection>
-
-            <SettingsSection title="Window">
-              <SettingsRow label="X button">
-                <div className="inline-flex w-fit items-center gap-1 rounded-xl border border-border/80 bg-muted/35 p-1">
-                  {closeButtonOptions.map((option) => (
-                    <SettingsChoiceButton
-                      key={option.value}
-                      active={closeButtonBehavior === option.value}
-                      onClick={() => setCloseButtonBehavior(option.value)}
-                    >
-                      {option.label}
-                    </SettingsChoiceButton>
                   ))}
                 </div>
               </SettingsRow>

@@ -14,12 +14,12 @@ export function getDesktopBridgeRuntime() {
 
   if (
     !bridge ||
-    typeof bridge.hideWindow !== "function" ||
-    typeof bridge.minimizeWindow !== "function" ||
-    typeof bridge.toggleMaximizeWindow !== "function" ||
-    typeof bridge.quitApp !== "function" ||
-    typeof bridge.getWindowState !== "function" ||
-    typeof bridge.onWindowMaximizedChanged !== "function"
+    typeof bridge.getAppInfo !== "function" ||
+    typeof bridge.openTextFile !== "function" ||
+    typeof bridge.saveTextFile !== "function" ||
+    typeof bridge.readClipboardText !== "function" ||
+    typeof bridge.writeClipboardText !== "function" ||
+    typeof bridge.showNotification !== "function"
   ) {
     return null
   }

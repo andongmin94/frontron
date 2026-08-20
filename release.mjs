@@ -712,8 +712,6 @@ function verifyRegistryInstall(version) {
         '--',
         'create-frontron',
         'registry-starter',
-        '--overwrite',
-        'yes',
       ],
       starterRoot,
     )

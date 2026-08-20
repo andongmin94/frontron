@@ -34,6 +34,16 @@ const defaultOutput: CliOutput = {
   },
 }
 
+function recoverCommandTransaction(cwd: string, output: CliOutput) {
+  const recovery = recoverPendingTransaction(cwd)
+
+  if (recovery.recovered) {
+    output.info(
+      `[Frontron] Recovered an interrupted ${recovery.operation} transaction before running the command.`,
+    )
+  }
+}
+
 export async function runCli(
   argv = process.argv.slice(2),
   output: CliOutput = defaultOutput,
@@ -77,6 +87,17 @@ export async function runCli(
     return 0
   }
 
+  if (command !== 'doctor') {
+    try {
+      recoverCommandTransaction(invocationCwd, output)
+    } catch (error) {
+      output.error(
+        `[Frontron] Could not recover an interrupted transaction: ${(error as Error).message}`,
+      )
+      return 1
+    }
+  }
+
   let cwd: string
 
   try {
@@ -96,15 +117,9 @@ export async function runCli(
     return 1
   }
 
-  if (command !== 'doctor') {
+  if (command !== 'doctor' && cwd !== invocationCwd) {
     try {
-      const recovery = recoverPendingTransaction(cwd)
-
-      if (recovery.recovered) {
-        output.info(
-          `[Frontron] Recovered an interrupted ${recovery.operation} transaction before running the command.`,
-        )
-      }
+      recoverCommandTransaction(cwd, output)
     } catch (error) {
       output.error(
         `[Frontron] Could not recover an interrupted transaction: ${(error as Error).message}`,

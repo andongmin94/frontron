@@ -1,0 +1,33 @@
+name: migrate-frontron-test-contracts
+
+on:
+  push:
+    branches:
+      - refactor/unify-build-native-runtime
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: refactor/unify-build-native-runtime
+      - name: Update tests to the current contract
+        run: node .github/scripts/migrate-frontron-test-contracts.mjs
+      - name: Commit migrated tests
+        run: |
+          git diff --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -- \
+            frontron/__tests__/adapter-init.spec.ts \
+            frontron/__tests__/init-core.spec.ts \
+            frontron/__tests__/manifest.spec.ts \
+            frontron/__tests__/update.spec.ts
+          git diff --cached --quiet && exit 0
+          git commit -m "test: align lifecycle contracts"
+          git push origin HEAD:refactor/unify-build-native-runtime

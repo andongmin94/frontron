@@ -281,7 +281,7 @@ export default {
     fixtures.expectEmbeddedString(serveSource, 'WEB_DEV_SCRIPT', 'dev')
     fixtures.expectEmbeddedString(serveSource, 'DEV_URL', 'http://127.0.0.1:3300')
     fixtures.expectEmbeddedString(serveSource, 'WEB_OUT_DIR', 'static-out')
-    expect(packageJson.scripts['frontron:package']).toContain(
+    expect(packageJson.scripts['frontron:build']).toContain(
       'next build && next export -o static-out',
     )
     expect(packageJson.build.files).toContain('static-out{,/**/*}')
@@ -355,7 +355,7 @@ export default withNextIntl(nextConfig)
     const combined = output.info.mock.calls.flat().join('\n')
 
     fixtures.expectEmbeddedString(serveSource, 'WEB_OUT_DIR', 'out')
-    expect(packageJson.scripts['frontron:package']).toContain('next build')
+    expect(packageJson.scripts['frontron:build']).toContain('next build')
     expect(packageJson.build.files).toContain('out{,/**/*}')
     expect(tsconfigJson.exclude).toEqual(['node_modules', 'electron', 'dist-electron', '.frontron'])
     expect(manifest.tsconfigJsonClaims).toContainEqual(
@@ -518,7 +518,7 @@ export default withNextIntl(nextConfig)
     expect(serveSource).toContain('Node server entry not found')
     expect(serveSource).not.toContain('function startStaticServer')
     expect(serveSource).not.toContain('RemixBundleMetafile')
-    expect(packageJson.scripts['frontron:package']).toContain('next build')
+    expect(packageJson.scripts['frontron:build']).toContain('next build')
     expect(packageJson.build.files).toContain('.frontron/runtime/next-standalone{,/**/*}')
     expect(packageJson.build.files).toContain('!node_modules{,/**/*}')
     expect(packageJson.build.asarUnpack).toContain('.frontron/runtime/next-standalone{,/**/*}')

@@ -126,9 +126,10 @@ function inspectYarnRcYaml(source: string): Inspection {
     }
   }
   if (!isScalar(node)) {
-    const reason = (isMap(node) || isSeq(node)) && node.flow
-      ? 'flow collections are not supported safely'
-      : 'nodeLinker must be a simple pnp or node-modules scalar'
+    const reason =
+      (isMap(node) || isSeq(node)) && node.flow
+        ? 'flow collections are not supported safely'
+        : 'nodeLinker must be a simple pnp or node-modules scalar'
     return { safe: false, blocker: formatYarnRcBlocker(reason) }
   }
   if (node.anchor) {

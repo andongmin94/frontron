@@ -123,10 +123,7 @@ describe('pnpm workspace config', () => {
   test('reports claim values and ignores non-pnpm projects', () => {
     expect(previewPnpmWorkspaceYamlPatch('/tmp', 'npm')).toBeNull()
     expect(
-      readPnpmWorkspaceYamlClaimValue(
-        'allowBuilds:\n  electron: true\n',
-        'allowBuilds.electron',
-      ),
+      readPnpmWorkspaceYamlClaimValue('allowBuilds:\n  electron: true\n', 'allowBuilds.electron'),
     ).toEqual({ exists: true, value: true, safeToEdit: true })
   })
 

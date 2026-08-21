@@ -14,9 +14,7 @@ const YAML_REFERENCE_PATTERN = /[&*][A-Za-z_][\w-]*/u
 
 type JsonScalar = string | number | boolean | null
 
-type TargetValue =
-  | { exists: false; value?: never }
-  | { exists: true; value: JsonScalar }
+type TargetValue = { exists: false; value?: never } | { exists: true; value: JsonScalar }
 
 type EditableInspection = {
   safe: true

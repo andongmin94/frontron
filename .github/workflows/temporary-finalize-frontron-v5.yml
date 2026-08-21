@@ -1,0 +1,159 @@
+name: temporary-finalize-frontron-v5
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/temporary-finalize-frontron-v5.yml"
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      commit_sha: ${{ steps.commit.outputs.commit_sha }}
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Publish observable run status
+        id: status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          url=$(gh issue create \
+            --title "Temporary product finalization run ${GITHUB_RUN_ID}" \
+            --body "Validates and commits the reviewed product changes separately from workflow cleanup. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
+          echo "issue_number=${url##*/}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: |
+            frontron/package-lock.json
+            create-frontron/package-lock.json
+
+      - name: Install headless Electron runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes xvfb
+
+      - name: Apply reviewed product changes
+        run: |
+          python3 .github/temporary-frontron-hardening.py
+          python3 .github/temporary-frontron-hardening-v4.py
+          python3 .github/temporary-frontron-hardening-v6.py
+          python3 .github/temporary-frontron-hardening-v7.py
+          python3 .github/temporary-frontron-hardening-v8.py
+          rm -f scripts/package-manager-smoke.mjs
+          rmdir scripts 2>/dev/null || true
+
+      - name: Refresh audit-fixable lockfile entries
+        run: |
+          npm --prefix create-frontron audit fix --package-lock-only --ignore-scripts
+          npm --prefix frontron audit fix --package-lock-only --ignore-scripts
+
+      - name: Verify repository, packed artifacts, and real Electron runtime
+        run: node release.mjs verify
+        env:
+          FRONTRON_TEST_ELECTRON_RUNTIME: "1"
+
+      - name: Separate product changes from workflow cleanup
+        run: |
+          git restore --source=HEAD -- .github/workflows
+          rm -f .github/temporary-frontron-hardening*.py
+
+      - name: Commit validated product changes directly to main
+        id: commit
+        run: |
+          git diff --check
+          git add -- README.md release.mjs create-frontron frontron
+          git ls-files -z '.github/temporary-frontron-hardening*.py' | xargs -0 -r git add -u --
+          git diff --cached --check
+          test -n "$(git diff --cached --name-only)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix: complete runtime and package-manager hardening"
+          git push origin HEAD:main
+          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Refresh repository description
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}" \
+            -f description="Electron starter and retrofit tooling for existing web frontends"
+
+      - name: Close product validation status
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue close "${{ steps.status.outputs.issue_number }}" --reason completed \
+            --comment "Product validation succeeded and commit ${{ steps.commit.outputs.commit_sha }} was pushed to main. Workflow cleanup follows in a separate commit."
+
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment "${{ steps.status.outputs.issue_number }}" \
+            --body "Product finalization failed. Inspect ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
+
+  validate:
+    needs: finalize
+    if: needs.finalize.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            node: "22.15.0"
+          - os: ubuntu-latest
+            node: "26"
+          - os: macos-latest
+            node: "24"
+          - os: windows-latest
+            node: "24"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ needs.finalize.outputs.commit_sha }}
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: |
+            frontron/package-lock.json
+            create-frontron/package-lock.json
+
+      - name: Validate create-frontron
+        working-directory: create-frontron
+        shell: bash
+        run: |
+          npm ci --ignore-scripts
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Validate frontron
+        working-directory: frontron
+        shell: bash
+        run: |
+          npm ci --ignore-scripts
+          npm run typecheck
+          npm test
+          npm run build

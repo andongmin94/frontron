@@ -2,28 +2,9 @@ import { createHash } from 'node:crypto'
 import { lstatSync, readFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
-import { isMap, isScalar, type Scalar } from 'yaml'
+import { isAlias, isMap, isScalar, isSeq, parseDocument, stringify } from 'yaml'
 
 import { formatProjectPathBlocker, inspectProjectPath, isInsideDirectory } from '../project-paths'
-import {
-  applyYamlTextEdits,
-  findPreferredEol,
-  findYamlPairsByKey,
-  getYamlDocumentAppendOffset,
-  getYamlLineNumber,
-  getYamlLineRange,
-  getYamlNodeSource,
-  getYamlReferenceKind,
-  hasFinalEol,
-  isEmptyYamlPairValue,
-  parseSimpleYamlScalar,
-  parseYamlSource,
-  type ParsedYamlDocument,
-  type ParsedYamlMap,
-  type ParsedYamlPair,
-  removeFinalEol,
-  type YamlReferenceKind,
-} from './yaml-source'
 
 export const YARN_RC_YAML_PATH = '.yarnrc.yml'
 export const REQUIRED_YARN_NODE_LINKER = 'node-modules'
@@ -86,275 +67,97 @@ export type YarnRcClaimPathResolution =
       blocker: string
     }
 
-type NodeLinkerEntry = {
-  pair: ParsedYamlPair
-  scalar: Scalar
-  value: YarnNodeLinker
-  valueSource: string
-}
-
-type EditableYarnRcInspection = {
+type EditableInspection = {
   safe: true
-  document: ParsedYamlDocument
-  eol: string
-  nodeLinker: NodeLinkerEntry | null
+  root: Record<string, unknown>
+  nodeLinker: YarnNodeLinker | null
 }
 
-type YarnRcInspection =
-  | EditableYarnRcInspection
+type Inspection =
+  | EditableInspection
   | {
       safe: false
       blocker: string
     }
 
-// formatYarnRcBlocker 함수는 안전하게 편집할 수 없는 Yarn 설정 사유를 일관된 문장으로 만든다.
-function formatYarnRcBlocker(reason: string) {
-  return `Cannot safely edit ${YARN_RC_YAML_PATH}: ${reason}. The file was left unchanged.`
+const YAML_REFERENCE_PATTERN = /[&*][A-Za-z_][\w-]*/u
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
-// formatSourceReason 함수는 yaml range의 시작 위치를 사람이 찾기 쉬운 줄 번호로 표시한다.
-function formatSourceReason(source: string, offset: number, reason: string) {
-  return `${reason} (line ${getYamlLineNumber(source, offset)})`
-}
-
-// formatReferenceReason 함수는 대상 key/value의 참조 문법을 기존 blocker 용어로 바꾼다.
-function formatReferenceReason(reference: YamlReferenceKind) {
-  return `YAML ${reference === 'alias' ? 'aliases' : `${reference}s`} are not supported safely`
-}
-
-// createSourceHash 함수는 추가한 줄을 지울 때 원래 EOF 상태를 안전하게 식별할 해시를 만든다.
 function createSourceHash(source: string) {
   return createHash('sha256').update(source).digest('hex')
 }
 
-// isImplicitEmptyDocument 함수는 CST value 토큰이 없는 빈 YAML 문서만 새 mapping 대상으로 허용한다.
-function isImplicitEmptyDocument(document: ParsedYamlDocument) {
-  const contents = document.contents
-  return (
-    contents === null ||
-    (isScalar(contents) && contents.value === null && typeof contents.srcToken === 'undefined')
-  )
+function formatYarnRcBlocker(reason: string) {
+  return `Cannot safely edit ${YARN_RC_YAML_PATH}: ${reason}. The file was left unchanged.`
 }
 
-// parseNodeLinkerScalar 함수는 yaml이 읽은 단일 scalar가 지원하는 두 값 중 하나인지 검증한다.
-function parseNodeLinkerScalar(source: string) {
-  const parsed = parseSimpleYamlScalar(source)
+function inspectYarnRcYaml(source: string): Inspection {
+  const document = parseDocument(source, { uniqueKeys: true })
+  const error = document.errors[0]
 
-  if (!parsed.ok) {
-    return {
-      ok: false as const,
-      reason: 'nodeLinker must be a simple pnp or node-modules scalar',
-    }
-  }
-
-  return parsed.value.value === 'pnp' || parsed.value.value === 'node-modules'
-    ? { ok: true as const, value: parsed.value.value as YarnNodeLinker }
-    : {
-        ok: false as const,
-        reason:
-          'nodeLinker uses an unsupported complex value; only pnp or node-modules scalars are editable',
-      }
-}
-
-// inspectYarnRcYaml 함수는 문서 전체를 재작성하지 않고 nodeLinker의 CST와 scalar range만 수집한다.
-function inspectYarnRcYaml(source: string): YarnRcInspection {
-  const parsed = parseYamlSource(source)
-
-  if (!parsed.ok) {
-    return { safe: false, blocker: formatYarnRcBlocker(parsed.reason) }
-  }
-
-  const document = parsed.value
-
-  if (isImplicitEmptyDocument(document)) {
-    return {
-      safe: true,
-      document,
-      eol: findPreferredEol(source),
-      nodeLinker: null,
-    }
-  }
-
-  if (!isMap(document.contents) || document.contents.srcToken?.type !== 'block-map') {
+  if (error) return { safe: false, blocker: formatYarnRcBlocker(error.message) }
+  if (YAML_REFERENCE_PATTERN.test(source)) {
     return {
       safe: false,
-      blocker: formatYarnRcBlocker('document root is not a top-level block mapping'),
+      blocker: formatYarnRcBlocker('YAML aliases are not supported safely'),
     }
   }
+  if (source.includes('!!')) {
+    return { safe: false, blocker: formatYarnRcBlocker('YAML tags are not supported safely') }
+  }
 
-  const root = document.contents as ParsedYamlMap
-  const matches = findYamlPairsByKey(document, root, 'nodeLinker')
-
-  if (matches.length > 1) {
-    const offset = matches[1].pair.key.range?.[0] ?? 0
+  const rootValue = document.contents === null ? {} : document.toJS()
+  if (!isRecord(rootValue)) {
     return {
       safe: false,
-      blocker: formatYarnRcBlocker(
-        formatSourceReason(source, offset, 'duplicate top-level key "nodeLinker"'),
-      ),
+      blocker: formatYarnRcBlocker('the document root must be a mapping'),
     }
   }
 
-  const match = matches[0]
-
-  if (!match) {
-    return {
-      safe: true,
-      document,
-      eol: findPreferredEol(source),
-      nodeLinker: null,
-    }
-  }
-
-  const keyOffset = match.pair.key.range?.[0] ?? 0
-
-  if (match.keyReference) {
+  const node = document.get('nodeLinker', true)
+  if (typeof node === 'undefined') return { safe: true, root: rootValue, nodeLinker: null }
+  if (isAlias(node)) {
     return {
       safe: false,
-      blocker: formatYarnRcBlocker(
-        formatSourceReason(source, keyOffset, formatReferenceReason(match.keyReference)),
-      ),
+      blocker: formatYarnRcBlocker('YAML aliases are not supported safely'),
     }
   }
-
-  if (isEmptyYamlPairValue(match.pair)) {
+  if (!isScalar(node)) {
+    const reason = (isMap(node) || isSeq(node)) && node.flow
+      ? 'flow collections are not supported safely'
+      : 'nodeLinker must be a simple pnp or node-modules scalar'
+    return { safe: false, blocker: formatYarnRcBlocker(reason) }
+  }
+  if (node.anchor) {
     return {
       safe: false,
-      blocker: formatYarnRcBlocker(
-        formatSourceReason(
-          source,
-          keyOffset,
-          'nodeLinker must be a simple pnp or node-modules scalar',
-        ),
-      ),
+      blocker: formatYarnRcBlocker('YAML anchors are not supported safely'),
     }
   }
-
-  const value = match.pair.value
-  const valueOffset = value?.range?.[0] ?? keyOffset
-  const reference = getYamlReferenceKind(value)
-
-  if (reference) {
+  if (node.tag) {
+    return { safe: false, blocker: formatYarnRcBlocker('YAML tags are not supported safely') }
+  }
+  if (node.value !== 'pnp' && node.value !== REQUIRED_YARN_NODE_LINKER) {
     return {
       safe: false,
-      blocker: formatYarnRcBlocker(
-        formatSourceReason(source, valueOffset, formatReferenceReason(reference)),
-      ),
+      blocker: formatYarnRcBlocker('nodeLinker must be a simple pnp or node-modules scalar'),
     }
   }
 
-  if (value?.srcToken?.type === 'flow-collection') {
-    return {
-      safe: false,
-      blocker: formatYarnRcBlocker(
-        formatSourceReason(source, valueOffset, 'flow collections are not supported safely'),
-      ),
-    }
-  }
-
-  const valueSource = value ? getYamlNodeSource(source, value) : null
-  const scalar = valueSource === null ? null : parseNodeLinkerScalar(valueSource)
-
-  if (!isScalar(value) || !scalar?.ok || !value.range) {
-    return {
-      safe: false,
-      blocker: formatYarnRcBlocker(
-        formatSourceReason(
-          source,
-          valueOffset,
-          scalar?.reason ?? 'nodeLinker must be a simple pnp or node-modules scalar',
-        ),
-      ),
-    }
-  }
-
-  return {
-    safe: true,
-    document,
-    eol: findPreferredEol(source),
-    nodeLinker: {
-      pair: match.pair,
-      scalar: value,
-      value: scalar.value,
-      valueSource: valueSource!,
-    },
-  }
+  return { safe: true, root: rootValue, nodeLinker: node.value }
 }
 
-// renderNodeLinkerScalar 함수는 현재 scalar의 CST quote style만 재사용해 새 토큰을 만든다.
-function renderNodeLinkerScalar(value: YarnNodeLinker, scalar: Scalar) {
-  if (scalar.srcToken?.type === 'single-quoted-scalar') return `'${value}'`
-  if (scalar.srcToken?.type === 'double-quoted-scalar') return JSON.stringify(value)
-  return value
+function renderYaml(root: Record<string, unknown>, source: string) {
+  if (Object.keys(root).length === 0) return ''
+
+  const rendered = stringify(root, { lineWidth: 0 })
+  const withBom = source.startsWith('\uFEFF') ? `\uFEFF${rendered}` : rendered
+  return source.includes('\r\n') ? withBom.replace(/\n/g, '\r\n') : withBom
 }
 
-// replaceNodeLinkerScalar 함수는 scalar range 하나만 치환해 주석, 공백, 줄바꿈을 건드리지 않는다.
-function replaceNodeLinkerScalar(
-  source: string,
-  entry: NodeLinkerEntry,
-  value: YarnNodeLinker,
-  preferredSource?: string,
-) {
-  const range = entry.scalar.range
-
-  if (!range) return null
-
-  return applyYamlTextEdits(source, [
-    {
-      start: range[0],
-      end: range[1],
-      text: preferredSource ?? renderNodeLinkerScalar(value, entry.scalar),
-    },
-  ])
-}
-
-// appendNodeLinkerScalar 함수는 명시적 문서 끝 앞에 한 줄만 넣고 기존 EOF 상태를 유지한다.
-function appendNodeLinkerScalar(source: string, inspection: EditableYarnRcInspection) {
-  const line = `nodeLinker: ${REQUIRED_YARN_NODE_LINKER}`
-
-  if (!source) return `${line}${inspection.eol}`
-
-  const offset = getYamlDocumentAppendOffset(inspection.document, source)
-  const prefix = source.slice(0, offset)
-  const suffix = source.slice(offset)
-  const leading = prefix && !hasFinalEol(prefix) ? inspection.eol : ''
-  const trailing = suffix || hasFinalEol(source) ? inspection.eol : ''
-
-  return `${prefix}${leading}${line}${trailing}${suffix}`
-}
-
-// removeNodeLinkerScalar 함수는 추가했던 top-level 한 줄만 지우고 해시가 맞을 때 연결 EOL도 복원한다.
-function removeNodeLinkerScalar(
-  source: string,
-  inspection: EditableYarnRcInspection,
-  previousHadFinalEol: boolean,
-  previousSourceHash: string,
-) {
-  const entry = inspection.nodeLinker
-  const keyOffset = entry?.pair.key.range?.[0]
-
-  if (!entry || typeof keyOffset !== 'number') return null
-
-  const line = getYamlLineRange(source, keyOffset)
-  const nextSource = applyYamlTextEdits(source, [{ start: line.start, end: line.end, text: '' }])
-
-  if (createSourceHash(nextSource) === previousSourceHash) return nextSource
-
-  if (!previousHadFinalEol) {
-    const withoutFinalEol = removeFinalEol(nextSource)
-    if (createSourceHash(withoutFinalEol) === previousSourceHash) return withoutFinalEol
-  }
-
-  return nextSource
-}
-
-// toPortableClaimFile 함수는 Yarn 설정 경로를 manifest용 슬래시 상대 경로로 바꾼다.
-function toPortableClaimFile(cwd: string, filePath: string) {
-  const relativePath = relative(resolve(cwd), resolve(filePath))
-  return (relativePath || YARN_RC_YAML_PATH).split(sep).join('/')
-}
-
-// pathEntryExists 함수는 깨진 symbolic link도 기존 경로로 취급해 새 파일로 덮어쓰지 않게 한다.
 function pathEntryExists(filePath: string) {
   try {
     lstatSync(filePath)
@@ -365,13 +168,16 @@ function pathEntryExists(filePath: string) {
   }
 }
 
-// findYarnRcYamlPath 함수는 프로젝트부터 파일시스템 루트까지 가장 가까운 .yarnrc.yml을 찾는다.
+function toPortableClaimFile(cwd: string, filePath: string) {
+  const relativePath = relative(resolve(cwd), resolve(filePath))
+  return (relativePath || YARN_RC_YAML_PATH).split(sep).join('/')
+}
+
 export function findYarnRcYamlPath(cwd: string) {
   let currentDir = resolve(cwd)
 
   while (true) {
     const candidate = join(currentDir, YARN_RC_YAML_PATH)
-
     if (pathEntryExists(candidate)) return candidate
 
     const parentDir = dirname(currentDir)
@@ -382,7 +188,6 @@ export function findYarnRcYamlPath(cwd: string) {
   return join(resolve(cwd), YARN_RC_YAML_PATH)
 }
 
-// resolveYarnRcClaimPath 함수는 manifest의 Yarn 설정 경로가 프로젝트 또는 실제 상위 디렉터리인지 검증한다.
 export function resolveYarnRcClaimPath(cwd: string, file: string): YarnRcClaimPathResolution {
   const projectRoot = resolve(cwd)
 
@@ -424,7 +229,6 @@ export function resolveYarnRcClaimPath(cwd: string, file: string): YarnRcClaimPa
   return { safe: true, path, safetyRoot }
 }
 
-// createBlockedPatchPlan 함수는 원문을 유지한 Yarn init blocker 계획을 만든다.
 function createBlockedPatchPlan(path: string, source: string, created: boolean, blocker: string) {
   return {
     path,
@@ -438,7 +242,6 @@ function createBlockedPatchPlan(path: string, source: string, created: boolean, 
   } satisfies YarnRcYamlPatchPlan
 }
 
-// previewYarnRcYamlPatch 함수는 경로 안전성과 nodeLinker 국소 변경을 실제 쓰기 전에 계산한다.
 export function previewYarnRcYamlPatch(cwd: string, packageManager: string) {
   if (packageManager !== 'yarn') return null
 
@@ -450,62 +253,58 @@ export function previewYarnRcYamlPatch(cwd: string, packageManager: string) {
 
   if (!created) {
     const stats = lstatSync(path)
-
     if (!stats.isFile()) {
       return createBlockedPatchPlan(
         path,
         '',
         created,
-        `Cannot safely edit ${YARN_RC_YAML_PATH}: the target is not a regular file.`,
+        formatYarnRcBlocker('the target is not a regular file'),
       )
     }
-
     if (stats.nlink !== 1) {
       return createBlockedPatchPlan(
         path,
         '',
         created,
-        `Cannot safely edit ${YARN_RC_YAML_PATH}: the target must have exactly one hard link.`,
+        formatYarnRcBlocker('the target must have exactly one hard link'),
       )
     }
   }
 
   const source = created ? '' : readFileSync(path, 'utf8')
   const inspection = inspectYarnRcYaml(source)
-
   if (!inspection.safe) return createBlockedPatchPlan(path, source, created, inspection.blocker)
 
   const previous = inspection.nodeLinker
     ? {
         state: 'value' as const,
-        value: inspection.nodeLinker.value,
-        source: inspection.nodeLinker.valueSource,
+        value: inspection.nodeLinker,
+        source: inspection.nodeLinker,
       }
     : {
         state: 'missing' as const,
-        previousHadFinalEol: hasFinalEol(source),
+        previousHadFinalEol: /(?:\r\n|\n|\r)$/u.test(source),
         previousSourceHash: createSourceHash(source),
       }
   const changes: YarnRcYamlPatchChange[] = []
-  let nextSource = source
+  const root = structuredClone(inspection.root)
 
-  if (!inspection.nodeLinker) {
+  if (inspection.nodeLinker === null) {
     changes.push({
       action: created ? 'create' : 'add',
       path: 'nodeLinker',
       value: REQUIRED_YARN_NODE_LINKER,
       previous: 'missing',
     })
-    nextSource = appendNodeLinkerScalar(source, inspection)
-  } else if (inspection.nodeLinker.value !== REQUIRED_YARN_NODE_LINKER) {
+    root.nodeLinker = REQUIRED_YARN_NODE_LINKER
+  } else if (inspection.nodeLinker !== REQUIRED_YARN_NODE_LINKER) {
     changes.push({
       action: 'set',
       path: 'nodeLinker',
       value: REQUIRED_YARN_NODE_LINKER,
-      previous: inspection.nodeLinker.value,
+      previous: inspection.nodeLinker,
     })
-    nextSource =
-      replaceNodeLinkerScalar(source, inspection.nodeLinker, REQUIRED_YARN_NODE_LINKER) ?? source
+    root.nodeLinker = REQUIRED_YARN_NODE_LINKER
   }
 
   const ownershipClaim: YarnRcOwnershipClaim = {
@@ -520,7 +319,7 @@ export function previewYarnRcYamlPatch(cwd: string, packageManager: string) {
   return {
     path,
     source,
-    nextSource,
+    nextSource: changes.length === 0 ? source : renderYaml(root, source),
     created,
     changes,
     ownershipClaims: [ownershipClaim],
@@ -529,7 +328,6 @@ export function previewYarnRcYamlPatch(cwd: string, packageManager: string) {
   } satisfies YarnRcYamlPatchPlan
 }
 
-// readYarnRcYamlClaimValue 함수는 doctor와 clean에 현재 nodeLinker와 국소 편집 가능 여부를 제공한다.
 export function readYarnRcYamlClaimValue(source: string): YarnRcYamlClaimReadResult {
   const inspection = inspectYarnRcYaml(source)
 
@@ -542,71 +340,44 @@ export function readYarnRcYamlClaimValue(source: string): YarnRcYamlClaimReadRes
     }
   }
 
-  return inspection.nodeLinker
-    ? { exists: true, value: inspection.nodeLinker.value, safeToEdit: true }
-    : { exists: false, value: undefined, safeToEdit: true }
+  return inspection.nodeLinker === null
+    ? { exists: false, value: undefined, safeToEdit: true }
+    : { exists: true, value: inspection.nodeLinker, safeToEdit: true }
 }
 
-// restoreYarnRcYamlClaim 함수는 저장된 scalar 토큰 또는 missing 상태만 국소적으로 복원한다.
 export function restoreYarnRcYamlClaim(source: string, claim: YarnRcOwnershipClaim) {
   const inspection = inspectYarnRcYaml(source)
-
   if (!inspection.safe) return { source, blocker: inspection.blocker }
 
-  if (!inspection.nodeLinker) {
+  if (inspection.nodeLinker === null) {
     return {
       source,
       blocker: formatYarnRcBlocker('manifest-owned nodeLinker is missing during clean'),
     }
   }
 
+  const root = structuredClone(inspection.root)
+
   if (claim.previous.state === 'missing') {
-    return {
-      source:
-        removeNodeLinkerScalar(
-          source,
-          inspection,
-          claim.previous.previousHadFinalEol,
-          claim.previous.previousSourceHash,
-        ) ?? source,
-    }
+    delete root.nodeLinker
+  } else {
+    root.nodeLinker = claim.previous.value
   }
 
-  const parsedPrevious = parseNodeLinkerScalar(claim.previous.source)
-
-  if (!parsedPrevious.ok || parsedPrevious.value !== claim.previous.value) {
-    return {
-      source,
-      blocker: formatYarnRcBlocker('manifest contains an invalid previous nodeLinker scalar'),
-    }
-  }
-
-  return {
-    source:
-      replaceNodeLinkerScalar(
-        source,
-        inspection.nodeLinker,
-        claim.previous.value,
-        claim.previous.source,
-      ) ?? source,
-  }
+  return { source: renderYaml(root, source) }
 }
 
-// mergeYarnRcClaims 함수는 update 중 같은 파일의 최초 변경 전 상태를 잃지 않도록 claim을 병합한다.
 export function mergeYarnRcClaims(
   existingClaims: YarnRcOwnershipClaim[] = [],
   nextClaims: YarnRcOwnershipClaim[] = [],
 ) {
   const claims = new Map<string, YarnRcOwnershipClaim>()
 
-  for (const claim of existingClaims) {
-    claims.set(`${claim.file}:${claim.path}`, claim)
-  }
+  for (const claim of existingClaims) claims.set(`${claim.file}:${claim.path}`, claim)
 
   for (const claim of nextClaims) {
     const key = `${claim.file}:${claim.path}`
     const existing = claims.get(key)
-
     if (!existing || (!existing.changed && claim.changed)) claims.set(key, claim)
   }
 

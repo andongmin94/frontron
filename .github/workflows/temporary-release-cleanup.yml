@@ -6,6 +6,8 @@ on:
     paths:
       - ".github/workflows/temporary-release-cleanup.yml"
       - ".github/temporary-release-cleanup.py"
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: write
@@ -16,7 +18,9 @@ concurrency:
 
 jobs:
   cleanup:
-    if: github.actor != 'github-actions[bot]'
+    if: >-
+      github.actor != 'github-actions[bot]' &&
+      (github.event_name == 'push' || github.event.comment.body == '/release-cleanup')
     runs-on: ubuntu-latest
     timeout-minutes: 60
 

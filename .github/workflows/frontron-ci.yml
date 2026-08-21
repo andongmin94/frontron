@@ -5,6 +5,7 @@ on:
     paths:
       - "frontron/**"
       - "create-frontron/**"
+      - "scripts/**"
       - "release.mjs"
       - "LICENSE.md"
       - ".github/workflows/**"
@@ -13,6 +14,7 @@ on:
     paths:
       - "frontron/**"
       - "create-frontron/**"
+      - "scripts/**"
       - "release.mjs"
       - "LICENSE.md"
       - ".github/workflows/**"
@@ -24,7 +26,7 @@ jobs:
   quality:
     name: full quality / ubuntu / node 24
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -42,7 +44,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes xvfb
 
-      - name: Verify repository and packed artifacts
+      - name: Install package-manager smoke tools
+        run: npm install --global pnpm@11.11.0 @yarnpkg/cli-dist@4.9.2 bun@1.3.14
+
+      - name: Verify repository, packed artifacts, and package-manager consumers
         run: node release.mjs verify
         env:
           FRONTRON_TEST_ELECTRON_RUNTIME: "1"

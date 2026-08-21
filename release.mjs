@@ -1,7 +1,8 @@
-import { readFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { spawnSync } from 'node:child_process'
 
 const repoRoot = dirname(fileURLToPath(import.meta.url))
 const packages = [
@@ -140,6 +141,9 @@ function verifyRelease() {
 
   log('testing a packed generated starter')
   runNpm(['run', 'test:release-smoke'], packages[0].root)
+
+  log('testing pnpm, Yarn, and Bun consumers')
+  run(process.execPath, [join(repoRoot, 'scripts', 'package-manager-smoke.mjs')], repoRoot)
 }
 
 function publishedVersion(spec, version) {
@@ -166,6 +170,57 @@ function publishPackage(spec, version) {
   }
 }
 
+function verifyRegistryInstall(version) {
+  const projectRoot = mkdtempSync(join(tmpdir(), 'frontron-registry-'))
+
+  try {
+    writeFileSync(
+      join(projectRoot, 'package.json'),
+      `${JSON.stringify(
+        {
+          name: 'frontron-registry-smoke',
+          version: '0.0.0',
+          private: true,
+          type: 'module',
+          scripts: { dev: 'node -e ""', build: 'node -e ""' },
+        },
+        null,
+        2,
+      )}\n`,
+      'utf8',
+    )
+    runNpm(
+      [
+        'install',
+        '--ignore-scripts',
+        '--fund=false',
+        '--audit=false',
+        `create-frontron@${version}`,
+        `frontron@${version}`,
+      ],
+      projectRoot,
+    )
+    runNpm(
+      [
+        'exec',
+        '--',
+        'frontron',
+        'init',
+        '--yes',
+        '--adapter',
+        'generic-static',
+        '--out-dir',
+        'dist',
+      ],
+      projectRoot,
+    )
+    runNpm(['exec', '--', 'frontron', 'doctor'], projectRoot)
+    runNpm(['exec', '--', 'frontron', 'clean', '--yes'], projectRoot)
+  } finally {
+    rmSync(projectRoot, { recursive: true, force: true })
+  }
+}
+
 function publishRelease() {
   assertTrustedPublishing()
   assertCleanWorktree()
@@ -176,6 +231,9 @@ function publishRelease() {
   for (const spec of packages) {
     publishPackage(spec, version)
   }
+
+  log(`testing registry installs for ${version}`)
+  verifyRegistryInstall(version)
 }
 
 function main() {

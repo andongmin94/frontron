@@ -125,7 +125,10 @@ function createPackageManagerFiles(packageManager: PackageManager) {
   }
 
   if (packageManager === 'yarn') {
-    return new Map([['.yarnrc.yml', 'nodeLinker: node-modules\n']])
+    return new Map([
+      ['.yarnrc.yml', 'nodeLinker: node-modules\n'],
+      ['yarn.lock', ''],
+    ])
   }
 
   return new Map<string, string>()

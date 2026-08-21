@@ -13,7 +13,7 @@ Electron tooling for two paths:
 - `create-frontron` creates a new Electron + React + Vite app in a new directory.
 - `frontron` adds an app-owned Electron layer to an existing compatible web frontend.
 
-## Start a new app
+## New app
 
 ```bash
 npm create frontron@latest my-app
@@ -22,9 +22,9 @@ npm install
 npm run app
 ```
 
-Use `npm run build` to create the packaged desktop app.
+Use `npm run build` to build and package the desktop app.
 
-## Retrofit an existing frontend
+## Existing frontend
 
 ```bash
 npm install -D frontron
@@ -34,21 +34,19 @@ npm install
 npm run frontron:dev
 ```
 
-Use `npm run frontron:build` to build the frontend and create the packaged desktop app. There is no separate package script.
+Use `npm run frontron:build` to build the frontend and package the desktop app. Frontron detects Vite-style static apps, Next.js export and standalone builds, Nuxt, Remix, SvelteKit static and Node builds, and explicit custom Node servers.
 
-The retrofit CLI detects Vite-style static apps, Next.js export and standalone builds, Nuxt, Remix, SvelteKit static and node builds, and explicit custom Node servers. It records every generated file and package change in `.frontron/manifest.json`, which powers guarded `doctor`, `update`, and `clean` commands.
-
-Generated Electron windows use native operating-system title bars. The sandboxed `window.electron` bridge provides a small set of native capabilities: app information, text-file open/save dialogs, clipboard text, and notifications.
+`.frontron/manifest.json` records generated files and package changes for guarded `doctor`, `update`, and `clean` commands. Generated windows use native operating-system title bars. The sandboxed `window.electron` bridge exposes app information, text-file dialogs, clipboard text, and notifications.
 
 ## Monorepos
 
-Run Frontron from a workspace root when it contains exactly one compatible frontend package. Select a package explicitly when the workspace contains more than one:
+A workspace root with one compatible frontend is selected automatically. Select explicitly when there is more than one:
 
 ```bash
 npx frontron init --project apps/web
 ```
 
-The root `package.json` can make that selection permanent:
+The root `package.json` can persist that selection:
 
 ```json
 {
@@ -62,33 +60,26 @@ The root `package.json` can make that selection permanent:
 
 - Node.js `22.15+`
 
-## Repository layout
+## Repository
 
 ```text
-frontron/
-  create-frontron/             # starter generator and canonical Electron template
-  frontron/                    # retrofit CLI for existing web projects
-  release.mjs                  # shared release tooling
+create-frontron/   starter generator and canonical Electron template
+frontron/          retrofit CLI for existing web projects
+release.mjs        shared release tooling
 ```
 
-## Release
-
-Run shared release tasks from the repository root:
+Release commands:
 
 ```bash
-node release.mjs sync-version
+node release.mjs check-metadata
 node release.mjs verify
-node release.mjs matrix-smoke
-node release.mjs publish-dry-run
 node release.mjs publish
 ```
 
-## Docs
+## Links
 
-- Docs site: [andongmin.com/frontron/](https://andongmin.com/frontron/)
-- Guide: [andongmin.com/frontron/guide/](https://andongmin.com/frontron/guide/)
-- Issues: [github.com/andongmin94/frontron/issues](https://github.com/andongmin94/frontron/issues)
-
-## License
+- [Documentation](https://andongmin.com/frontron/)
+- [Guide](https://andongmin.com/frontron/guide/)
+- [Issues](https://github.com/andongmin94/frontron/issues)
 
 MIT. See [`LICENSE.md`](LICENSE.md).

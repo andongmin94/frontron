@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -17,39 +17,27 @@ const lintPaths = [
   'vitest.config.ts',
   'index.js',
 ]
-const releaseScriptPath = join(root, '..', 'release.mjs')
-const publishGuardTokenEnvironment = 'FRONTRON_RELEASE_PUBLISH_TOKEN'
-const publishGuardFileEnvironment = 'FRONTRON_RELEASE_PUBLISH_TOKEN_FILE'
+const releaseScript = join(root, '..', 'release.mjs')
+const formatPaths = [...lintPaths, 'package.json', 'template/package.json']
 
-if (existsSync(releaseScriptPath)) {
-  lintPaths.push(releaseScriptPath)
+if (existsSync(releaseScript)) {
+  lintPaths.push(releaseScript)
+  formatPaths.push(releaseScript)
 }
 
-const packageJsonPaths = ['package.json', 'template/package.json']
-
-function run(executable, args, options = {}) {
+function run(executable, args) {
   const result = spawnSync(executable, args, {
     cwd: root,
     stdio: 'inherit',
     shell: false,
-    ...options,
   })
 
-  if (result.error) {
-    throw result.error
-  }
-
-  if (result.status !== 0) {
-    process.exit(result.status ?? 1)
-  }
-}
-
-const binPackages = {
-  tsc: 'typescript',
+  if (result.error) throw result.error
+  if (result.status !== 0) process.exit(result.status ?? 1)
 }
 
 function resolveBin(name) {
-  const packageName = binPackages[name] ?? name
+  const packageName = name === 'tsc' ? 'typescript' : name
   const packageJsonPath = join(root, 'node_modules', packageName, 'package.json')
 
   if (!existsSync(packageJsonPath)) {
@@ -71,124 +59,27 @@ function resolveBin(name) {
   return join(root, 'node_modules', packageName, bin)
 }
 
+function runNode(args) {
+  run(process.execPath, args)
+}
+
 function runBin(name, args = []) {
   runNode([resolveBin(name), ...args])
 }
 
-function runNode(args = []) {
-  run(process.execPath, args)
-}
-
-function runBuild() {
-  runBin('unbuild')
-}
-
 function assertReleasePublishGuard() {
-  const token = process.env[publishGuardTokenEnvironment]
-  const tokenPath = process.env[publishGuardFileEnvironment]
-  let expectedToken = null
-
-  if (tokenPath) {
-    try {
-      expectedToken = readFileSync(tokenPath, 'utf8')
-    } catch {
-      expectedToken = null
-    }
-  }
-
-  if (!token || !/^[a-f0-9]{64}$/.test(token) || token !== expectedToken) {
-    console.error(
-      '[tasks] Direct npm publish is disabled. Run "node release.mjs publish" from the repository root.',
-    )
+  if (process.env.FRONTRON_RELEASE !== '1' || process.env.GITHUB_ACTIONS !== 'true') {
+    console.error('[tasks] Direct npm publish is disabled. Use the GitHub Actions release workflow.')
     process.exit(1)
-  }
-}
-
-function alignObjectSection(lines, sectionName) {
-  const start = lines.findIndex((line) => line === `  "${sectionName}": {`)
-
-  if (start === -1) {
-    return
-  }
-
-  let end = start + 1
-
-  while (end < lines.length && !/^  }[,]?$/.test(lines[end])) {
-    end += 1
-  }
-
-  const entryIndexes = []
-  let longestKey = 0
-
-  for (let index = start + 1; index < end; index += 1) {
-    const match = lines[index].match(/^    ("(?:\\.|[^"])+"):\s(.*)$/)
-
-    if (!match) {
-      continue
-    }
-
-    entryIndexes.push({ index, key: match[1], value: match[2] })
-    longestKey = Math.max(longestKey, match[1].length)
-  }
-
-  for (const entry of entryIndexes) {
-    lines[entry.index] = `    ${entry.key.padEnd(longestKey)} : ${entry.value}`
-  }
-}
-
-function getFormattedPackageJson(relativePath) {
-  const packageJsonPath = join(root, relativePath)
-  const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'))
-  const lines = JSON.stringify(packageJson, null, 2).split('\n')
-
-  for (const sectionName of ['scripts', 'dependencies', 'devDependencies']) {
-    alignObjectSection(lines, sectionName)
-  }
-
-  return `${lines.join('\n')}\n`
-}
-
-function formatPackageJson(relativePath = 'package.json') {
-  writeFileSync(join(root, relativePath), getFormattedPackageJson(relativePath), 'utf8')
-}
-
-function checkPackageJson(relativePath) {
-  const packageJsonPath = join(root, relativePath)
-  const actual = readFileSync(packageJsonPath, 'utf8')
-  const expected = getFormattedPackageJson(relativePath)
-
-  if (actual !== expected) {
-    console.error(
-      `[tasks] ${relativePath} does not match the repository package.json layout. Run "npm run lint".`,
-    )
-    process.exit(1)
-  }
-}
-
-function runCheck() {
-  runBin('oxlint', lintPaths)
-  runBin('oxfmt', ['--check', ...lintPaths])
-
-  for (const packageJsonPath of packageJsonPaths) {
-    checkPackageJson(packageJsonPath)
-  }
-}
-
-function runLint() {
-  runBin('oxlint', ['--fix', ...lintPaths])
-  runBin('oxfmt', [...lintPaths, ...packageJsonPaths])
-
-  for (const packageJsonPath of packageJsonPaths) {
-    formatPackageJson(packageJsonPath)
   }
 }
 
 switch (command) {
   case 'build':
-    runBuild()
+    runBin('unbuild')
     break
   case 'test':
-    runBuild()
+    runBin('unbuild')
     runBin('vitest', [
       'run',
       '--no-file-parallelism',
@@ -200,7 +91,7 @@ switch (command) {
     ])
     break
   case 'coverage':
-    runBuild()
+    runBin('unbuild')
     runBin('vitest', [
       'run',
       '--coverage',
@@ -232,17 +123,15 @@ switch (command) {
     runBin('tsc', ['--noEmit', ...extraArgs])
     break
   case 'check':
-    runCheck()
+    runBin('oxlint', lintPaths)
+    break
+  case 'lint':
+    runBin('oxlint', ['--fix', ...lintPaths])
+    runBin('oxfmt', formatPaths)
     break
   case 'prepublishOnly':
     assertReleasePublishGuard()
-    runBuild()
-    break
-  case 'lint':
-    runLint()
-    break
-  case 'format-package-json':
-    formatPackageJson()
+    runBin('unbuild')
     break
   default:
     console.error(`[tasks] Unknown command: ${command ?? '(missing)'}`)

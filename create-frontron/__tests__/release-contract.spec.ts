@@ -5,28 +5,22 @@ import { fileURLToPath } from 'node:url'
 import { expect, test } from 'vitest'
 
 const createPackageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
-const workspaceRoot = dirname(createPackageRoot)
-const releaseScript = join(workspaceRoot, 'release.mjs')
+const repositoryRoot = dirname(createPackageRoot)
+const releaseScript = join(repositoryRoot, 'release.mjs')
 
-function runNode(args: string[], cwd = workspaceRoot, env = process.env) {
-  return spawnSync(process.execPath, args, {
-    cwd,
-    env,
-    encoding: 'utf8',
-  })
+function runNode(args: string[], cwd = repositoryRoot, env = process.env) {
+  return spawnSync(process.execPath, args, { cwd, env, encoding: 'utf8' })
 }
 
-function localReleaseEnvironment() {
+function localEnvironment() {
   const env = { ...process.env }
 
   for (const key of [
     'FRONTRON_TRUSTED_PUBLISHING',
-    'FRONTRON_ALLOW_LOCAL_PUBLISH',
+    'FRONTRON_RELEASE',
     'GITHUB_ACTIONS',
     'ACTIONS_ID_TOKEN_REQUEST_URL',
     'ACTIONS_ID_TOKEN_REQUEST_TOKEN',
-    'FRONTRON_RELEASE_PUBLISH_TOKEN',
-    'FRONTRON_RELEASE_PUBLISH_TOKEN_FILE',
   ]) {
     delete env[key]
   }
@@ -34,14 +28,16 @@ function localReleaseEnvironment() {
   return env
 }
 
-test('release CLI rejects missing and unknown commands', () => {
+test('release CLI exposes only the supported commands', () => {
   const missing = runNode([releaseScript])
-  const unknown = runNode([releaseScript, 'release'])
+  const unknown = runNode([releaseScript, 'matrix-smoke'])
 
   expect(missing.status).toBe(1)
   expect(`${missing.stdout}${missing.stderr}`).toContain('Missing release command')
   expect(unknown.status).toBe(1)
-  expect(`${unknown.stdout}${unknown.stderr}`).toContain('Unknown release command: release')
+  expect(`${unknown.stdout}${unknown.stderr}`).toContain(
+    'Unknown release command: matrix-smoke',
+  )
 })
 
 test('release metadata check accepts the aligned package pair', () => {
@@ -50,22 +46,21 @@ test('release metadata check accepts the aligned package pair', () => {
   expect(result.status, result.stderr || result.stdout).toBe(0)
 })
 
-test('release auth check requires a complete trusted publishing environment', () => {
-  const env = localReleaseEnvironment()
-  env.FRONTRON_TRUSTED_PUBLISHING = '1'
-  const result = runNode([releaseScript, 'check-auth'], workspaceRoot, env)
+test('publish requires the trusted GitHub Actions OIDC environment', () => {
+  const result = runNode([releaseScript, 'publish'], repositoryRoot, localEnvironment())
 
   expect(result.status).toBe(1)
   expect(`${result.stdout}${result.stderr}`).toContain(
-    'requires a GitHub-hosted Actions job with id-token: write',
+    'requires the GitHub Actions release workflow with npm trusted publishing',
   )
 })
 
 test('package prepublish hooks reject direct npm publish', () => {
-  for (const packageRoot of [createPackageRoot, join(workspaceRoot, 'frontron')]) {
+  for (const packageRoot of [createPackageRoot, join(repositoryRoot, 'frontron')]) {
     const result = runNode(
       [join(packageRoot, 'scripts', 'tasks.mjs'), 'prepublishOnly'],
       packageRoot,
+      localEnvironment(),
     )
 
     expect(result.status).toBe(1)

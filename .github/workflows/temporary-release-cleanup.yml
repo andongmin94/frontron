@@ -1,0 +1,118 @@
+name: temporary-release-cleanup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/temporary-release-cleanup.yml"
+      - ".github/temporary-release-cleanup.py"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-release-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: main
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: |
+            frontron/package-lock.json
+            create-frontron/package-lock.json
+
+      - name: Apply and validate cleanup
+        shell: bash
+        run: |
+          set +e
+          (
+            set -euo pipefail
+            python3 .github/temporary-release-cleanup.py
+
+            npm ci --fund=false --audit=false --prefix create-frontron
+            npm ci --fund=false --audit=false --prefix frontron
+            npm run lint --prefix create-frontron
+            npm run lint --prefix frontron
+
+            node release.mjs check-metadata
+
+            npm run check --prefix create-frontron
+            npm run typecheck --prefix create-frontron
+            npm test --prefix create-frontron
+            npm run build --prefix create-frontron
+            npm run test:package-smoke --prefix create-frontron
+            npm run test:release-smoke --prefix create-frontron
+
+            npm run check --prefix frontron
+            npm run typecheck --prefix frontron
+            npm test --prefix frontron
+            npm run build --prefix frontron
+            npm run test:package-smoke --prefix frontron
+          ) 2>&1 | tee /tmp/frontron-release-cleanup.log
+          exit ${PIPESTATUS[0]}
+
+      - name: Commit validated cleanup
+        if: success()
+        run: |
+          rm -f .github/workflows/temporary-release-cleanup.yml
+          rm -f .github/temporary-release-cleanup.py
+          rm -f .github/temporary-release-cleanup-result.json
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -- \
+            release.mjs \
+            .github/workflows/frontron-release.yml \
+            .github/workflows/frontron-compatibility.yml \
+            .github/workflows/temporary-release-cleanup.yml \
+            .github/temporary-release-cleanup.py \
+            create-frontron/package.json \
+            create-frontron/template/package.json \
+            create-frontron/template/.oxlintrc.json \
+            create-frontron/scripts/tasks.mjs \
+            create-frontron/scripts/package-manager-matrix-smoke.mjs \
+            create-frontron/scripts/release-matrix-node-runtime.mjs \
+            create-frontron/scripts/release-matrix-smoke.mjs \
+            create-frontron/__tests__/release-contract.spec.ts \
+            create-frontron/__tests__/release-matrix-smoke.spec.mjs \
+            frontron/package.json \
+            frontron/scripts/tasks.mjs
+          git add -u -- .github/temporary-release-cleanup-result.json 2>/dev/null || true
+          git commit -m "refactor: simplify release verification"
+          git push origin HEAD:main
+
+      - name: Record validation failure
+        if: failure()
+        shell: bash
+        run: |
+          git reset --hard HEAD
+          tail -c 60000 /tmp/frontron-release-cleanup.log > /tmp/frontron-release-cleanup-tail.log
+          VALIDATED_SHA="$(git rev-parse HEAD)" node <<'NODE'
+          const fs = require('node:fs')
+          fs.writeFileSync(
+            '.github/temporary-release-cleanup-result.json',
+            `${JSON.stringify({
+              status: 1,
+              validatedSha: process.env.VALIDATED_SHA,
+              completedAt: new Date().toISOString(),
+              log: fs.readFileSync('/tmp/frontron-release-cleanup-tail.log', 'utf8'),
+            }, null, 2)}\n`,
+          )
+          NODE
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -- .github/temporary-release-cleanup-result.json
+          git commit -m "chore: record release cleanup failure"
+          git push origin HEAD:main

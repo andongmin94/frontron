@@ -15,14 +15,6 @@ import { assertProjectPathSafe, isInsideDirectory } from './project-paths'
 
 export const TRANSACTION_JOURNAL_PATH = '.frontron-transaction-journal.json'
 
-// Doctor also reports stale artifacts left by older releases; current transactions use only the journal.
-export const TRANSACTION_JOURNAL_PREPARING_PREFIX = '.frontron-transaction-journal.preparing-'
-export const TRANSACTION_LOCK_PATH = '.frontron-transaction.lock'
-export const TRANSACTION_LOCK_PREPARING_PREFIX = '.frontron-transaction.lock.preparing-'
-export const TRANSACTION_RECOVERY_LOCK_PATH = '.frontron-transaction-recovery.lock'
-export const TRANSACTION_RECOVERY_LOCK_PREPARING_PREFIX =
-  '.frontron-transaction-recovery.lock.preparing-'
-
 export type TransactionOperation = 'init' | 'clean'
 export type TransactionTargetKind = 'file' | 'directory'
 

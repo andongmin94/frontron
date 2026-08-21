@@ -112,21 +112,25 @@ function smokeYarn(createTarball) {
     devDependencies: { 'create-frontron': `file:${createTarball}` },
   })
   writeFileSync(join(runnerRoot, '.yarnrc.yml'), 'nodeLinker: node-modules\n', 'utf8')
+  const yarnEnvironment = { YARN_ENABLE_IMMUTABLE_INSTALLS: 'false' }
 
-  run('yarn', ['install', '--mode=skip-build'], runnerRoot)
+  run('yarn', ['install', '--mode=skip-build'], runnerRoot, yarnEnvironment)
   run(
     process.execPath,
     [installedCli(runnerRoot, 'create-frontron'), 'yarn-app'],
     runnerRoot,
-    { npm_config_user_agent: 'yarn/4.9.2 npm/? node/v24 linux x64' },
+    {
+      ...yarnEnvironment,
+      npm_config_user_agent: 'yarn/4.9.2 npm/? node/v24 linux x64',
+    },
   )
 
   const appRoot = join(runnerRoot, 'yarn-app')
   if (readFileSync(join(appRoot, '.yarnrc.yml'), 'utf8').trim() !== 'nodeLinker: node-modules') {
     throw new Error('Yarn node-modules linker configuration was not generated')
   }
-  run('yarn', ['install', '--mode=skip-build'], appRoot)
-  run('yarn', ['typecheck'], appRoot)
+  run('yarn', ['install', '--mode=skip-build'], appRoot, yarnEnvironment)
+  run('yarn', ['typecheck'], appRoot, yarnEnvironment)
 }
 
 function smokeBun(createTarball) {

@@ -1,0 +1,93 @@
+name: temporary-main-validation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "frontron/**"
+      - "create-frontron/**"
+      - "release.mjs"
+      - ".github/workflows/temporary-main-validation.yml"
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-main-validation
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    if: github.event_name == 'push' || github.event.comment.body == '/validate-main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: main
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: |
+            frontron/package-lock.json
+            create-frontron/package-lock.json
+
+      - name: Validate both packages
+        shell: bash
+        run: |
+          set +e
+
+          run_validation() {
+            node release.mjs check-metadata &&
+            (
+              cd create-frontron &&
+              npm ci --fund=false --audit=false &&
+              npm run check &&
+              npm run typecheck &&
+              npm test &&
+              npm run build &&
+              npm run test:package-smoke
+            ) &&
+            (
+              cd frontron &&
+              npm ci --fund=false --audit=false &&
+              npm run check &&
+              npm run typecheck &&
+              npm test &&
+              npm run build &&
+              npm run test:package-smoke
+            )
+          }
+
+          run_validation 2>&1 | tee /tmp/frontron-validation.log
+          status=${PIPESTATUS[0]}
+          tail -c 60000 /tmp/frontron-validation.log > /tmp/frontron-validation-tail.log
+
+          STATUS="$status" VALIDATED_SHA="$(git rev-parse HEAD)" node <<'NODE'
+          const fs = require('node:fs')
+          const result = {
+            status: Number(process.env.STATUS),
+            validatedSha: process.env.VALIDATED_SHA,
+            completedAt: new Date().toISOString(),
+            log: fs.readFileSync('/tmp/frontron-validation-tail.log', 'utf8'),
+          }
+          fs.writeFileSync(
+            '.github/temporary-main-validation-result.json',
+            `${JSON.stringify(result, null, 2)}\n`,
+          )
+          NODE
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -- .github/temporary-main-validation-result.json
+          git commit -m "chore: record temporary main validation" || true
+          git push origin HEAD:main
+
+          exit 0

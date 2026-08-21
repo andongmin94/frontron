@@ -30,6 +30,10 @@
     "typescript"           : "~6.0.2",
     "vite"                 : "^8.0.1"
   },
+  "trustedDependencies": [
+    "electron",
+    "electron-winstaller"
+  ],
   "main": "dist/electron/main.js",
   "build": {
     "appId": "__CREATE_APP_ID__",

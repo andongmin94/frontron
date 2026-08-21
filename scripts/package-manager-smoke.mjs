@@ -1,5 +1,11 @@
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -21,7 +27,7 @@ function run(command, args, cwd, env = {}) {
     env: { ...environment, ...env },
     stdio: 'inherit',
     shell: false,
-    timeout: 300_000,
+    timeout: 600_000,
   })
 
   if (result.error) throw result.error
@@ -63,6 +69,12 @@ function installedCli(projectRoot, packageName) {
   return join(projectRoot, 'node_modules', packageName, 'index.js')
 }
 
+function assertDirectory(path, label) {
+  if (!existsSync(path)) {
+    throw new Error(`${label} was not created at ${path}`)
+  }
+}
+
 function assertPnpmRetrofitConfig(projectRoot) {
   const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8'))
   const devDependencies = packageJson.devDependencies ?? {}
@@ -102,6 +114,11 @@ function smokePnpm(createTarball, frontronTarball) {
     `overrides:\n  create-frontron: ${JSON.stringify(`file:${createTarball}`)}\n`,
     'utf8',
   )
+  writeFileSync(
+    join(projectRoot, 'index.html'),
+    '<!doctype html><html><body><main>pnpm retrofit smoke</main></body></html>\n',
+    'utf8',
+  )
 
   run('pnpm', ['install', '--ignore-scripts', '--no-frozen-lockfile'], projectRoot)
   const cli = installedCli(projectRoot, 'frontron')
@@ -113,6 +130,9 @@ function smokePnpm(createTarball, frontronTarball) {
     { npm_config_user_agent: userAgent },
   )
   assertPnpmRetrofitConfig(projectRoot)
+  run('pnpm', ['install', '--no-frozen-lockfile'], projectRoot)
+  run('pnpm', ['run', 'frontron:build', '--', '--dir'], projectRoot)
+  assertDirectory(join(projectRoot, 'release'), 'pnpm packaged output')
   run(process.execPath, [cli, 'doctor'], projectRoot, {
     npm_config_user_agent: userAgent,
   })
@@ -149,8 +169,10 @@ function smokeYarn(createTarball) {
   if (readFileSync(join(appRoot, '.yarnrc.yml'), 'utf8').trim() !== 'nodeLinker: node-modules') {
     throw new Error('Yarn node-modules linker configuration was not generated')
   }
-  run('yarn', ['install', '--mode=skip-build'], appRoot, yarnEnvironment)
+  run('yarn', ['install'], appRoot, yarnEnvironment)
   run('yarn', ['typecheck'], appRoot, yarnEnvironment)
+  run('yarn', ['build', '--dir'], appRoot, yarnEnvironment)
+  assertDirectory(join(appRoot, 'output'), 'Yarn packaged output')
 }
 
 function smokeBun(createTarball) {
@@ -173,8 +195,18 @@ function smokeBun(createTarball) {
   )
 
   const appRoot = join(runnerRoot, 'bun-app')
-  run('bun', ['install', '--ignore-scripts'], appRoot)
+  const generatedPackage = JSON.parse(readFileSync(join(appRoot, 'package.json'), 'utf8'))
+  if (
+    !Array.isArray(generatedPackage.trustedDependencies) ||
+    !generatedPackage.trustedDependencies.includes('electron')
+  ) {
+    throw new Error('Bun starter did not trust the Electron install script')
+  }
+
+  run('bun', ['install'], appRoot)
   run('bun', ['run', 'typecheck'], appRoot)
+  run('bun', ['run', 'build', '--', '--dir'], appRoot)
+  assertDirectory(join(appRoot, 'output'), 'Bun packaged output')
 }
 
 try {

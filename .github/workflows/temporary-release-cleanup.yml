@@ -1,28 +1,35 @@
-name: temporary-release-cleanup
+name: temporary-final-cleanup
 
 on:
-  issues:
+  pull_request_target:
     types: [opened]
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
-  group: temporary-release-cleanup
-  cancel-in-progress: true
+  group: temporary-final-cleanup-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
 
 jobs:
   cleanup:
-    if: github.event.issue.title == 'Run final main cleanup validation'
+    if: >-
+      github.event.pull_request.title == 'Run final main cleanup' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Checkout the temporary cleanup branch
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          ref: main
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
           cache: npm
@@ -30,86 +37,64 @@ jobs:
             frontron/package-lock.json
             create-frontron/package-lock.json
 
-      - name: Apply and validate cleanup
+      - name: Apply both cleanup layers
         shell: bash
         run: |
-          set +e
-          (
-            set -euo pipefail
-            python3 .github/temporary-release-cleanup.py
-
-            npm ci --fund=false --audit=false --prefix create-frontron
-            npm ci --fund=false --audit=false --prefix frontron
-            npm run lint --prefix create-frontron
-            npm run lint --prefix frontron
-
-            node release.mjs check-metadata
-
-            npm run check --prefix create-frontron
-            npm run typecheck --prefix create-frontron
-            npm test --prefix create-frontron
-            npm run build --prefix create-frontron
-            npm run test:package-smoke --prefix create-frontron
-            npm run test:release-smoke --prefix create-frontron
-
-            npm run check --prefix frontron
-            npm run typecheck --prefix frontron
-            npm test --prefix frontron
-            npm run build --prefix frontron
-            npm run test:package-smoke --prefix frontron
-          ) 2>&1 | tee /tmp/frontron-release-cleanup.log
-          exit ${PIPESTATUS[0]}
-
-      - name: Commit validated cleanup
-        if: success()
-        run: |
-          rm -f .github/workflows/temporary-release-cleanup.yml
-          rm -f .github/temporary-release-cleanup.py
-          rm -f .github/temporary-release-cleanup-result.json
-
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -- \
-            release.mjs \
-            .github/workflows/frontron-release.yml \
-            .github/workflows/frontron-compatibility.yml \
-            .github/workflows/temporary-release-cleanup.yml \
+          set -euo pipefail
+          test -f .github/cleanup-request
+          python3 .github/temporary-release-cleanup.py
+          python3 .github/temporary-final-cleanup.py
+          rm -f \
+            .github/cleanup-request \
             .github/temporary-release-cleanup.py \
-            create-frontron/package.json \
-            create-frontron/template/package.json \
-            create-frontron/template/.oxlintrc.json \
-            create-frontron/scripts/tasks.mjs \
-            create-frontron/scripts/package-manager-matrix-smoke.mjs \
-            create-frontron/scripts/release-matrix-node-runtime.mjs \
-            create-frontron/scripts/release-matrix-smoke.mjs \
-            create-frontron/__tests__/release-contract.spec.ts \
-            create-frontron/__tests__/release-matrix-smoke.spec.mjs \
-            frontron/package.json \
-            frontron/scripts/tasks.mjs
-          git add -u -- .github/temporary-release-cleanup-result.json 2>/dev/null || true
-          git commit -m "refactor: simplify release verification"
-          git push origin HEAD:main
+            .github/temporary-final-cleanup.py \
+            .github/temporary-release-cleanup-result.json \
+            .github/workflows/temporary-release-cleanup.yml
 
-      - name: Record validation failure
-        if: failure()
+      - name: Install packages
+        run: |
+          npm ci --fund=false --audit=false --prefix create-frontron
+          npm ci --fund=false --audit=false --prefix frontron
+
+      - name: Format changed sources
+        run: |
+          npm run lint --prefix create-frontron
+          npm run lint --prefix frontron
+
+      - name: Verify metadata and create-frontron
+        run: |
+          node release.mjs check-metadata
+          npm run check --prefix create-frontron
+          npm run typecheck --prefix create-frontron
+          npm run coverage --prefix create-frontron
+          npm run build --prefix create-frontron
+          npm run test:package-smoke --prefix create-frontron
+          npm run test:release-smoke --prefix create-frontron
+
+      - name: Verify frontron
+        run: |
+          npm run check --prefix frontron
+          npm run typecheck --prefix frontron
+          npm run coverage --prefix frontron
+          npm run build --prefix frontron
+          npm run test:package-smoke --prefix frontron
+
+      - name: Commit the validated cleanup
         shell: bash
         run: |
-          git reset --hard HEAD
-          tail -c 60000 /tmp/frontron-release-cleanup.log > /tmp/frontron-release-cleanup-tail.log
-          VALIDATED_SHA="$(git rev-parse HEAD)" node <<'NODE'
-          const fs = require('node:fs')
-          fs.writeFileSync(
-            '.github/temporary-release-cleanup-result.json',
-            `${JSON.stringify({
-              status: 1,
-              validatedSha: process.env.VALIDATED_SHA,
-              completedAt: new Date().toISOString(),
-              log: fs.readFileSync('/tmp/frontron-release-cleanup-tail.log', 'utf8'),
-            }, null, 2)}\n`,
-          )
-          NODE
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -- .github/temporary-release-cleanup-result.json
-          git commit -m "chore: record release cleanup failure"
-          git push origin HEAD:main
+          git add -A
+          git commit -m "refactor: finish codebase volume cleanup"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+
+      - name: Squash merge and delete the temporary branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh pr merge "$PR_URL" \
+            --squash \
+            --delete-branch \
+            --subject "refactor: finish codebase volume cleanup" \
+            --body "Remove the remaining release-harness, JSONC, template-loader, CI, and duplicate-test bloat after full package validation."

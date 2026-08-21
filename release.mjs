@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -153,6 +153,11 @@ function publishedVersion(spec, version) {
   return result.status === 0 ? result.stdout.trim() : null
 }
 
+function latestPublishedVersion(spec) {
+  const result = runNpm(['view', spec.name, 'version'], repoRoot, { quiet: true })
+  return result.status === 0 ? result.stdout.trim() : null
+}
+
 function publishPackage(spec, version) {
   if (publishedVersion(spec, version) === version) {
     log(`${spec.name}@${version} is already published; continuing the release`)
@@ -169,6 +174,20 @@ function publishPackage(spec, version) {
 
   if (publishedVersion(spec, version) !== version) {
     throw new Error(`npm did not expose ${spec.name}@${version} after publish.`)
+  }
+}
+
+function assertInstalledVersion(projectRoot, packageName, version) {
+  const packagePath = join(projectRoot, 'node_modules', packageName, 'package.json')
+  if (!existsSync(packagePath)) {
+    throw new Error(`Registry install did not contain ${packageName}.`)
+  }
+
+  const installedVersion = readJson(packagePath).version
+  if (installedVersion !== version) {
+    throw new Error(
+      `Registry install resolved ${packageName}@${installedVersion ?? 'unknown'} instead of ${version}.`,
+    )
   }
 }
 
@@ -202,6 +221,17 @@ function verifyRegistryInstall(version) {
       ],
       projectRoot,
     )
+
+    assertInstalledVersion(projectRoot, 'create-frontron', version)
+    assertInstalledVersion(projectRoot, 'frontron', version)
+    runNpm(['exec', '--', 'frontron', '--help'], projectRoot)
+    runNpm(['exec', '--', 'create-frontron', 'registry-app'], projectRoot)
+
+    const generatedPackagePath = join(projectRoot, 'registry-app', 'package.json')
+    if (!existsSync(generatedPackagePath)) {
+      throw new Error('Registry-installed create-frontron did not generate registry-app.')
+    }
+
     runNpm(
       [
         'exec',
@@ -232,6 +262,12 @@ function publishRelease() {
 
   for (const spec of packages) {
     publishPackage(spec, version)
+  }
+
+  for (const spec of packages) {
+    if (latestPublishedVersion(spec) !== version) {
+      throw new Error(`npm latest for ${spec.name} does not point to ${version}.`)
+    }
   }
 
   log(`testing registry installs for ${version}`)

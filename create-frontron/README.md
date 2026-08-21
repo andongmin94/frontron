@@ -9,7 +9,7 @@ npm install
 npm run app
 ```
 
-Equivalent commands work with pnpm, Yarn, and Bun.
+Equivalent commands work with pnpm, Yarn, and Bun. pnpm projects receive the Electron `allowBuilds` entries, and Yarn projects receive `nodeLinker: node-modules` because the generated task runner uses normal package binaries.
 
 Requires Node.js `22.15+`.
 
@@ -30,6 +30,8 @@ npm run dev       # browser-only Vite development
 npm run app       # Vite development inside Electron
 npm run typecheck
 npm run lint
+npm run format
+npm run format:check
 npm run build     # build and package the desktop app
 ```
 
@@ -67,7 +69,7 @@ src/
     ipc.ts
     serve.ts
     splash.ts
-    tray.ts
+    static-server.ts
   types/
     electron.d.ts
 scripts/

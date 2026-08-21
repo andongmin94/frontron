@@ -118,7 +118,10 @@ function assertTrustedSender(
   event: IpcMainInvokeEvent,
   window: BrowserWindow
 ) {
-  if (event.sender !== window.webContents) {
+  if (
+    event.sender !== window.webContents ||
+    event.senderFrame !== window.webContents.mainFrame
+  ) {
     throw new Error("Rejected IPC request from an untrusted renderer.")
   }
 }

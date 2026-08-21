@@ -22,7 +22,7 @@ npm install
 npm run app
 ```
 
-Use `npm run build` to build and package the desktop app.
+Use `npm run build` to build and package the desktop app. The generator writes the pnpm Electron build approvals or Yarn node-modules linker setting when invoked through that package manager.
 
 ## Existing frontend
 

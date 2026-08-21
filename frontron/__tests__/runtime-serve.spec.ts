@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url'
 import * as ts from 'typescript'
 import { afterEach, describe, expect, test } from 'vitest'
 
+import { renderCreateFrontronElectronFile } from '../src/init/runtime/create-frontron-template'
 import { renderServeSource } from '../src/init/runtime/serve-source'
 import type { InitConfig } from '../src/init/shared'
 
@@ -102,6 +103,7 @@ async function createStaticRuntime() {
   writeFileSync(join(projectRoot, 'package.json'), '{"type":"module"}\n', 'utf8')
   writeFileSync(join(distWebDir, 'index.html'), '<h1>runtime index</h1>', 'utf8')
   writeFileSync(join(distWebDir, 'asset.txt'), '0123456789', 'utf8')
+  writeFileSync(join(distWebDir, 'module.wasm'), 'wasm', 'utf8')
 
   const transpiled = ts.transpileModule(renderServeSource(createStaticConfig(projectRoot)), {
     compilerOptions: {
@@ -118,6 +120,17 @@ async function createStaticRuntime() {
   ).toEqual([])
 
   const servePath = join(distElectronDir, 'serve.js')
+  const staticServerSource = ts.transpileModule(
+    renderCreateFrontronElectronFile('static-server.ts'),
+    {
+      compilerOptions: {
+        module: ts.ModuleKind.ESNext,
+        target: ts.ScriptTarget.ES2022,
+      },
+      fileName: 'static-server.ts',
+    },
+  ).outputText
+  writeFileSync(join(distElectronDir, 'static-server.js'), staticServerSource, 'utf8')
   writeFileSync(servePath, transpiled.outputText, 'utf8')
 
   const runtime = (await import(
@@ -178,7 +191,7 @@ describe('generated renderer runtime source selection', () => {
     const source = renderServeSource(createStaticConfig('C:/runtime-test'))
 
     expectSourceToTranspile(source)
-    expect(source).toContain('function startStaticServer')
+    expect(source).toContain('startStaticRendererServer')
     expect(source).toContain('function prepareStaticBuild')
     expect(source).not.toContain('function startNodeServerRuntime')
     expect(source).not.toContain('NODE_SERVER_ENTRY')
@@ -192,8 +205,8 @@ describe('generated renderer runtime source selection', () => {
     expectSourceToTranspile(source)
     expect(source).toContain('function startNodeServerRuntime')
     expect(source).toContain('function prepareNodeServerBuild')
-    expect(source).not.toContain('function startStaticServer')
-    expect(source).not.toContain('function parseByteRange')
+    expect(source).not.toContain('startStaticRendererServer')
+    expect(source).not.toContain('static-server.js')
     expect(source).not.toContain('RemixBundleMetafile')
     expect(source).not.toContain("require.resolve('@remix-run/serve/package.json')")
   })
@@ -245,7 +258,7 @@ describe('generated renderer runtime source selection', () => {
     expect(source).toContain('function stageRemixRuntimeDependencies')
     expect(source).toContain("require.resolve('@remix-run/serve/package.json')")
     expect(source).toContain('THIRD_PARTY_LICENSES.json')
-    expect(source).not.toContain('function startStaticServer')
+    expect(source).not.toContain('startStaticRendererServer')
     expect(source).not.toContain("ADAPTER === 'remix-node-server'")
     expect(source).not.toContain("RUNTIME_STRATEGY === 'node-server'")
   })
@@ -263,6 +276,7 @@ describe('generated static renderer runtime', () => {
     const invalidRangeResponse = await requestRuntime(rendererUrl, '/asset.txt', {
       headers: { Range: 'bytes=20-30' },
     })
+    const wasmResponse = await requestRuntime(rendererUrl, '/module.wasm')
 
     expect(fullResponse).toMatchObject({ statusCode: 200, body: '0123456789' })
     expect(fullResponse.headers['accept-ranges']).toBe('bytes')
@@ -274,6 +288,7 @@ describe('generated static renderer runtime', () => {
     expect(rangeResponse.headers['content-length']).toBe('4')
     expect(invalidRangeResponse.statusCode).toBe(416)
     expect(invalidRangeResponse.headers['content-range']).toBe('bytes */10')
+    expect(wasmResponse.headers['content-type']).toBe('application/wasm')
   })
 
   test('handles directories, malformed paths, and unsupported methods without stream failures', async () => {

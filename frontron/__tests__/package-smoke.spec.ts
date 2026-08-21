@@ -34,16 +34,6 @@ function runNpm(args: string[], cwd: string) {
   return result.stdout
 }
 
-function runNode(args: string[], cwd: string) {
-  const result = spawnSync(process.execPath, args, { cwd, encoding: 'utf8' })
-
-  if (result.status !== 0) {
-    throw new Error(result.stderr || result.stdout || 'node command failed')
-  }
-
-  return result.stdout
-}
-
 function pack(packageDirectory: string, prefix: string) {
   runNpm(['run', 'build'], packageDirectory)
   const outputDirectory = mkdtempSync(join(tmpdir(), prefix))
@@ -76,6 +66,7 @@ test('frontron package exposes only its CLI and exact template dependency', { ti
     version: string
     main?: string
     types?: string
+    exports?: Record<string, unknown>
     dependencies?: Record<string, string>
   }
 
@@ -86,8 +77,9 @@ test('frontron package exposes only its CLI and exact template dependency', { ti
   expect(files.has('README.md')).toBe(true)
   expect(files.has('LICENSE')).toBe(true)
   expect(files.has('scripts/tasks.mjs')).toBe(false)
-  expect(packageJson.main).toBe('./dist/cli.mjs')
-  expect(packageJson.types).toBe('./dist/cli.d.ts')
+  expect(packageJson.main).toBeUndefined()
+  expect(packageJson.types).toBeUndefined()
+  expect(packageJson.exports).toEqual({ './package.json': './package.json' })
   expect(packageJson.dependencies?.['create-frontron']).toBe(packageJson.version)
 })
 
@@ -120,15 +112,12 @@ test(
 
     runNpm(['install', '--ignore-scripts', createTarball, frontronTarball], appRoot)
 
-    const importResult = runNode(
-      [
-        '--input-type=module',
-        '--eval',
-        "const module = await import('frontron'); process.stdout.write(typeof module.runCli)",
-      ],
-      appRoot,
+    const importResult = spawnSync(
+      process.execPath,
+      ['--input-type=module', '--eval', "await import('frontron')"],
+      { cwd: appRoot, encoding: 'utf8' },
     )
-    expect(importResult).toBe('function')
+    expect(importResult.status).not.toBe(0)
 
     runNpm(
       [
@@ -145,9 +134,13 @@ test(
       appRoot,
     )
     expect(existsSync(join(appRoot, 'electron', 'main.ts'))).toBe(true)
+    expect(existsSync(join(appRoot, 'electron', 'static-server.ts'))).toBe(true)
+    expect(existsSync(join(appRoot, 'electron', 'tray.ts'))).toBe(false)
     expect(existsSync(join(appRoot, '.frontron', 'manifest.json'))).toBe(true)
 
-    expect(runNpm(['exec', '--', 'frontron', 'doctor'], appRoot)).toContain('No blockers found.')
+    expect(runNpm(['exec', '--', 'frontron', 'doctor'], appRoot)).toContain(
+      'No blockers found.',
+    )
     expect(runNpm(['exec', '--', 'frontron', 'update', '--dry-run'], appRoot)).toContain(
       'Run "frontron update --yes" to apply this plan.',
     )

@@ -1,11 +1,12 @@
 import { spawnSync } from "node:child_process"
-import { existsSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const command = process.argv[2]
 const extraArgs = process.argv.slice(3)
+const formatTargets = ["src", "scripts", "vite.config.ts", "package.json"]
 
 function run(executable, args, options = {}) {
   const result = spawnSync(executable, args, {
@@ -15,32 +16,17 @@ function run(executable, args, options = {}) {
     ...options,
   })
 
-  if (result.error) {
-    throw result.error
-  }
-
-  if (result.status !== 0) {
-    process.exit(result.status ?? 1)
-  }
+  if (result.error) throw result.error
+  if (result.status !== 0) process.exit(result.status ?? 1)
 }
 
-const binPackages = {
-  tsc: "typescript",
-}
+const binPackages = { tsc: "typescript" }
 
 function resolveBin(name) {
   const packageName = binPackages[name] ?? name
-  const packageJsonPath = join(
-    root,
-    "node_modules",
-    packageName,
-    "package.json"
-  )
-
+  const packageJsonPath = join(root, "node_modules", packageName, "package.json")
   if (!existsSync(packageJsonPath)) {
-    console.error(
-      `[tasks] Missing dependency for "${name}". Run npm install first.`
-    )
+    console.error(`[tasks] Missing dependency for "${name}". Run install first.`)
     process.exit(1)
   }
 
@@ -49,81 +35,25 @@ function resolveBin(name) {
     typeof packageJson.bin === "string"
       ? packageJson.bin
       : (packageJson.bin?.[name] ?? packageJson.bin?.[packageName])
-
   if (!bin) {
-    console.error(
-      `[tasks] Package "${packageName}" does not expose a "${name}" binary.`
-    )
+    console.error(`[tasks] Package "${packageName}" does not expose a "${name}" binary.`)
     process.exit(1)
   }
-
   return join(root, "node_modules", packageName, bin)
-}
-
-function runBin(name, args = []) {
-  runNode([resolveBin(name), ...args])
 }
 
 function runNode(args = []) {
   run(process.execPath, args)
 }
 
-function alignObjectSection(lines, sectionName) {
-  const start = lines.findIndex((line) => line === `  "${sectionName}": {`)
-
-  if (start === -1) {
-    return
-  }
-
-  let end = start + 1
-
-  while (end < lines.length && !/^  }[,]?$/.test(lines[end])) {
-    end += 1
-  }
-
-  const entryIndexes = []
-  let longestKey = 0
-
-  for (let index = start + 1; index < end; index += 1) {
-    const match = lines[index].match(/^    ("(?:\\.|[^"])+"):\s(.*)$/)
-
-    if (!match) {
-      continue
-    }
-
-    entryIndexes.push({ index, key: match[1], value: match[2] })
-    longestKey = Math.max(longestKey, match[1].length)
-  }
-
-  for (const entry of entryIndexes) {
-    lines[entry.index] = `    ${entry.key.padEnd(longestKey)} : ${entry.value}`
-  }
+function runBin(name, args = []) {
+  runNode([resolveBin(name), ...args])
 }
 
-function formatPackageJson() {
-  const packageJsonPath = join(root, "package.json")
-  const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"))
-  const lines = JSON.stringify(packageJson, null, 2).split("\n")
-
-  for (const sectionName of ["scripts", "dependencies", "devDependencies"]) {
-    alignObjectSection(lines, sectionName)
-  }
-
-  writeFileSync(packageJsonPath, `${lines.join("\n")}\n`, "utf8")
-}
-
-function runLint() {
-  runBin("oxlint", ["--fix", "src", "vite.config.ts"])
-  runBin("oxfmt", ["src", "scripts", "vite.config.ts", "package.json"])
-  formatPackageJson()
-}
-
-// getElectronBuilderArgs 함수는 CI가 빌드를 암묵적으로 배포하지 않도록 기본 publish 정책을 정한다.
 function getElectronBuilderArgs(args) {
   const hasExplicitPublish = args.some(
-    (argument) => argument === "--publish" || argument.startsWith("--publish="),
+    (argument) => argument === "--publish" || argument.startsWith("--publish=")
   )
-
   return hasExplicitPublish ? args : ["--publish", "never", ...args]
 }
 
@@ -152,7 +82,13 @@ switch (command) {
     runBin("electron-builder", getElectronBuilderArgs(extraArgs))
     break
   case "lint":
-    runLint()
+    runBin("oxlint", ["src", "vite.config.ts"])
+    break
+  case "format":
+    runBin("oxfmt", formatTargets)
+    break
+  case "format:check":
+    runBin("oxfmt", ["--check", ...formatTargets])
     break
   default:
     console.error(`[tasks] Unknown command: ${command ?? "(missing)"}`)

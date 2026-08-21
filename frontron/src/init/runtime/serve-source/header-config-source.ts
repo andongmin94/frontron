@@ -15,10 +15,13 @@ export function renderServeHeaderAndConfigSource(config: InitConfig, devUrl: str
     ...(usesNodeServer ? ['cpSync', 'mkdirSync', 'rmSync'] : []),
     ...(usesRemixRuntime ? ['readFileSync', 'readdirSync'] : []),
   ].sort()
-  const staticFileSystemImport = usesNodeServer
+  const staticServerImport = usesNodeServer
     ? ''
-    : `\nimport { open, realpath, stat } from 'node:fs/promises'`
-  const staticHttpTypes = usesNodeServer ? '' : ', type IncomingMessage, type ServerResponse'
+    : `
+import { startStaticRendererServer, stopStaticRendererServer } from './static-server.js'`
+  const httpImports = usesNodeServer
+    ? 'createServer, request as httpRequest'
+    : 'request as httpRequest'
   const nodeServerConstants = usesNodeServer
     ? `
 const NODE_SERVER_SOURCE_ROOT = readEmbeddedJson<string | null>(${embedJson(config.nodeServerSourceRoot)})
@@ -26,28 +29,6 @@ const NODE_SERVER_SOURCE_ENTRY = readEmbeddedJson<string | null>(${embedJson(con
 const NODE_SERVER_ENTRY = readEmbeddedJson<string | null>(${embedJson(config.nodeServerEntry)})
 const NODE_SERVER_COPY_TARGETS = readEmbeddedJson<Array<{ from: string; to: string }>>(${embedJson(config.nodeServerCopyTargets)})`
     : ''
-  const staticServerState = usesNodeServer
-    ? ''
-    : `
-const mimeTypes = new Map<string, string>([
-  ['.css', 'text/css; charset=utf-8'],
-  ['.gif', 'image/gif'],
-  ['.html', 'text/html; charset=utf-8'],
-  ['.ico', 'image/x-icon'],
-  ['.jpeg', 'image/jpeg'],
-  ['.jpg', 'image/jpeg'],
-  ['.js', 'text/javascript; charset=utf-8'],
-  ['.json', 'application/json; charset=utf-8'],
-  ['.map', 'application/json; charset=utf-8'],
-  ['.png', 'image/png'],
-  ['.svg', 'image/svg+xml; charset=utf-8'],
-  ['.txt', 'text/plain; charset=utf-8'],
-  ['.webp', 'image/webp'],
-  ['.woff', 'font/woff'],
-  ['.woff2', 'font/woff2'],
-])
-
-let rendererServer: ReturnType<typeof createServer> | null = null`
   const nodeServerState = usesNodeServer
     ? `
 let rendererProcess: ChildProcess | null = null
@@ -101,8 +82,8 @@ function getAvailablePort(host = LOOPBACK_HOST) {
     : ''
 
   return `import { spawn, type ChildProcess } from 'node:child_process'
-import { ${fileSystemImports.join(', ')} } from 'node:fs'${staticFileSystemImport}
-import { createServer, request as httpRequest${staticHttpTypes} } from 'node:http'
+import { ${fileSystemImports.join(', ')} } from 'node:fs'
+import { ${httpImports} } from 'node:http'${staticServerImport}
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -118,7 +99,7 @@ const ROOT_DIR = path.resolve(runtimeDir, '..')
 const DIST_DIR = path.resolve(ROOT_DIR, 'dist-electron')
 const MAIN_ENTRY_PATH = path.join(DIST_DIR, 'main.js')
 const RUNTIME_PACKAGE_PATH = path.join(DIST_DIR, 'package.json')
-${staticServerState}${nodeServerState}
+${nodeServerState}
 
 // readEmbeddedJson 함수는 생성된 serve.ts에 박힌 JSON 상수 값을 읽는다.
 function readEmbeddedJson<T>(value: string) {

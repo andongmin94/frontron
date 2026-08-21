@@ -48,11 +48,19 @@ test('copies the template into a newly claimed target', () => {
   const templateRoot = createTemplate(workspace)
   const targetRoot = join(workspace, 'app')
 
-  scaffoldProject(templateRoot, targetRoot, { name: 'app' })
+  scaffoldProject(
+    templateRoot,
+    targetRoot,
+    { name: 'app' },
+    new Map([['.yarnrc.yml', 'nodeLinker: node-modules\n']]),
+  )
 
   expect(readFileSync(join(targetRoot, '.gitignore'), 'utf8')).toBe('node_modules\n')
   expect(readFileSync(join(targetRoot, 'src', 'main.ts'), 'utf8')).toContain('ready = true')
   expect(JSON.parse(readFileSync(join(targetRoot, 'package.json'), 'utf8')).name).toBe('app')
+  expect(readFileSync(join(targetRoot, '.yarnrc.yml'), 'utf8')).toBe(
+    'nodeLinker: node-modules\n',
+  )
 })
 
 test('removes a newly created target when copying fails', () => {

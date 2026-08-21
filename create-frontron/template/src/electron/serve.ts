@@ -1,42 +1,19 @@
 import { spawn, type ChildProcess } from "node:child_process"
 import fs from "fs"
-import {
-  createServer,
-  type IncomingMessage,
-  request as httpRequest,
-  type ServerResponse,
-} from "node:http"
+import { request as httpRequest } from "node:http"
 import { request as httpsRequest } from "node:https"
 import { createRequire } from "node:module"
 import path from "path"
 import { fileURLToPath } from "url"
 
-const loopbackHost = "127.0.0.1"
+import { startStaticRendererServer, stopStaticRendererServer } from "./static-server.js"
+
 const runtimeDir = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(runtimeDir, "../..")
 const require = createRequire(import.meta.url)
 const electronExecutablePath = require("electron") as string
 const { ELECTRON_RUN_AS_NODE: _ignoredElectronRunAsNode, ...childEnv } =
   process.env
-const mimeTypes = new Map<string, string>([
-  [".css", "text/css; charset=utf-8"],
-  [".gif", "image/gif"],
-  [".html", "text/html; charset=utf-8"],
-  [".ico", "image/x-icon"],
-  [".jpeg", "image/jpeg"],
-  [".jpg", "image/jpeg"],
-  [".js", "text/javascript; charset=utf-8"],
-  [".json", "application/json; charset=utf-8"],
-  [".map", "application/json; charset=utf-8"],
-  [".png", "image/png"],
-  [".svg", "image/svg+xml; charset=utf-8"],
-  [".txt", "text/plain; charset=utf-8"],
-  [".webp", "image/webp"],
-  [".woff", "font/woff"],
-  [".woff2", "font/woff2"],
-])
-
-let rendererServer: ReturnType<typeof createServer> | null = null
 let viteDevServer: import("vite").ViteDevServer | null = null
 let electronProcess: ChildProcess | null = null
 let devShutdownPromise: Promise<void> | null = null
@@ -459,94 +436,6 @@ function createLoopbackUrlCandidates(urlString: string) {
   }
 }
 
-function sendResponse(
-  response: ServerResponse<IncomingMessage>,
-  statusCode: number,
-  body: string,
-  contentType = "text/plain; charset=utf-8"
-) {
-  response.writeHead(statusCode, { "Content-Type": contentType })
-  response.end(body)
-}
-
-function resolveRequestPath(distPath: string, requestPath: string) {
-  const normalizedPath = path.posix.normalize(requestPath)
-  const relativePath =
-    normalizedPath === "/" ? "index.html" : normalizedPath.replace(/^\/+/, "")
-  const resolvedPath = path.resolve(distPath, relativePath)
-  const isInsideDist =
-    resolvedPath === distPath ||
-    resolvedPath.startsWith(`${distPath}${path.sep}`)
-
-  if (!isInsideDist) {
-    return null
-  }
-
-  return resolvedPath
-}
-
-function getContentType(filePath: string) {
-  const fileExtension = path.extname(filePath).toLowerCase()
-  return mimeTypes.get(fileExtension) ?? "application/octet-stream"
-}
-
-function serveFile(
-  request: IncomingMessage,
-  response: ServerResponse<IncomingMessage>,
-  filePath: string
-) {
-  response.writeHead(200, { "Content-Type": getContentType(filePath) })
-
-  if (request.method === "HEAD") {
-    response.end()
-    return
-  }
-
-  fs.createReadStream(filePath).pipe(response)
-}
-
-function handleRendererRequest(
-  request: IncomingMessage,
-  response: ServerResponse<IncomingMessage>,
-  distPath: string,
-  indexPath: string
-) {
-  if (request.method !== "GET" && request.method !== "HEAD") {
-    sendResponse(response, 405, "Method Not Allowed")
-    return
-  }
-
-  let pathname: string
-
-  try {
-    pathname = decodeURIComponent(
-      new URL(request.url ?? "/", `http://${loopbackHost}`).pathname
-    )
-  } catch {
-    sendResponse(response, 400, "Bad Request")
-    return
-  }
-
-  const resolvedPath = resolveRequestPath(distPath, pathname)
-
-  if (!resolvedPath) {
-    sendResponse(response, 403, "Forbidden")
-    return
-  }
-
-  if (fs.existsSync(resolvedPath) && fs.statSync(resolvedPath).isFile()) {
-    serveFile(request, response, resolvedPath)
-    return
-  }
-
-  if (path.extname(pathname)) {
-    sendResponse(response, 404, "Not Found")
-    return
-  }
-
-  serveFile(request, response, indexPath)
-}
-
 export async function waitForUrlReady(
   urlString: string,
   timeoutMs = 30_000,
@@ -742,71 +631,11 @@ export async function runDevApp() {
 }
 
 export async function startRendererServer() {
-  if (rendererServer) {
-    const address = rendererServer.address()
-    const port =
-      typeof address === "object" && address !== null ? address.port : null
-
-    if (typeof port === "number" && port > 0) {
-      return `http://${loopbackHost}:${port}`
-    }
-  }
-
-  const distPath = path.resolve(runtimeDir, "../../dist")
-  const indexPath = path.join(distPath, "index.html")
-
-  if (!fs.existsSync(indexPath)) {
-    throw new Error(`Renderer entry not found at ${indexPath}.`)
-  }
-
-  rendererServer = createServer((request, response) => {
-    handleRendererRequest(request, response, distPath, indexPath)
-  })
-
-  return new Promise<string>((resolve, reject) => {
-    const server = rendererServer
-
-    if (!server) {
-      reject(new Error("Renderer server failed to initialize."))
-      return
-    }
-
-    const handleError = (error: Error) => {
-      rendererServer = null
-      reject(error)
-    }
-
-    server.once("error", handleError)
-    server.listen(0, loopbackHost, () => {
-      server.off("error", handleError)
-
-      const address = server.address()
-      const port =
-        typeof address === "object" && address !== null ? address.port : null
-
-      if (typeof port !== "number" || port <= 0) {
-        rendererServer = null
-        reject(new Error("Renderer server failed to bind to a valid port."))
-        return
-      }
-
-      resolve(`http://${loopbackHost}:${port}`)
-    })
-  })
+  return startStaticRendererServer(path.resolve(runtimeDir, "../../dist"))
 }
 
 export async function stopRendererServer() {
-  if (!rendererServer) return
-
-  const server = rendererServer
-  rendererServer = null
-
-  await new Promise<void>((resolve, reject) => {
-    server.close((error) => {
-      if (error) reject(error)
-      else resolve()
-    })
-  })
+  await stopStaticRendererServer()
 }
 
 if (process.argv.includes("--dev-app")) {

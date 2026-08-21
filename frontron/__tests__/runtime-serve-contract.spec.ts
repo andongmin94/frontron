@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import * as ts from 'typescript'
 import { describe, expect, test } from 'vitest'
 
+import { renderCreateFrontronElectronFile } from '../src/init/runtime/create-frontron-template'
 import { renderServeSource } from '../src/init/runtime/serve-source'
 import type { InitConfig } from '../src/init/shared'
 
@@ -93,9 +94,20 @@ function normalizePath(fileName: string) {
   return ts.sys.useCaseSensitiveFileNames ? normalized : normalized.toLowerCase()
 }
 
-function diagnosticsFor(source: string) {
-  const virtualFile = join(process.cwd(), '.frontron-contract', 'electron', 'serve.ts')
-  const normalizedVirtualFile = normalizePath(virtualFile)
+function diagnosticsFor(source: string, includeStaticServer: boolean) {
+  const virtualRoot = join(process.cwd(), '.frontron-contract', 'electron')
+  const virtualFiles = new Map<string, string>([
+    [join(virtualRoot, 'serve.ts'), source],
+  ])
+  if (includeStaticServer) {
+    virtualFiles.set(
+      join(virtualRoot, 'static-server.ts'),
+      renderCreateFrontronElectronFile('static-server.ts'),
+    )
+  }
+  const normalizedFiles = new Map(
+    [...virtualFiles].map(([fileName, content]) => [normalizePath(fileName), content]),
+  )
   const compilerOptions: ts.CompilerOptions = {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.NodeNext,
@@ -112,16 +124,33 @@ function diagnosticsFor(source: string) {
   const fileExists = host.fileExists.bind(host)
   const readFile = host.readFile.bind(host)
   const getSourceFile = host.getSourceFile.bind(host)
-  const isVirtual = (fileName: string) => normalizePath(fileName) === normalizedVirtualFile
+  const virtualContent = (fileName: string) => normalizedFiles.get(normalizePath(fileName))
 
-  host.fileExists = (fileName) => isVirtual(fileName) || fileExists(fileName)
-  host.readFile = (fileName) => (isVirtual(fileName) ? source : readFile(fileName))
-  host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) =>
-    isVirtual(fileName)
-      ? ts.createSourceFile(fileName, source, languageVersion, true, ts.ScriptKind.TS)
+  host.fileExists = (fileName) => virtualContent(fileName) !== undefined || fileExists(fileName)
+  host.readFile = (fileName) => virtualContent(fileName) ?? readFile(fileName)
+  host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => {
+    const content = virtualContent(fileName)
+    return content !== undefined
+      ? ts.createSourceFile(fileName, content, languageVersion, true, ts.ScriptKind.TS)
       : getSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile)
+  }
+  host.resolveModuleNames = (moduleNames, containingFile) =>
+    moduleNames.map((moduleName) => {
+      if (moduleName === './static-server.js') {
+        return {
+          resolvedFileName: join(virtualRoot, 'static-server.ts'),
+          extension: ts.Extension.Ts,
+          isExternalLibraryImport: false,
+        }
+      }
 
-  return ts.getPreEmitDiagnostics(ts.createProgram([virtualFile], compilerOptions, host))
+      return ts.resolveModuleName(moduleName, containingFile, compilerOptions, host)
+        .resolvedModule
+    })
+
+  return ts.getPreEmitDiagnostics(
+    ts.createProgram([...virtualFiles.keys()], compilerOptions, host),
+  )
 }
 
 function formatDiagnostics(diagnostics: readonly ts.Diagnostic[]) {
@@ -135,16 +164,18 @@ function formatDiagnostics(diagnostics: readonly ts.Diagnostic[]) {
 describe('generated serve runtime contract', () => {
   test.each(variants)('$name passes strict semantic type-checking', ({ config }) => {
     const source = renderServeSource(createConfig(config))
+    const usesStaticServer = config.runtimeStrategy === 'static-export'
 
-    expect(formatDiagnostics(diagnosticsFor(source))).toBe('')
+    expect(formatDiagnostics(diagnosticsFor(source, usesStaticServer))).toBe('')
     expect(source).toContain('waitForUrlReady')
 
-    if (config.runtimeStrategy === 'static-export') {
-      expect(source).toContain('parseByteRange')
+    if (usesStaticServer) {
+      expect(source).toContain('startStaticRendererServer')
       expect(source).not.toContain('startNodeServerRuntime')
     } else {
       expect(source).toContain('startNodeServerRuntime')
       expect(source).toContain('getAvailablePort')
+      expect(source).not.toContain('static-server.js')
     }
   })
 })

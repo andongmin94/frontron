@@ -25,6 +25,7 @@ type ElectronMockState = {
   webContentsHandlers: Map<string, unknown>
   windowOpenHandler?: WindowOpenHandler
   loadedUrls: string[]
+  lifecycle: string[]
 }
 
 type MainRuntimeModule = {
@@ -34,7 +35,7 @@ type MainRuntimeModule = {
 
 type WindowRuntimeModule = {
   createMainWindow?: (rendererUrl: string) => unknown
-  createWindow?: (rendererUrl: string) => unknown
+  createWindow?: (rendererUrl: string, beforeLoad?: () => void) => unknown
 }
 
 const tempDirs: string[] = []
@@ -94,6 +95,7 @@ export class BrowserWindow {
   hide() {}
   isMinimized() { return false }
   loadURL(url) {
+    state.lifecycle.push('load')
     state.loadedUrls.push(url)
     return Promise.resolve()
   }
@@ -112,6 +114,7 @@ function createElectronMockState(): ElectronMockState {
     externalUrls: [],
     webContentsHandlers: new Map(),
     loadedUrls: [],
+    lifecycle: [],
   }
 }
 
@@ -336,6 +339,9 @@ describe('create-frontron runtime security', () => {
     expect(fallbackCspResponse.headers.get('content-security-policy')).toContain(
       "default-src 'self'",
     )
+    expect(fallbackCspResponse.headers.get('content-security-policy')).not.toContain(
+      "script-src 'self' 'unsafe-inline'",
+    )
 
     const rejectedResponse = await handler!(new Request('frontron://other/private'))
     expect(rejectedResponse.status).toBe(404)
@@ -358,7 +364,8 @@ describe('create-frontron runtime security', () => {
     const createWindow = runtime.createMainWindow ?? runtime.createWindow
 
     expect(createWindow).toBeTypeOf('function')
-    createWindow!('frontron://app/')
+    createWindow!('frontron://app/', () => state.lifecycle.push('ipc'))
+    expect(state.lifecycle.slice(0, 2)).toEqual(['ipc', 'load'])
 
     const navigate = state.webContentsHandlers.get('will-frame-navigate') as NavigationHandler
     const redirect = state.webContentsHandlers.get('will-redirect') as NavigationHandler

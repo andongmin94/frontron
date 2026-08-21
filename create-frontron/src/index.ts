@@ -107,8 +107,28 @@ function toDefaultAppId(projectName: string) {
   return `com.example.${slug || defaultTargetDir}`
 }
 
-function packageManagerFromUserAgent(userAgent: string | undefined) {
-  return userAgent?.split(' ')[0]?.split('/')[0] || 'npm'
+type PackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun'
+
+function packageManagerFromUserAgent(userAgent: string | undefined): PackageManager {
+  const name = userAgent?.split(' ')[0]?.split('/')[0]
+  return name === 'pnpm' || name === 'yarn' || name === 'bun' ? name : 'npm'
+}
+
+function createPackageManagerFiles(packageManager: PackageManager) {
+  if (packageManager === 'pnpm') {
+    return new Map([
+      [
+        'pnpm-workspace.yaml',
+        'allowBuilds:\n  electron: true\n  electron-winstaller: true\n',
+      ],
+    ])
+  }
+
+  if (packageManager === 'yarn') {
+    return new Map([['.yarnrc.yml', 'nodeLinker: node-modules\n']])
+  }
+
+  return new Map<string, string>()
 }
 
 function printNextSteps(cwd: string, root: string, packageManager: string) {
@@ -167,7 +187,9 @@ export async function runCreateFrontron(args = process.argv.slice(2)) {
     packageJson.build.appId = toDefaultAppId(projectPackageName)
   }
 
+  const packageManager = packageManagerFromUserAgent(process.env.npm_config_user_agent)
+
   console.log(`\nScaffolding project in ${root}...`)
-  scaffoldProject(templateDir, root, packageJson)
-  printNextSteps(cwd, root, packageManagerFromUserAgent(process.env.npm_config_user_agent))
+  scaffoldProject(templateDir, root, packageJson, createPackageManagerFiles(packageManager))
+  printNextSteps(cwd, root, packageManager)
 }

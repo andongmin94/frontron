@@ -10,6 +10,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  issues: write
 
 concurrency:
   group: frontron-npm-release
@@ -26,6 +27,17 @@ jobs:
       - name: Require main
         shell: bash
         run: test "$GITHUB_REF" = "refs/heads/main"
+
+      - name: Publish observable release status
+        id: status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          url=$(gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Temporary npm release ${GITHUB_RUN_ID}" \
+            --body "Validates, publishes, and registry-tests Frontron 0.13.4. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
+          echo "issue_number=${url##*/}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -59,3 +71,25 @@ jobs:
         env:
           FRONTRON_TRUSTED_PUBLISHING: "1"
           FRONTRON_TEST_ELECTRON_RUNTIME: "1"
+          FRONTRON_TEST_PACKAGE_MANAGERS: "1"
+
+      - name: Close successful release status
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment "${{ steps.status.outputs.issue_number }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "Release verification, trusted publishing, and registry installation completed successfully."
+          gh issue close "${{ steps.status.outputs.issue_number }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --reason completed
+
+      - name: Report release failure
+        if: failure() && steps.status.outputs.issue_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment "${{ steps.status.outputs.issue_number }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "Release failed. Inspect ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."

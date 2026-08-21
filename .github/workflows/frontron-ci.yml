@@ -51,6 +51,7 @@ jobs:
         run: node release.mjs verify
         env:
           FRONTRON_TEST_ELECTRON_RUNTIME: "1"
+          FRONTRON_TEST_PACKAGE_MANAGERS: "1"
 
   runtime:
     name: runtime / ${{ matrix.os }} / node ${{ matrix.node }}

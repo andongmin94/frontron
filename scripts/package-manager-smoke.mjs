@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const repositoryRoot = dirname(fileURLToPath(import.meta.url))
+const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const createRoot = join(repositoryRoot, 'create-frontron')
 const frontronRoot = join(repositoryRoot, 'frontron')
 const temporaryDirectories = []

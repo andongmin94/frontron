@@ -150,11 +150,15 @@ function snapshotTarget(projectRoot: string, target: TransactionTarget): Transac
   }
 
   if (target.expectedHash === null && existed) {
-    throw new Error(`Transaction target appeared after planning: ${path}`)
+    throw new Error(
+      `Transaction target changed after the transaction plan was created (appeared after planning): ${path}`,
+    )
   }
 
   if (typeof target.expectedHash === 'string' && contentSha256 !== target.expectedHash) {
-    throw new Error(`Transaction target changed after planning: ${path}`)
+    throw new Error(
+      `Transaction target changed after the transaction plan was created (changed after planning): ${path}`,
+    )
   }
 
   return {
@@ -409,7 +413,7 @@ export function beginTransaction(
 
   const snapshots = new Map<string, TransactionSnapshot>()
 
-  for (const target of targets) {
+  function addSnapshot(target: TransactionTarget) {
     const snapshot = snapshotTarget(projectRoot, target)
     const existing = snapshots.get(snapshot.path)
 
@@ -417,10 +421,24 @@ export function beginTransaction(
       if (existing.safetyRoot !== snapshot.safetyRoot || existing.kind !== snapshot.kind) {
         throw new Error(`Transaction target was planned inconsistently: ${snapshot.path}`)
       }
-      continue
+      return
     }
 
     snapshots.set(snapshot.path, snapshot)
+  }
+
+  for (const target of targets) {
+    if ((target.kind ?? 'file') === 'file') {
+      const safetyRoot = resolve(target.safetyRoot)
+      let parentPath = dirname(resolve(target.path))
+
+      while (parentPath !== safetyRoot && isInsideDirectory(safetyRoot, parentPath)) {
+        addSnapshot({ path: parentPath, safetyRoot, kind: 'directory' })
+        parentPath = dirname(parentPath)
+      }
+    }
+
+    addSnapshot(target)
   }
 
   const transactionId = randomUUID()

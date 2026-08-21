@@ -455,7 +455,8 @@ export function writeTransactionFile(
   safetyRootValue: string,
 ) {
   const snapshot = getHandleSnapshot(handle, targetPathValue, safetyRootValue)
-  if (snapshot.kind !== 'file') throw new Error(`Transaction target is not a file: ${snapshot.path}`)
+  if (snapshot.kind !== 'file')
+    throw new Error(`Transaction target is not a file: ${snapshot.path}`)
 
   if (!handle.mutatedTargets.has(snapshot.path)) {
     assertCurrentMatchesSnapshot(snapshot, 'Transaction write target')
@@ -468,7 +469,11 @@ export function writeTransactionFile(
     snapshot.path,
     'Transaction write target',
   )
-  writeFileSync(snapshot.path, content, snapshot.mode === null ? undefined : { mode: snapshot.mode })
+  writeFileSync(
+    snapshot.path,
+    content,
+    snapshot.mode === null ? undefined : { mode: snapshot.mode },
+  )
   handle.mutatedTargets.add(snapshot.path)
 }
 
@@ -478,8 +483,10 @@ export function removeTransactionFile(
   safetyRootValue: string,
 ) {
   const snapshot = getHandleSnapshot(handle, targetPathValue, safetyRootValue)
-  if (snapshot.kind !== 'file') throw new Error(`Transaction target is not a file: ${snapshot.path}`)
-  if (!snapshot.existed) throw new Error(`Transaction delete target did not exist: ${snapshot.path}`)
+  if (snapshot.kind !== 'file')
+    throw new Error(`Transaction target is not a file: ${snapshot.path}`)
+  if (!snapshot.existed)
+    throw new Error(`Transaction delete target did not exist: ${snapshot.path}`)
 
   if (!handle.mutatedTargets.has(snapshot.path)) {
     assertCurrentMatchesSnapshot(snapshot, 'Transaction delete target')

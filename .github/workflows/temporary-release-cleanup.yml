@@ -1,6 +1,8 @@
 name: temporary-release-cleanup
 
 on:
+  push:
+    branches: [main]
   issue_comment:
     types: [created]
 
@@ -13,7 +15,7 @@ concurrency:
 
 jobs:
   cleanup:
-    if: github.event.comment.body == '/release-cleanup'
+    if: github.event_name == 'push' || github.event.comment.body == '/release-cleanup'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 

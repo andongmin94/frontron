@@ -93,6 +93,7 @@ function smokePnpm(createTarball, frontronTarball) {
     projectRoot,
     { npm_config_user_agent: userAgent },
   )
+  run('pnpm', ['install', '--ignore-scripts', '--no-frozen-lockfile'], projectRoot)
   run(process.execPath, [cli, 'doctor'], projectRoot, {
     npm_config_user_agent: userAgent,
   })

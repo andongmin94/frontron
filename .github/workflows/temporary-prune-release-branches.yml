@@ -1,0 +1,53 @@
+name: temporary-prune-release-branches
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/temporary-prune-release-branches.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: main
+
+      - name: Delete merged work branches
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          remote="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          for branch in \
+            chore/cleanup-release-verification \
+            chore/finalize-release-pipeline \
+            chore/prune-release-branches \
+            chore/verify-final-release
+          do
+            if git ls-remote --exit-code --heads "$remote" "refs/heads/$branch" >/dev/null 2>&1; then
+              git push "$remote" --delete "$branch"
+            fi
+          done
+
+      - name: Remove this one-time workflow
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          remote="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/temporary-prune-release-branches.yml
+          git commit -m "chore: remove temporary branch pruning workflow"
+          git push "$remote" HEAD:main
+
+      - name: Verify only main remains
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          remote="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          test "$(git ls-remote --heads "$remote" | wc -l)" -eq 1

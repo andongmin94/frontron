@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
 import { runCli } from '../src/cli'
-import { TRANSACTION_JOURNAL_PATH, TRANSACTION_LOCK_PATH } from '../src/transaction-journal'
+import { TRANSACTION_JOURNAL_PATH } from '../src/transaction-journal'
 import * as fixtures from './helpers/frontron-cli-fixtures'
 
 async function initializeProject(projectRoot: string) {
@@ -31,19 +31,14 @@ describe('frontron doctor', () => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)
     const journalPath = join(projectRoot, TRANSACTION_JOURNAL_PATH)
-    const lockPath = join(projectRoot, TRANSACTION_LOCK_PATH)
     const journalSource = 'pending journal sentinel\n'
-    const lockSource = 'pending lock sentinel\n'
     writeFileSync(journalPath, journalSource)
-    writeFileSync(lockPath, lockSource)
     const output = fixtures.createOutput()
 
     expect(await runCli(['doctor'], output, { cwd: projectRoot })).toBe(1)
     const report = output.info.mock.calls.flat().join('\n')
     expect(report).toContain(`Pending transaction journal detected: ${TRANSACTION_JOURNAL_PATH}`)
-    expect(report).toContain(`Pending transaction lock detected: ${TRANSACTION_LOCK_PATH}`)
     expect(readFileSync(journalPath, 'utf8')).toBe(journalSource)
-    expect(readFileSync(lockPath, 'utf8')).toBe(lockSource)
   })
 
   test('doctor passes after a successful init', async () => {

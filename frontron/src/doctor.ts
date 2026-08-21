@@ -28,14 +28,7 @@ import {
   formatProjectPathBlocker,
   inspectProjectPath,
 } from './project-paths'
-import {
-  TRANSACTION_JOURNAL_PATH,
-  TRANSACTION_JOURNAL_PREPARING_PREFIX,
-  TRANSACTION_LOCK_PATH,
-  TRANSACTION_LOCK_PREPARING_PREFIX,
-  TRANSACTION_RECOVERY_LOCK_PATH,
-  TRANSACTION_RECOVERY_LOCK_PREPARING_PREFIX,
-} from './transaction-journal'
+import { TRANSACTION_JOURNAL_PATH } from './transaction-journal'
 
 export interface DoctorOutput {
   info(message: string): void
@@ -121,37 +114,13 @@ function writeDoctorReport(
   context.output.info(lines.join('\n'))
 }
 
-const TRANSACTION_STATE_NAMES = new Set([
-  TRANSACTION_JOURNAL_PATH,
-  TRANSACTION_LOCK_PATH,
-  TRANSACTION_RECOVERY_LOCK_PATH,
-  '.frontron-transaction.lock.releasing',
-  '.frontron-transaction-recovery.lock.releasing',
-])
-
-const TRANSACTION_STATE_PREFIXES = [
-  TRANSACTION_JOURNAL_PREPARING_PREFIX,
-  TRANSACTION_LOCK_PREPARING_PREFIX,
-  TRANSACTION_RECOVERY_LOCK_PREPARING_PREFIX,
-]
-
-// collectPendingTransactionState 함수는 복구가 필요한 저널과 잠금 파일을 읽기만 한다.
+// collectPendingTransactionState 함수는 복구가 필요한 현재 저널만 읽기 전용으로 확인한다.
 function collectPendingTransactionState(cwd: string) {
-  return readdirSync(cwd)
-    .filter(
-      (entry) =>
-        TRANSACTION_STATE_NAMES.has(entry) ||
-        TRANSACTION_STATE_PREFIXES.some((prefix) => entry.startsWith(prefix)),
-    )
-    .sort()
+  return readdirSync(cwd).filter((entry) => entry === TRANSACTION_JOURNAL_PATH)
 }
 
-// describePendingTransactionState 함수는 발견한 트랜잭션 파일의 역할을 설명한다.
 function describePendingTransactionState(entry: string) {
-  const isJournal =
-    entry === TRANSACTION_JOURNAL_PATH || entry.startsWith(TRANSACTION_JOURNAL_PREPARING_PREFIX)
-
-  return `Pending transaction ${isJournal ? 'journal' : 'lock'} detected: ${entry}`
+  return `Pending transaction journal detected: ${entry}`
 }
 
 // claim 판정 결과를 doctor의 check, warning, blocker 분류로 옮긴다.

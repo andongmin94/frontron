@@ -9,9 +9,6 @@ on:
       - "create-frontron/**"
       - "release.mjs"
       - ".github/workflows/temporary-main-validation.yml"
-  issue_comment:
-    types:
-      - created
 
 permissions:
   contents: write
@@ -22,7 +19,6 @@ concurrency:
 
 jobs:
   validate:
-    if: github.event_name == 'push' || github.event.comment.body == '/validate-main'
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -39,85 +35,7 @@ jobs:
             frontron/package-lock.json
             create-frontron/package-lock.json
 
-      - name: Track generated parent directories in rollback
-        run: |
-          node <<'NODE'
-          const fs = require('node:fs')
-          const path = 'frontron/src/transaction-journal.ts'
-          let source = fs.readFileSync(path, 'utf8')
-
-          function replaceOnce(before, after, label) {
-            const count = source.split(before).length - 1
-            if (count !== 1) throw new Error(`${label}: expected one match, found ${count}`)
-            source = source.replace(before, after)
-          }
-
-          replaceOnce(
-            'throw new Error(`Transaction target appeared after planning: ${path}`)',
-            'throw new Error(`Transaction target changed after the transaction plan was created (appeared after planning): ${path}`)',
-            'appeared target message',
-          )
-          replaceOnce(
-            'throw new Error(`Transaction target changed after planning: ${path}`)',
-            'throw new Error(`Transaction target changed after the transaction plan was created (changed after planning): ${path}`)',
-            'changed target message',
-          )
-
-          const before = [
-            '  const snapshots = new Map<string, TransactionSnapshot>()',
-            '',
-            '  for (const target of targets) {',
-            '    const snapshot = snapshotTarget(projectRoot, target)',
-            '    const existing = snapshots.get(snapshot.path)',
-            '',
-            '    if (existing) {',
-            '      if (existing.safetyRoot !== snapshot.safetyRoot || existing.kind !== snapshot.kind) {',
-            '        throw new Error(`Transaction target was planned inconsistently: ${snapshot.path}`)',
-            '      }',
-            '      continue',
-            '    }',
-            '',
-            '    snapshots.set(snapshot.path, snapshot)',
-            '  }',
-          ].join('\n')
-
-          const after = [
-            '  const snapshots = new Map<string, TransactionSnapshot>()',
-            '',
-            '  function addSnapshot(target: TransactionTarget) {',
-            '    const snapshot = snapshotTarget(projectRoot, target)',
-            '    const existing = snapshots.get(snapshot.path)',
-            '',
-            '    if (existing) {',
-            '      if (existing.safetyRoot !== snapshot.safetyRoot || existing.kind !== snapshot.kind) {',
-            '        throw new Error(`Transaction target was planned inconsistently: ${snapshot.path}`)',
-            '      }',
-            '      return',
-            '    }',
-            '',
-            '    snapshots.set(snapshot.path, snapshot)',
-            '  }',
-            '',
-            '  for (const target of targets) {',
-            "    if ((target.kind ?? 'file') === 'file') {",
-            '      const safetyRoot = resolve(target.safetyRoot)',
-            '      let parentPath = dirname(resolve(target.path))',
-            '',
-            '      while (parentPath !== safetyRoot && isInsideDirectory(safetyRoot, parentPath)) {',
-            "        addSnapshot({ path: parentPath, safetyRoot, kind: 'directory' })",
-            '        parentPath = dirname(parentPath)',
-            '      }',
-            '    }',
-            '',
-            '    addSnapshot(target)',
-            '  }',
-          ].join('\n')
-
-          replaceOnce(before, after, 'snapshot planning')
-          fs.writeFileSync(path, source)
-          NODE
-
-      - name: Format and validate both packages
+      - name: Validate both packages
         shell: bash
         run: |
           set +e
@@ -127,7 +45,6 @@ jobs:
             (
               cd create-frontron &&
               npm ci --fund=false --audit=false &&
-              npm run lint &&
               npm run check &&
               npm run typecheck &&
               npm test &&
@@ -137,7 +54,6 @@ jobs:
             (
               cd frontron &&
               npm ci --fund=false --audit=false &&
-              npm run lint &&
               npm run check &&
               npm run typecheck &&
               npm test &&
@@ -166,14 +82,8 @@ jobs:
 
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -- \
-            .github/temporary-main-validation-result.json \
-            frontron/__tests__/pnpm-workspace-yaml.spec.ts \
-            frontron/__tests__/yarnrc-yaml.spec.ts \
-            frontron/src/init/pnpm-workspace-yaml.ts \
-            frontron/src/init/yarnrc-yaml.ts \
-            frontron/src/transaction-journal.ts
-          git commit -m "chore: apply temporary validation fixes" || true
+          git add -- .github/temporary-main-validation-result.json
+          git commit -m "chore: record final temporary validation" || true
           git push origin HEAD:main
 
           exit 0

@@ -3,7 +3,6 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "author": "Template Maintainers",
   "description": "Electron desktop app template with React and Vite",
   "productName": "__CREATE_APP_NAME__",
   "scripts": {
@@ -11,7 +10,9 @@
     "app"       : "node scripts/tasks.mjs app",
     "typecheck" : "node scripts/tasks.mjs typecheck",
     "build"     : "node scripts/tasks.mjs build",
-    "lint"      : "node scripts/tasks.mjs lint"
+    "lint"         : "node scripts/tasks.mjs lint",
+    "format"       : "node scripts/tasks.mjs format",
+    "format:check" : "node scripts/tasks.mjs format:check"
   },
   "dependencies": {
     "react"     : "^19.2.4",
@@ -33,7 +34,6 @@
   "build": {
     "appId": "__CREATE_APP_ID__",
     "productName": "__CREATE_APP_NAME__",
-    "copyright": "Copyright (c) Template Maintainers",
     "icon": "public/logo.svg",
     "win": {
       "target": [

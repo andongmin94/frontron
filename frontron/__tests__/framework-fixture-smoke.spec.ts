@@ -161,19 +161,26 @@ export async function build(options) {
   )
 }
 
-function transpileGeneratedServe(projectRoot: string) {
-  const serveSource = readFileSync(join(projectRoot, 'electron', 'serve.ts'), 'utf8')
-  const transpiled = ts.transpileModule(serveSource, {
-    compilerOptions: {
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2020,
-    },
-    fileName: 'serve.ts',
-  })
-
+function transpileGeneratedRuntime(projectRoot: string) {
+  const sourceDir = join(projectRoot, 'electron')
   const distDir = join(projectRoot, 'dist-electron')
   mkdirSync(distDir, { recursive: true })
-  writeFileSync(join(distDir, 'serve.js'), transpiled.outputText, 'utf8')
+
+  for (const fileName of ['serve.ts', 'static-server.ts']) {
+    const source = readFileSync(join(sourceDir, fileName), 'utf8')
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ESNext,
+        target: ts.ScriptTarget.ES2020,
+      },
+      fileName,
+    })
+    writeFileSync(
+      join(distDir, fileName.replace(/\.ts$/, '.js')),
+      transpiled.outputText,
+      'utf8',
+    )
+  }
 }
 
 function runPrepareBuild(projectRoot: string) {
@@ -187,7 +194,7 @@ function runPrepareBuild(projectRoot: string) {
     stubRemixBuildModules(projectRoot)
   }
 
-  transpileGeneratedServe(projectRoot)
+  transpileGeneratedRuntime(projectRoot)
 
   const result = spawnSync(
     process.execPath,

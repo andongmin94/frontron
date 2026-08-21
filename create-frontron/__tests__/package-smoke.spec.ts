@@ -94,6 +94,8 @@ test(
     expect(packedFiles.has('template/src/electron/main.ts')).toBe(true)
     expect(packedFiles.has('template/src/electron/preload.ts')).toBe(true)
     expect(packedFiles.has('template/src/electron/window.ts')).toBe(true)
+    expect(packedFiles.has('template/src/electron/static-server.ts')).toBe(true)
+    expect(packedFiles.has('template/src/electron/tray.ts')).toBe(false)
     expect(packedFiles.has('template/scripts/tasks.mjs')).toBe(true)
     expect(packedFiles.has('template/src/types/electron.d.ts')).toBe(true)
     expect(packedFiles.has('template/tsconfig.electron.json')).toBe(true)

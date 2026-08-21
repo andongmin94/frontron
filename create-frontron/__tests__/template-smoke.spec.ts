@@ -49,6 +49,8 @@ test('starter template exposes the supported Electron and React contract', async
     build: 'node scripts/tasks.mjs build',
     dev: 'node scripts/tasks.mjs dev',
     lint: 'node scripts/tasks.mjs lint',
+    format: 'node scripts/tasks.mjs format',
+    'format:check': 'node scripts/tasks.mjs format:check',
     typecheck: 'node scripts/tasks.mjs typecheck',
   })
   expect(packageJson.dependencies).toEqual({
@@ -67,6 +69,7 @@ test('starter template exposes the supported Electron and React contract', async
 
   expect(electronMain).toContain('protocol.registerSchemesAsPrivileged')
   expect(electronMain).toContain('ensureRendererCsp(responseHeaders)')
+  expect(electronMain).toContain('createWindow(rendererUrl, setupIpcHandlers)')
   expect(electronWindow).toContain('contextIsolation: true')
   expect(electronWindow).toContain('nodeIntegration: false')
   expect(electronWindow).toContain('sandbox: true')
@@ -80,6 +83,7 @@ test('starter template exposes the supported Electron and React contract', async
   expect(electronPreload).toContain('writeClipboardText')
   expect(electronPreload).toContain('showNotification')
   expect(electronIpc).toContain('assertTrustedSender')
+  expect(electronIpc).toContain('event.senderFrame !== window.webContents.mainFrame')
   expect(electronIpc).toContain('dialog.showOpenDialog')
   expect(electronIpc).toContain('dialog.showSaveDialog')
   expect(electronIpc).toContain('clipboard.writeText')
@@ -92,6 +96,8 @@ test('starter template exposes the supported Electron and React contract', async
   expect(existsSync(join(projectRoot, 'src/lib'))).toBe(false)
   expect(existsSync(join(projectRoot, 'components.json'))).toBe(false)
   expect(existsSync(join(projectRoot, 'public/vite.svg'))).toBe(false)
+  expect(existsSync(join(projectRoot, 'src/electron/static-server.ts'))).toBe(true)
+  expect(existsSync(join(projectRoot, 'src/electron/tray.ts'))).toBe(false)
   expect(existsSync(join(projectRoot, 'src/types/electron.d.ts'))).toBe(true)
   expect(existsSync(join(projectRoot, 'tsconfig.electron.json'))).toBe(true)
   expect(existsSync(join(projectRoot, 'scripts/tasks.mjs'))).toBe(true)

@@ -107,6 +107,7 @@ test('packed create-frontron generates a buildable template-owned Electron start
   expect(generatedPackage.build?.productName).toBe(generatedAppName)
   expect(generatedPackage.build?.appId).toContain(generatedAppName)
   expect(generatedPackage.build?.icon).toBe('public/logo.svg')
+  expect(generatedPackage).not.toHaveProperty('author')
   expect(existsSync(join(generatedAppRoot, 'src', 'electron', 'main.ts'))).toBe(true)
   expect(existsSync(join(generatedAppRoot, 'src', 'electron', 'preload.ts'))).toBe(true)
   expect(existsSync(join(generatedAppRoot, 'src', 'types', 'electron.d.ts'))).toBe(true)
@@ -119,4 +120,41 @@ test('packed create-frontron generates a buildable template-owned Electron start
   runNpm(['audit', '--audit-level=moderate'], generatedAppRoot)
   runNpm(['run', 'typecheck'], generatedAppRoot)
   runNpm(['run', 'build', '--', '--dir'], generatedAppRoot)
+
+  if (process.env.FRONTRON_TEST_ELECTRON_RUNTIME === '1') {
+    const executablePath = join(
+      generatedAppRoot,
+      'output',
+      'linux-unpacked',
+      generatedAppName,
+    )
+    const probePath = join(rehearsalRoot, 'renderer-probe.json')
+    const result = spawnSync(
+      'xvfb-run',
+      ['-a', executablePath, '--no-sandbox'],
+      {
+        cwd: generatedAppRoot,
+        encoding: 'utf8',
+        timeout: 60_000,
+        env: {
+          ...process.env,
+          FRONTRON_RENDERER_PROBE_PATH: probePath,
+        },
+      },
+    )
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0)
+    const probe = JSON.parse(readFileSync(probePath, 'utf8')) as {
+      ok: boolean
+      protocol: string
+      bridgeType: string
+      appInfo: { name: string; version: string } | null
+    }
+    expect(probe).toMatchObject({
+      ok: true,
+      protocol: 'frontron:',
+      bridgeType: 'object',
+    })
+    expect(probe.appInfo?.name).toBeTruthy()
+  }
 }, 600000)

@@ -123,7 +123,7 @@ function verifyPackage(spec) {
   log(`installing ${spec.name}`)
   runNpm(['ci', '--fund=false', '--audit=false'], spec.root)
   runNpm(['ls', '--all'], spec.root)
-  runNpm(['audit', '--omit=dev', '--audit-level=moderate'], spec.root)
+  runNpm(['audit', '--audit-level=moderate'], spec.root)
   runNpm(['run', 'check'], spec.root)
   runNpm(['run', 'typecheck'], spec.root)
   runNpm(['run', 'coverage'], spec.root)

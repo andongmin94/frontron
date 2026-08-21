@@ -142,4 +142,21 @@ test('prints package-manager-specific next steps', async () => {
 
   expect(console.log).toHaveBeenCalledWith('  yarn')
   expect(console.log).toHaveBeenCalledWith('  yarn app')
+  expect(readFileSync(join(workspace, 'app', '.yarnrc.yml'), 'utf8')).toBe(
+    'nodeLinker: node-modules\n',
+  )
+})
+
+
+test('writes pnpm Electron build approvals only for pnpm consumers', async () => {
+  const workspace = createWorkspace('pnpm-config')
+  process.chdir(workspace)
+  process.env.npm_config_user_agent = 'pnpm/11.11.0 npm/? node/v24.0.0 linux x64'
+
+  await runCreateFrontron(['app'])
+
+  expect(readFileSync(join(workspace, 'app', 'pnpm-workspace.yaml'), 'utf8')).toBe(
+    'allowBuilds:\n  electron: true\n  electron-winstaller: true\n',
+  )
+  expect(existsSync(join(workspace, 'app', '.yarnrc.yml'))).toBe(false)
 })

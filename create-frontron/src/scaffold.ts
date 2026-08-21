@@ -105,7 +105,12 @@ function readTemplateEntries(templateDir: string) {
     .filter((entryName) => entryName !== 'package.json' && !ignoredTemplateEntries.has(entryName))
 }
 
-export function scaffoldProject(templateDir: string, root: string, packageJson: unknown) {
+export function scaffoldProject(
+  templateDir: string,
+  root: string,
+  packageJson: unknown,
+  additionalFiles: ReadonlyMap<string, string> = new Map(),
+) {
   const templateEntries = readTemplateEntries(templateDir)
   const parentPath = path.dirname(root)
   let rootCreated = false
@@ -128,6 +133,22 @@ export function scaffoldProject(templateDir: string, root: string, packageJson: 
       `${JSON.stringify(packageJson, null, 2)}\n`,
       'utf8',
     )
+
+    for (const [relativePath, content] of additionalFiles) {
+      const targetPath = path.resolve(root, relativePath)
+      const relativeTarget = path.relative(root, targetPath)
+
+      if (
+        relativeTarget === '..' ||
+        relativeTarget.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(relativeTarget)
+      ) {
+        throw new Error(`Additional scaffold file must stay inside the project: ${relativePath}`)
+      }
+
+      fs.mkdirSync(path.dirname(targetPath), { recursive: true })
+      fs.writeFileSync(targetPath, content, 'utf8')
+    }
   } catch (error) {
     if (rootCreated) {
       fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })

@@ -8,13 +8,7 @@
   "bin": {
     "frontron": "index.js"
   },
-  "main": "./dist/cli.mjs",
-  "types": "./dist/cli.d.ts",
   "exports": {
-    ".": {
-      "types": "./dist/cli.d.ts",
-      "import": "./dist/cli.mjs"
-    },
     "./package.json": "./package.json"
   },
   "files": [

@@ -17,7 +17,7 @@ const REQUIRED_CREATE_FRONTRON_TEMPLATE_FILES = [
   'src/electron/ipc.ts',
   'src/electron/dev.ts',
   'src/electron/splash.ts',
-  'src/electron/tray.ts',
+  'src/electron/static-server.ts',
   'src/types/electron.d.ts',
 ]
 
@@ -55,7 +55,7 @@ function describeTemplateEntryType(stats: Stats) {
   return 'an unsupported file system entry'
 }
 
-// inspectSafeRegularFile 함수는 링크를 따라가지 않고 단일 링크 일반 파일인지 검사한다.
+// inspectSafeRegularFile 함수는 링크를 따라가지 않고 일반 파일인지 검사한다.
 function inspectSafeRegularFile(filePath: string) {
   let stats: Stats
 
@@ -75,9 +75,6 @@ function inspectSafeRegularFile(filePath: string) {
     return `must be a regular file; found ${describeTemplateEntryType(stats)}`
   }
 
-  if (stats.nlink !== 1) {
-    return `must have exactly one hard link; found ${stats.nlink}`
-  }
 
   return null
 }
@@ -309,11 +306,6 @@ function listRelativeTypeScriptFiles(rootDir: string, currentDir = rootDir): str
       )
     }
 
-    if (stats.nlink !== 1) {
-      throw new Error(
-        `Invalid create-frontron template tree entry at ${absolutePath}: regular files must have exactly one hard link; found ${stats.nlink}.`,
-      )
-    }
 
     if (entryName.endsWith('.ts')) {
       files.push(path.relative(rootDir, absolutePath).split(path.sep).join('/'))

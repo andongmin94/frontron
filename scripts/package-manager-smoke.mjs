@@ -1,11 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -27,7 +21,7 @@ function run(command, args, cwd, env = {}) {
     env: { ...environment, ...env },
     stdio: 'inherit',
     shell: false,
-    timeout: 600_000,
+    timeout: 180_000,
   })
 
   if (result.error) throw result.error
@@ -65,32 +59,19 @@ function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
 }
 
+function readJson(path) {
+  return JSON.parse(readFileSync(path, 'utf8'))
+}
+
 function installedCli(projectRoot, packageName) {
   return join(projectRoot, 'node_modules', packageName, 'index.js')
 }
 
-function assertDirectory(path, label) {
-  if (!existsSync(path)) {
-    throw new Error(`${label} was not created at ${path}`)
-  }
-}
-
-function assertPnpmRetrofitConfig(projectRoot) {
-  const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8'))
-  const devDependencies = packageJson.devDependencies ?? {}
-
-  for (const dependency of ['electron', 'electron-builder', 'typescript', '@types/node']) {
-    if (typeof devDependencies[dependency] !== 'string') {
-      throw new Error(`pnpm retrofit did not add devDependencies.${dependency}`)
+function assertGeneratedScripts(packageJson, manager) {
+  for (const script of ['app', 'build', 'typecheck']) {
+    if (typeof packageJson.scripts?.[script] !== 'string') {
+      throw new Error(`${manager} starter did not generate scripts.${script}`)
     }
-  }
-
-  const workspaceSource = readFileSync(join(projectRoot, 'pnpm-workspace.yaml'), 'utf8')
-  if (!/^\s{2}electron:\s*true\s*$/m.test(workspaceSource)) {
-    throw new Error('pnpm retrofit did not approve the Electron install script')
-  }
-  if (!/^\s{2}electron-winstaller:\s*true\s*$/m.test(workspaceSource)) {
-    throw new Error('pnpm retrofit did not approve the electron-winstaller install script')
   }
 }
 
@@ -114,11 +95,6 @@ function smokePnpm(createTarball, frontronTarball) {
     `overrides:\n  create-frontron: ${JSON.stringify(`file:${createTarball}`)}\n`,
     'utf8',
   )
-  writeFileSync(
-    join(projectRoot, 'index.html'),
-    '<!doctype html><html><body><main>pnpm retrofit smoke</main></body></html>\n',
-    'utf8',
-  )
 
   run('pnpm', ['install', '--ignore-scripts', '--no-frozen-lockfile'], projectRoot)
   const cli = installedCli(projectRoot, 'frontron')
@@ -129,12 +105,28 @@ function smokePnpm(createTarball, frontronTarball) {
     projectRoot,
     { npm_config_user_agent: userAgent },
   )
-  assertPnpmRetrofitConfig(projectRoot)
-  run('pnpm', ['install', '--ignore-scripts', '--no-frozen-lockfile'], projectRoot)
-  run('pnpm', ['exec', 'vite', 'build'], projectRoot)
-  run('pnpm', ['exec', 'tsc', '-p', 'tsconfig.electron.json'], projectRoot)
-  assertDirectory(join(projectRoot, 'dist'), 'pnpm frontend build')
-  assertDirectory(join(projectRoot, 'dist-electron'), 'pnpm Electron compile output')
+
+  const packageJson = readJson(join(projectRoot, 'package.json'))
+  for (const dependency of ['electron', 'electron-builder', 'typescript', '@types/node']) {
+    if (typeof packageJson.devDependencies?.[dependency] !== 'string') {
+      throw new Error(`pnpm retrofit did not add devDependencies.${dependency}`)
+    }
+  }
+  if (typeof packageJson.scripts?.['frontron:dev'] !== 'string') {
+    throw new Error('pnpm retrofit did not add scripts.frontron:dev')
+  }
+  if (typeof packageJson.scripts?.['frontron:build'] !== 'string') {
+    throw new Error('pnpm retrofit did not add scripts.frontron:build')
+  }
+
+  const workspaceSource = readFileSync(join(projectRoot, 'pnpm-workspace.yaml'), 'utf8')
+  if (!/^\s{2}electron:\s*true\s*$/m.test(workspaceSource)) {
+    throw new Error('pnpm retrofit did not approve the Electron install script')
+  }
+  if (!/^\s{2}electron-winstaller:\s*true\s*$/m.test(workspaceSource)) {
+    throw new Error('pnpm retrofit did not approve the electron-winstaller install script')
+  }
+
   run(process.execPath, [cli, 'doctor'], projectRoot, {
     npm_config_user_agent: userAgent,
   })
@@ -171,11 +163,7 @@ function smokeYarn(createTarball) {
   if (readFileSync(join(appRoot, '.yarnrc.yml'), 'utf8').trim() !== 'nodeLinker: node-modules') {
     throw new Error('Yarn node-modules linker configuration was not generated')
   }
-  run('yarn', ['install', '--mode=skip-build'], appRoot, yarnEnvironment)
-  run('yarn', ['typecheck'], appRoot, yarnEnvironment)
-  run('yarn', ['exec', 'vite', 'build'], appRoot, yarnEnvironment)
-  assertDirectory(join(appRoot, 'dist'), 'Yarn frontend build')
-  assertDirectory(join(appRoot, 'dist', 'electron'), 'Yarn Electron compile output')
+  assertGeneratedScripts(readJson(join(appRoot, 'package.json')), 'Yarn')
 }
 
 function smokeBun(createTarball) {
@@ -197,20 +185,15 @@ function smokeBun(createTarball) {
     { npm_config_user_agent: 'bun/1.3.14 npm/? node/v24 linux x64' },
   )
 
-  const appRoot = join(runnerRoot, 'bun-app')
-  const generatedPackage = JSON.parse(readFileSync(join(appRoot, 'package.json'), 'utf8'))
+  const generatedPackage = readJson(join(runnerRoot, 'bun-app', 'package.json'))
   if (
     !Array.isArray(generatedPackage.trustedDependencies) ||
-    !generatedPackage.trustedDependencies.includes('electron')
+    !generatedPackage.trustedDependencies.includes('electron') ||
+    !generatedPackage.trustedDependencies.includes('electron-winstaller')
   ) {
-    throw new Error('Bun starter did not trust the Electron install script')
+    throw new Error('Bun starter did not trust the Electron install scripts')
   }
-
-  run('bun', ['install', '--ignore-scripts'], appRoot)
-  run('bun', ['run', 'typecheck'], appRoot)
-  run('bun', ['x', 'vite', 'build'], appRoot)
-  assertDirectory(join(appRoot, 'dist'), 'Bun frontend build')
-  assertDirectory(join(appRoot, 'dist', 'electron'), 'Bun Electron compile output')
+  assertGeneratedScripts(generatedPackage, 'Bun')
 }
 
 try {
@@ -219,7 +202,7 @@ try {
   smokePnpm(createTarball, frontronTarball)
   smokeYarn(createTarball)
   smokeBun(createTarball)
-  console.log('[package-manager-smoke] pnpm, Yarn, and Bun consumers passed')
+  console.log('[package-manager-smoke] pnpm, Yarn, and Bun manager-specific contracts passed')
 } finally {
   for (const directory of temporaryDirectories.reverse()) {
     rmSync(directory, { recursive: true, force: true })

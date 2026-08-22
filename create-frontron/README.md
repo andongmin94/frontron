@@ -68,7 +68,6 @@ src/
     preload.ts
     ipc.ts
     serve.ts
-    splash.ts
     static-server.ts
   types/
     electron.d.ts
@@ -76,7 +75,7 @@ scripts/
   tasks.mjs
 ```
 
-The project owns these files directly and can extend `preload.ts`, `ipc.ts`, and `electron.d.ts` for app-specific native features.
+The main window stays hidden until its renderer finishes loading, so a separate splash window is not generated. The project owns these files directly and can extend `preload.ts`, `ipc.ts`, and `electron.d.ts` for app-specific native features.
 
 ## Existing web projects
 

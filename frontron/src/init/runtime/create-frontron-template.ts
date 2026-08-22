@@ -16,7 +16,6 @@ const REQUIRED_CREATE_FRONTRON_TEMPLATE_FILES = [
   'src/electron/preload.ts',
   'src/electron/ipc.ts',
   'src/electron/dev.ts',
-  'src/electron/splash.ts',
   'src/electron/static-server.ts',
   'src/types/electron.d.ts',
 ]
@@ -74,7 +73,6 @@ function inspectSafeRegularFile(filePath: string) {
   if (!stats.isFile()) {
     return `must be a regular file; found ${describeTemplateEntryType(stats)}`
   }
-
 
   return null
 }
@@ -305,7 +303,6 @@ function listRelativeTypeScriptFiles(rootDir: string, currentDir = rootDir): str
         `Invalid create-frontron template tree entry at ${absolutePath}: expected a regular file or directory, found ${describeTemplateEntryType(stats)}.`,
       )
     }
-
 
     if (entryName.endsWith('.ts')) {
       files.push(path.relative(rootDir, absolutePath).split(path.sep).join('/'))

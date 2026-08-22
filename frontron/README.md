@@ -92,7 +92,6 @@ electron/
   ipc.ts
   dev.ts
   serve.ts
-  splash.ts
   static-server.ts
   package.json
 src/types/electron.d.ts
@@ -100,7 +99,7 @@ tsconfig.electron.json
 .frontron/manifest.json
 ```
 
-Common Electron files come from the exact matching `create-frontron` version. `serve.ts` is generated for the selected static or Node-server runtime. Existing web scripts and unrelated package fields remain intact.
+Common Electron files come from the exact matching `create-frontron` version. `serve.ts` is generated for the selected static or Node-server runtime. Existing web scripts and unrelated package fields remain intact. The native main window stays hidden until the renderer finishes loading, so the retrofit layer does not add a separate splash window.
 
 Generated windows use the operating system title bar. Node integration is disabled; sandboxing and context isolation are enabled. The renderer bridge exposes only:
 

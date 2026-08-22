@@ -11,7 +11,6 @@ import {
   stopRendererServer,
   waitForUrlReady,
 } from "./serve.js"
-import { closeSplash, createSplash } from "./splash.js"
 import { createWindow, mainWindow } from "./window.js"
 
 export const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -185,7 +184,6 @@ function openMainWindow() {
 
 async function initializeApp() {
   await app.whenReady()
-  createSplash()
 
   if (isDev) {
     rendererUrl =
@@ -215,7 +213,6 @@ if (!app.requestSingleInstanceLock()) {
 
   initializeApp().catch(async (error) => {
     console.error("Failed to initialize app:", error)
-    closeSplash()
     await stopRendererServer().catch(() => {})
     const { dialog } = await import("electron")
     dialog.showErrorBox(

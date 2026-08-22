@@ -3,7 +3,6 @@ import path from "path"
 import { BrowserWindow, shell } from "electron"
 
 import { __dirname, isDev } from "./main.js"
-import { closeSplash } from "./splash.js"
 
 export let mainWindow: BrowserWindow | null = null
 
@@ -70,7 +69,6 @@ export function createWindow(rendererUrl: string, beforeLoad?: () => void) {
   void mainWindow.loadURL(rendererUrl)
 
   mainWindow.webContents.on("did-finish-load", () => {
-    closeSplash()
     if (!process.env.FRONTRON_RENDERER_PROBE_PATH) mainWindow?.show()
 
     if (isDev) {

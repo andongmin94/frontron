@@ -1,0 +1,55 @@
+name: cleanup-release-temp
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/cleanup-release-temp.yml]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close temporary issues and pull requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue list -R "$GITHUB_REPOSITORY" --state open --search 'Temporary Frontron release result in:title' --json number --jq '.[].number' | while read -r number; do
+            [ -n "$number" ] && gh issue close "$number" -R "$GITHUB_REPOSITORY" --reason not-planned
+          done
+          gh pr list -R "$GITHUB_REPOSITORY" --state open --head dummy --json number --jq '.[].number' | while read -r number; do
+            [ -n "$number" ] && gh pr close "$number" -R "$GITHUB_REPOSITORY"
+          done
+
+      - name: Delete temporary branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --heads "$remote" refs/heads/dummy >/dev/null 2>&1; then
+            git push "$remote" --delete dummy
+          fi
+
+      - name: Remove temporary workflows including this cleanup
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" repo
+          cd repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for file in \
+            .github/workflows/trigger-release-temp.yml \
+            .github/workflows/monitor-release-temp.yml \
+            .github/workflows/cleanup-release-temp.yml
+          do
+            [ -f "$file" ] && git rm "$file"
+          done
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: remove temporary release automation"
+            git push origin main
+          fi

@@ -1,0 +1,27 @@
+name: trigger-release-temp
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/trigger-release-temp.yml]
+permissions:
+  actions: write
+  contents: write
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch permanent release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run frontron-release.yml --ref main -R "$GITHUB_REPOSITORY"
+      - name: Remove this workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" repo
+          cd repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/trigger-release-temp.yml
+          git commit -m "chore: remove temporary release dispatcher"
+          git push origin main

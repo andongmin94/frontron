@@ -2,23 +2,6 @@ name: frontron-ci
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "frontron/**"
-      - "create-frontron/**"
-      - "scripts/**"
-      - "release.mjs"
-      - "LICENSE.md"
-      - ".github/workflows/**"
-  push:
-    branches: [main]
-    paths:
-      - "frontron/**"
-      - "create-frontron/**"
-      - "scripts/**"
-      - "release.mjs"
-      - "LICENSE.md"
-      - ".github/workflows/**"
 
 permissions:
   contents: read

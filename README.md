@@ -65,16 +65,17 @@ The root `package.json` can persist that selection:
 ```text
 create-frontron/   starter generator and canonical Electron template
 frontron/          retrofit CLI for existing web projects
-release.mjs        shared release tooling
+release.mjs        shared release-candidate verification
 ```
 
-Release commands:
+Release-candidate verification:
 
 ```bash
 node release.mjs check-metadata
 node release.mjs verify
-node release.mjs publish
 ```
+
+Package publication is performed explicitly with npm after local verification.
 
 ## Links
 

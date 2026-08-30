@@ -1,6 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -9,9 +8,6 @@ const packages = [
   { name: 'create-frontron', root: join(repoRoot, 'create-frontron') },
   { name: 'frontron', root: join(repoRoot, 'frontron') },
 ]
-const releaseEnvironment = 'FRONTRON_RELEASE'
-const registryCheckAttempts = 12
-const registryCheckDelayMs = 5_000
 
 function npmInvocation(args) {
   if (process.platform === 'win32') {
@@ -59,31 +55,6 @@ function log(message) {
   console.log(`[release] ${message}`)
 }
 
-function sleep(milliseconds) {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds)
-}
-
-function waitForRegistryVersion(label, expectedVersion, readVersion) {
-  let observedVersion = null
-
-  for (let attempt = 1; attempt <= registryCheckAttempts; attempt += 1) {
-    observedVersion = readVersion()
-    if (observedVersion === expectedVersion) return
-
-    if (attempt < registryCheckAttempts) {
-      log(
-        `waiting for npm to expose ${label} as ${expectedVersion} ` +
-          `(observed ${observedVersion ?? 'nothing'}, attempt ${attempt}/${registryCheckAttempts})`,
-      )
-      sleep(registryCheckDelayMs)
-    }
-  }
-
-  throw new Error(
-    `npm did not expose ${label} as ${expectedVersion}; last observed ${observedVersion ?? 'nothing'}.`,
-  )
-}
-
 function assertMetadata() {
   const createPackage = readPackage(packages[0])
   const frontronPackage = readPackage(packages[1])
@@ -117,36 +88,6 @@ function assertMetadata() {
   return version
 }
 
-function assertTrustedPublishing() {
-  if (
-    process.env.FRONTRON_TRUSTED_PUBLISHING !== '1' ||
-    process.env.GITHUB_ACTIONS !== 'true' ||
-    !process.env.ACTIONS_ID_TOKEN_REQUEST_URL ||
-    !process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN
-  ) {
-    throw new Error(
-      'Publishing requires the GitHub Actions release workflow with npm trusted publishing and id-token: write.',
-    )
-  }
-}
-
-function assertCleanWorktree() {
-  const result = run(
-    'git',
-    ['status', '--porcelain=v1', '--untracked-files=all'],
-    repoRoot,
-    { quiet: true },
-  )
-
-  if (result.status !== 0) {
-    throw new Error('Unable to inspect the Git worktree.')
-  }
-
-  if (result.stdout.trim()) {
-    throw new Error(`Refusing to publish from a dirty Git worktree:\n${result.stdout.trim()}`)
-  }
-}
-
 function verifyPackage(spec) {
   log(`installing ${spec.name}`)
   runNpm(['ci', '--fund=false', '--audit=false'], spec.root)
@@ -175,128 +116,6 @@ function verifyRelease() {
   }
 }
 
-function publishedVersion(spec, version) {
-  const result = runNpm(['view', `${spec.name}@${version}`, 'version'], repoRoot, { quiet: true })
-  return result.status === 0 ? result.stdout.trim() : null
-}
-
-function latestPublishedVersion(spec) {
-  const result = runNpm(['view', spec.name, 'version'], repoRoot, { quiet: true })
-  return result.status === 0 ? result.stdout.trim() : null
-}
-
-function publishPackage(spec, version) {
-  if (publishedVersion(spec, version) === version) {
-    log(`${spec.name}@${version} is already published; continuing the release`)
-    return
-  }
-
-  log(`publishing ${spec.name}@${version}`)
-  runNpm(['publish', '--provenance', '--access', 'public'], spec.root, {
-    env: {
-      ...process.env,
-      [releaseEnvironment]: '1',
-    },
-  })
-
-  waitForRegistryVersion(`${spec.name}@${version}`, version, () => publishedVersion(spec, version))
-}
-
-function assertInstalledVersion(projectRoot, packageName, version) {
-  const packagePath = join(projectRoot, 'node_modules', packageName, 'package.json')
-  if (!existsSync(packagePath)) {
-    throw new Error(`Registry install did not contain ${packageName}.`)
-  }
-
-  const installedVersion = readJson(packagePath).version
-  if (installedVersion !== version) {
-    throw new Error(
-      `Registry install resolved ${packageName}@${installedVersion ?? 'unknown'} instead of ${version}.`,
-    )
-  }
-}
-
-function verifyRegistryInstall(version) {
-  const projectRoot = mkdtempSync(join(tmpdir(), 'frontron-registry-'))
-
-  try {
-    writeFileSync(
-      join(projectRoot, 'package.json'),
-      `${JSON.stringify(
-        {
-          name: 'frontron-registry-smoke',
-          version: '0.0.0',
-          private: true,
-          type: 'module',
-          scripts: { dev: 'node -e ""', build: 'node -e ""' },
-        },
-        null,
-        2,
-      )}\n`,
-      'utf8',
-    )
-    runNpm(
-      [
-        'install',
-        '--ignore-scripts',
-        '--fund=false',
-        '--audit=false',
-        `create-frontron@${version}`,
-        `frontron@${version}`,
-      ],
-      projectRoot,
-    )
-
-    assertInstalledVersion(projectRoot, 'create-frontron', version)
-    assertInstalledVersion(projectRoot, 'frontron', version)
-    runNpm(['exec', '--', 'frontron', '--help'], projectRoot)
-    runNpm(['exec', '--', 'create-frontron', 'registry-app'], projectRoot)
-
-    const generatedPackagePath = join(projectRoot, 'registry-app', 'package.json')
-    if (!existsSync(generatedPackagePath)) {
-      throw new Error('Registry-installed create-frontron did not generate registry-app.')
-    }
-
-    runNpm(
-      [
-        'exec',
-        '--',
-        'frontron',
-        'init',
-        '--yes',
-        '--adapter',
-        'generic-static',
-        '--out-dir',
-        'dist',
-      ],
-      projectRoot,
-    )
-    runNpm(['exec', '--', 'frontron', 'doctor'], projectRoot)
-    runNpm(['exec', '--', 'frontron', 'clean', '--yes'], projectRoot)
-  } finally {
-    rmSync(projectRoot, { recursive: true, force: true })
-  }
-}
-
-function publishRelease() {
-  assertTrustedPublishing()
-  assertCleanWorktree()
-  const version = assertMetadata()
-  verifyRelease()
-  assertCleanWorktree()
-
-  for (const spec of packages) {
-    publishPackage(spec, version)
-  }
-
-  for (const spec of packages) {
-    waitForRegistryVersion(`${spec.name} latest`, version, () => latestPublishedVersion(spec))
-  }
-
-  log(`testing registry installs for ${version}`)
-  verifyRegistryInstall(version)
-}
-
 function main() {
   switch (process.argv[2]) {
     case 'check-metadata':
@@ -305,11 +124,8 @@ function main() {
     case 'verify':
       verifyRelease()
       return
-    case 'publish':
-      publishRelease()
-      return
     case undefined:
-      throw new Error('Missing release command. Use "check-metadata", "verify", or "publish".')
+      throw new Error('Missing release command. Use "check-metadata" or "verify".')
     default:
       throw new Error(`Unknown release command: ${process.argv[2]}`)
   }

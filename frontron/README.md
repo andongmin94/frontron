@@ -59,6 +59,8 @@ npx frontron init \
   --server-entry server/index.js
 ```
 
+These are implemented adapter contracts, not a certification of every framework version or desktop platform. See [recovery and validation](../docs/RECOVERY_AND_VALIDATION.md) for the current validation boundary.
+
 ## Monorepos
 
 Run from a package or workspace root. A workspace with one compatible frontend is selected automatically; otherwise pass `--project`:
@@ -130,7 +132,9 @@ npx frontron clean --yes
 
 Managed local edits are preserved by default. `update --force` or `clean --force` is required to replace or remove them. Older manifest schemas are rejected rather than migrated.
 
-`init`, `update`, and `clean` snapshot managed files before mutation and recover an interrupted operation on the next valid lifecycle command. Project escapes and symbolic-link paths are rejected.
+`init`, `update`, and `clean` record original and intended file states before mutation. If an operation is interrupted, help, doctor, previews and commands without `--yes` do not recover or modify that pending transaction. An explicitly authorized write (`--yes`, without `--dry-run`) can recover the selected project, then exits 1 without applying the requested command. Inspect the restored project and rerun it to create a fresh plan.
+
+Recovery checks all affected files before changing them. Conflicting user edits, unexpected directory contents, hard links, symbolic links and unrecognized partial writes stop automatic recovery and preserve the files and journal. `--force` does not bypass these recovery checks. Old journal schemas are preserved and rejected without migration. See the [manual recovery and limitations](../docs/RECOVERY_AND_VALIDATION.md) before intervening.
 
 npm, pnpm, Yarn, and Bun are supported. Installed pnpm packages may use their normal content-addressed hard links; Frontron treats those read-only package files as valid templates. Frontron records only the package-manager settings needed for Electron installation: pnpm build approvals, Yarn's `node-modules` linker, or Bun trusted dependencies. `clean` restores the previous values.
 

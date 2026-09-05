@@ -49,7 +49,7 @@ for (const args of [
     const messages: string[] = []
     const status = await runCli(args, { info: (s) => messages.push(s), error: (s) => messages.push(s) }, { cwd: root })
     expect(status).toBe(1)
-    expect(messages.join('\n')).toContain('No files were changed')
+    expect(messages.join('\n')).toContain(args[0] === 'doctor' ? 'Pending transaction journal detected' : 'No files were changed')
     expect(readFileSync(target, 'utf8')).toBe('after')
     expect(readFileSync(journalPath)).toEqual(before)
   })
@@ -83,7 +83,7 @@ test('workspace dry-run does not recover its selected child', async () => {
   writeFileSync(join(workspace, 'package.json'), JSON.stringify({ private: true, workspaces: ['apps/*'] }))
   writeFileSync(join(child, 'package.json'), readFileSync(join(root, 'package.json')))
   writeFileSync(join(child, 'target.txt'), readFileSync(target))
-  const source = readFileSync(journalPath, 'utf8').split(root).join(child)
+  const source = readFileSync(journalPath, 'utf8').split(JSON.stringify(root).slice(1, -1)).join(JSON.stringify(child).slice(1, -1))
   writeFileSync(join(child, TRANSACTION_JOURNAL_PATH), source)
   const messages: string[] = []
   expect(await runCli(['clean', '--project', 'apps/web', '--dry-run'], { info: (s) => messages.push(s), error: (s) => messages.push(s) }, { cwd: workspace })).toBe(1)

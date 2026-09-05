@@ -101,7 +101,8 @@ export async function runCli(
   try {
     // A partially written package.json can prevent workspace resolution. Only
     // inspect the invocation root here when no other project was selected.
-    if (!parsed.project && handlePendingTransaction(invocationCwd, allowRecovery, output)) {
+    // Doctor owns its existing read-only diagnostics, not this recovery path.
+    if (command !== 'doctor' && !parsed.project && handlePendingTransaction(invocationCwd, allowRecovery, output)) {
       return 1
     }
     const resolution = resolveWorkspaceProject(invocationCwd, command, parsed.project)
@@ -111,7 +112,7 @@ export async function runCli(
         `[Frontron] Using workspace project: ${relative(resolution.invocationRoot, cwd).replace(/\\/g, '/')}`,
       )
     }
-    if ((parsed.project || cwd !== invocationCwd) && handlePendingTransaction(cwd, allowRecovery, output)) {
+    if (command !== 'doctor' && (parsed.project || cwd !== invocationCwd) && handlePendingTransaction(cwd, allowRecovery, output)) {
       return 1
     }
   } catch (error) {

@@ -6,6 +6,7 @@ import {
   lstatSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   rmdirSync,
   unlinkSync,
   writeFileSync,
@@ -37,15 +38,23 @@ type TransactionSnapshot = {
 }
 
 type TransactionJournalHeader = {
-  schemaVersion: 2
+  schemaVersion: 3
   transactionId: string
   processId: number
   operation: TransactionOperation
   snapshots: TransactionSnapshot[]
 }
 
+type FileState = { contentSha256: string; mode: number } | null
+
+type MutationRecord = {
+  mutatedPath: string
+  before: FileState
+  after: FileState
+}
+
 type TransactionJournal = TransactionJournalHeader & {
-  mutatedPaths: Set<string>
+  mutations: Map<string, MutationRecord>
 }
 
 export type TransactionHandle = {
@@ -53,7 +62,7 @@ export type TransactionHandle = {
   journalPath: string
   transactionId: string
   snapshots: Map<string, TransactionSnapshot>
-  mutatedTargets: Set<string>
+  mutations: Map<string, MutationRecord>
 }
 
 export type TransactionRecoveryResult = {
@@ -190,6 +199,9 @@ function validateSnapshot(projectRoot: string, value: unknown): TransactionSnaps
     value.path,
     'Transaction journal target',
   )
+  if (path === resolve(projectRoot, TRANSACTION_JOURNAL_PATH)) {
+    throw new Error('The transaction journal cannot be a recovery target.')
+  }
   const mode = value.mode === null ? null : Number(value.mode)
 
   if (value.existed && value.kind === 'file') {
@@ -221,14 +233,14 @@ function parseJournalHeader(projectRoot: string, line: string): TransactionJourn
 
   if (
     !isRecord(value) ||
-    value.schemaVersion !== 2 ||
+    value.schemaVersion !== 3 ||
     typeof value.transactionId !== 'string' ||
     !Number.isInteger(value.processId) ||
     Number(value.processId) <= 0 ||
     (value.operation !== 'init' && value.operation !== 'clean') ||
     !Array.isArray(value.snapshots)
   ) {
-    throw new Error('The transaction journal is invalid.')
+    throw new Error('The transaction journal is invalid or unsupported. Preserve it and recover manually; no migration is performed.')
   }
 
   const snapshots = value.snapshots.map((snapshot) => validateSnapshot(projectRoot, snapshot))
@@ -239,7 +251,7 @@ function parseJournalHeader(projectRoot: string, line: string): TransactionJourn
   }
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     transactionId: value.transactionId,
     processId: Number(value.processId),
     operation: value.operation,
@@ -249,16 +261,20 @@ function parseJournalHeader(projectRoot: string, line: string): TransactionJourn
 
 function readJournal(projectRoot: string): TransactionJournal | null {
   const journalPath = resolve(projectRoot, TRANSACTION_JOURNAL_PATH)
-  if (!existsSync(journalPath)) return null
+  if (!hasPendingTransaction(projectRoot)) return null
   assertProjectPathSafe(projectRoot, journalPath, 'Transaction journal')
+  const journalStats = lstatSync(journalPath)
+  if (!journalStats.isFile() || journalStats.isSymbolicLink() || journalStats.nlink !== 1) {
+    throw new Error('The transaction journal must be a single-link regular file.')
+  }
 
   const lines = readFileSync(journalPath, 'utf8').split(/\r?\n/)
   const headerLine = lines[0]
   if (!headerLine) throw new Error('The transaction journal is empty.')
 
   const header = parseJournalHeader(projectRoot, headerLine)
-  const snapshotPaths = new Set(header.snapshots.map((snapshot) => snapshot.path))
-  const mutatedPaths = new Set<string>()
+  const snapshots = new Map(header.snapshots.map((snapshot) => [snapshot.path, snapshot]))
+  const mutations = new Map<string, MutationRecord>()
   let lastContentLine = lines.length - 1
   while (lastContentLine > 0 && !lines[lastContentLine]?.trim()) {
     lastContentLine -= 1
@@ -281,13 +297,89 @@ function readJournal(projectRoot: string): TransactionJournal | null {
     }
 
     const path = resolve(value.mutatedPath)
-    if (!snapshotPaths.has(path)) {
+    const snapshot = snapshots.get(path)
+    if (!snapshot || snapshot.kind !== 'file') {
       throw new Error(`The transaction journal records an unplanned mutation: ${path}`)
     }
-    mutatedPaths.add(path)
+    const before = validateFileState(value.before)
+    const after = validateFileState(value.after)
+    const previous = mutations.get(path)
+    if (!sameFileState(before, previous ? previous.after : snapshotFileState(snapshot))) {
+      throw new Error(`The transaction journal has a broken mutation chain: ${path}`)
+    }
+    mutations.set(path, { mutatedPath: path, before, after })
   }
 
-  return { ...header, mutatedPaths }
+  return { ...header, mutations }
+}
+
+// Inspect only: help, doctor and previews must never initiate recovery.
+export function hasPendingTransaction(projectRoot: string) {
+  try {
+    lstatSync(resolve(projectRoot, TRANSACTION_JOURNAL_PATH))
+    return true
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw error
+  }
+}
+
+function snapshotFileState(snapshot: TransactionSnapshot): FileState {
+  return snapshot.existed
+    ? { contentSha256: snapshot.contentSha256!, mode: snapshot.mode! }
+    : null
+}
+
+function validateFileState(value: unknown): FileState {
+  if (value === null) return null
+  if (
+    !isRecord(value) ||
+    typeof value.contentSha256 !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(value.contentSha256) ||
+    !Number.isInteger(value.mode) || Number(value.mode) < 0 || Number(value.mode) > 0o7777
+  ) {
+    throw new Error('The transaction journal contains an invalid file state.')
+  }
+  return { contentSha256: value.contentSha256, mode: Number(value.mode) }
+}
+
+function sameFileState(left: FileState, right: FileState) {
+  return left === null || right === null
+    ? left === right
+    : left.contentSha256 === right.contentSha256 && left.mode === right.mode
+}
+
+function currentFileState(snapshot: TransactionSnapshot): FileState {
+  assertProjectPathSafe(snapshot.safetyRoot, snapshot.path, 'Transaction file')
+  let stats
+  try {
+    stats = lstatSync(snapshot.path)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw error
+  }
+  if (!stats.isFile() || stats.isSymbolicLink() || stats.nlink !== 1) {
+    throw new Error(`Transaction file must be a single-link regular file: ${snapshot.path}`)
+  }
+  return {
+    contentSha256: createTransactionSourceHash(readFileSync(snapshot.path)),
+    mode: stats.mode & 0o7777,
+  }
+}
+
+function assertRecoverable(snapshot: TransactionSnapshot, mutation: MutationRecord) {
+  const current = currentFileState(snapshot)
+  // Original also permits an idempotent retry after recovery itself was interrupted.
+  if (
+    !sameFileState(current, snapshotFileState(snapshot)) &&
+    !sameFileState(current, mutation.before) &&
+    !sameFileState(current, mutation.after)
+  ) {
+    throw new Error(
+      `Recovery conflict: ${snapshot.path} changed after Frontron's write. ` +
+      'No automatic overwrite or deletion is allowed. Preserve the file and journal for manual recovery.',
+    )
+  }
 }
 
 function getHandleSnapshot(
@@ -335,7 +427,13 @@ function assertCurrentMatchesSnapshot(snapshot: TransactionSnapshot, label: stri
   }
 }
 
-function restoreFileSnapshot(projectRoot: string, snapshot: TransactionSnapshot) {
+function restoreFileSnapshot(
+  projectRoot: string,
+  snapshot: TransactionSnapshot,
+  mutation: MutationRecord,
+) {
+  assertRecoverable(snapshot, mutation)
+  if (sameFileState(currentFileState(snapshot), snapshotFileState(snapshot))) return
   assertTransactionPath(
     projectRoot,
     snapshot.safetyRoot,
@@ -346,7 +444,7 @@ function restoreFileSnapshot(projectRoot: string, snapshot: TransactionSnapshot)
   if (!snapshot.existed) {
     if (!existsSync(snapshot.path)) return
     const stats = lstatSync(snapshot.path)
-    if (!stats.isFile() || stats.isSymbolicLink()) {
+    if (!stats.isFile() || stats.isSymbolicLink() || stats.nlink !== 1) {
       throw new Error(`Cannot remove unexpected recovery target: ${snapshot.path}`)
     }
     unlinkSync(snapshot.path)
@@ -364,7 +462,7 @@ function restoreFileSnapshot(projectRoot: string, snapshot: TransactionSnapshot)
 
   if (existsSync(snapshot.path)) {
     const stats = lstatSync(snapshot.path)
-    if (!stats.isFile() || stats.isSymbolicLink()) {
+    if (!stats.isFile() || stats.isSymbolicLink() || stats.nlink !== 1) {
       throw new Error(`Cannot restore over a non-file recovery target: ${snapshot.path}`)
     }
   }
@@ -402,11 +500,11 @@ function restoreDirectorySnapshot(projectRoot: string, snapshot: TransactionSnap
 }
 
 function snapshotsToRestore(journal: TransactionJournal) {
-  const mutatedPaths = [...journal.mutatedPaths]
+  const mutatedPaths = [...journal.mutations.keys()]
 
   return journal.snapshots.filter(
     (snapshot) =>
-      journal.mutatedPaths.has(snapshot.path) ||
+      journal.mutations.has(snapshot.path) ||
       (snapshot.kind === 'directory' &&
         mutatedPaths.some((mutatedPath) => isInsideDirectory(snapshot.path, mutatedPath))),
   )
@@ -415,8 +513,22 @@ function snapshotsToRestore(journal: TransactionJournal) {
 function restoreJournal(projectRoot: string, journal: TransactionJournal) {
   const snapshots = snapshotsToRestore(journal)
 
-  for (const snapshot of snapshots.filter((entry) => entry.kind === 'file')) {
-    restoreFileSnapshot(projectRoot, snapshot)
+  // Preflight the entire recovery set before changing any file.
+  const files = snapshots.filter((entry) => entry.kind === 'file')
+  for (const snapshot of files) {
+    assertRecoverable(snapshot, journal.mutations.get(snapshot.path)!)
+  }
+  const removals = new Set(snapshots.filter((entry) => !entry.existed).map((entry) => entry.path))
+  for (const snapshot of snapshots.filter((entry) => entry.kind === 'directory')) {
+    assertTransactionPath(projectRoot, snapshot.safetyRoot, snapshot.path, 'Recovery directory')
+    if (!existsSync(snapshot.path)) continue
+    assertRegularDirectory(snapshot.path, 'Recovery directory')
+    if (!snapshot.existed && readdirSync(snapshot.path).some((name) => !removals.has(resolve(snapshot.path, name)))) {
+      throw new Error(`Recovery conflict: new user content exists in ${snapshot.path}. Preserve the directory and journal.`)
+    }
+  }
+  for (const snapshot of files) {
+    restoreFileSnapshot(projectRoot, snapshot, journal.mutations.get(snapshot.path)!)
   }
 
   const directories = snapshots
@@ -436,20 +548,21 @@ function removeJournal(projectRoot: string, transactionId: string) {
   unlinkSync(resolve(projectRoot, TRANSACTION_JOURNAL_PATH))
 }
 
-function markMutation(handle: TransactionHandle, snapshot: TransactionSnapshot) {
-  if (handle.mutatedTargets.has(snapshot.path)) return
-
+function markMutation(handle: TransactionHandle, snapshot: TransactionSnapshot, after: FileState) {
   const journal = readJournal(handle.projectRoot)
   if (!journal || journal.transactionId !== handle.transactionId) {
     throw new Error('The active transaction journal changed unexpectedly.')
   }
-
-  appendFileSync(
-    handle.journalPath,
-    `${JSON.stringify({ mutatedPath: snapshot.path })}\n`,
-    'utf8',
-  )
-  handle.mutatedTargets.add(snapshot.path)
+  const previous = handle.mutations.get(snapshot.path)
+  const before = previous ? previous.after : snapshotFileState(snapshot)
+  if (!sameFileState(currentFileState(snapshot), before)) {
+    throw new Error(`Transaction write target changed after the transaction started: ${snapshot.path}`)
+  }
+  const mutation: MutationRecord = { mutatedPath: snapshot.path, before, after }
+  // Persist the intended post-image BEFORE touching the target. A torn write is a
+  // conflict, not evidence that arbitrary current content belongs to Frontron.
+  appendFileSync(handle.journalPath, `${JSON.stringify(mutation)}\n`, { encoding: 'utf8', flush: true })
+  handle.mutations.set(snapshot.path, mutation)
 }
 
 function isProcessRunning(processId: number) {
@@ -513,7 +626,7 @@ export function beginTransaction(
   const journalPath = resolve(projectRoot, TRANSACTION_JOURNAL_PATH)
   assertProjectPathSafe(projectRoot, journalPath, 'Transaction journal')
   const header: TransactionJournalHeader = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     transactionId,
     processId: process.pid,
     operation,
@@ -524,6 +637,7 @@ export function beginTransaction(
     encoding: 'utf8',
     flag: 'wx',
     mode: 0o600,
+    flush: true,
   })
 
   return {
@@ -531,7 +645,7 @@ export function beginTransaction(
     journalPath,
     transactionId,
     snapshots,
-    mutatedTargets: new Set<string>(),
+    mutations: new Map<string, MutationRecord>(),
   }
 }
 
@@ -546,10 +660,10 @@ export function writeTransactionFile(
     throw new Error(`Transaction target is not a file: ${snapshot.path}`)
   }
 
-  if (!handle.mutatedTargets.has(snapshot.path)) {
-    assertCurrentMatchesSnapshot(snapshot, 'Transaction write target')
-    markMutation(handle, snapshot)
-  }
+  markMutation(handle, snapshot, {
+    contentSha256: createTransactionSourceHash(content),
+    mode: snapshot.mode ?? (0o666 & ~process.umask()),
+  })
 
   mkdirSync(dirname(snapshot.path), { recursive: true })
   assertTransactionPath(
@@ -578,10 +692,7 @@ export function removeTransactionFile(
     throw new Error(`Transaction delete target did not exist: ${snapshot.path}`)
   }
 
-  if (!handle.mutatedTargets.has(snapshot.path)) {
-    assertCurrentMatchesSnapshot(snapshot, 'Transaction delete target')
-    markMutation(handle, snapshot)
-  }
+  markMutation(handle, snapshot, null)
 
   unlinkSync(snapshot.path)
 }
@@ -593,7 +704,7 @@ export function assertTransactionTargetUnchanged(
 ) {
   const snapshot = getHandleSnapshot(handle, targetPathValue, safetyRootValue)
 
-  if (handle.mutatedTargets.has(snapshot.path)) {
+  if (handle.mutations.has(snapshot.path)) {
     throw new Error(`Transaction target was already modified: ${snapshot.path}`)
   }
 

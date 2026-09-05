@@ -1,0 +1,50 @@
+name: Verify
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+defaults:
+  run:
+    shell: bash
+permissions:
+  contents: read
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  quality:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install exact locked dependencies
+        run: |
+          npm ci --prefix create-frontron --fund=false --audit=false
+          npm ci --prefix frontron --fund=false --audit=false
+      - name: Check release metadata
+        run: node release.mjs check-metadata
+      - name: Check generator
+        run: |
+          npm run check --prefix create-frontron
+          npm run typecheck --prefix create-frontron
+          npm test --prefix create-frontron
+          npm run build --prefix create-frontron
+      - name: Check retrofit CLI
+        run: |
+          npm run check --prefix frontron
+          npm run typecheck --prefix frontron
+          npm test --prefix frontron
+          npm run build --prefix frontron
+      - name: Check packed consumers
+        run: |
+          npm run test:package-smoke --prefix create-frontron
+          npm run test:package-smoke --prefix frontron

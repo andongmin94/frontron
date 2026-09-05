@@ -13,7 +13,7 @@ import {
   printUpdateHelp,
 } from './cli/help'
 import { parseCliOptions } from './cli/options'
-import { recoverPendingTransaction } from './transaction-journal'
+import { hasPendingTransaction, recoverPendingTransaction } from './transaction-journal'
 import { resolveWorkspaceProject } from './workspace-project'
 
 export type { CliOutput } from './cli-output'
@@ -34,14 +34,25 @@ const defaultOutput: CliOutput = {
   },
 }
 
-function recoverCommandTransaction(cwd: string, output: CliOutput) {
-  const recovery = recoverPendingTransaction(cwd)
-
-  if (recovery.recovered) {
-    output.info(
-      `[Frontron] Recovered an interrupted ${recovery.operation} transaction before running the command.`,
+// Recovery is a write, never a hidden side effect of an inspection or prompt.
+// Stop after recovery so that a fresh command plans against the restored files.
+function handlePendingTransaction(cwd: string, allowRecovery: boolean, output: CliOutput) {
+  if (!hasPendingTransaction(cwd)) return false
+  if (!allowRecovery) {
+    throw new Error(
+      'A pending transaction exists. No files were changed. Back up user edits and ' +
+      'rerun a write command with --yes (without --dry-run) to attempt recovery. ' +
+      'Conflicting files and the journal will be preserved.',
     )
   }
+  const recovery = recoverPendingTransaction(cwd)
+  if (recovery.recovered) {
+    output.info(
+      `[Frontron] Recovered an interrupted ${recovery.operation} transaction. ` +
+      'The requested command was not applied. Inspect the restored project and run it again.',
+    )
+  }
+  return true
 }
 
 export async function runCli(
@@ -76,56 +87,36 @@ export async function runCli(
       default:
         printHelp(output)
     }
-
     return 0
   }
 
   const command = parsed.command
-
   if (!command) {
     printHelp(output)
     return 0
   }
 
-  if (command !== 'doctor') {
-    try {
-      recoverCommandTransaction(invocationCwd, output)
-    } catch (error) {
-      output.error(
-        `[Frontron] Could not recover an interrupted transaction: ${(error as Error).message}`,
-      )
+  const allowRecovery = command !== 'doctor' && parsed.options.yes && !parsed.options.dryRun
+  let cwd: string
+  try {
+    // A partially written package.json can prevent workspace resolution. Only
+    // inspect the invocation root here when no other project was selected.
+    if (!parsed.project && handlePendingTransaction(invocationCwd, allowRecovery, output)) {
       return 1
     }
-  }
-
-  let cwd: string
-
-  try {
     const resolution = resolveWorkspaceProject(invocationCwd, command, parsed.project)
     cwd = resolution.projectRoot
-
-    if (resolution.projectRoot !== resolution.invocationRoot) {
+    if (cwd !== invocationCwd) {
       output.info(
-        `[Frontron] Using workspace project: ${relative(
-          resolution.invocationRoot,
-          resolution.projectRoot,
-        ).replace(/\\/g, '/')}`,
+        `[Frontron] Using workspace project: ${relative(resolution.invocationRoot, cwd).replace(/\\/g, '/')}`,
       )
+    }
+    if ((parsed.project || cwd !== invocationCwd) && handlePendingTransaction(cwd, allowRecovery, output)) {
+      return 1
     }
   } catch (error) {
     output.error(`[Frontron] ${(error as Error).message}`)
     return 1
-  }
-
-  if (command !== 'doctor' && cwd !== invocationCwd) {
-    try {
-      recoverCommandTransaction(cwd, output)
-    } catch (error) {
-      output.error(
-        `[Frontron] Could not recover an interrupted transaction: ${(error as Error).message}`,
-      )
-      return 1
-    }
   }
 
   try {

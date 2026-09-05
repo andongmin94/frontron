@@ -1,7 +1,7 @@
 <div align="center">
 
-<a href="https://andongmin.com/frontron/">
-<img src="https://andongmin.com/frontron/logo.svg" alt="Frontron logo" height="200" />
+<a href="https://bio.andongmin.com/frontron/">
+<img src="https://bio.andongmin.com/frontron/logo.svg" alt="Frontron logo" height="200" />
 </a>
 
 </div>

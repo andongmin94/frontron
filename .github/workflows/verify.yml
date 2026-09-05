@@ -26,29 +26,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install exact locked dependencies
-        run: |
-          npm ci --prefix create-frontron --fund=false --audit=false
-          npm ci --prefix frontron --fund=false --audit=false
-      - name: Check release metadata
-        run: node release.mjs check-metadata
-      - name: Check generator
-        run: |
-          npm run check --prefix create-frontron
-          npm run typecheck --prefix create-frontron
-          npm run coverage --prefix create-frontron
-          npm run build --prefix create-frontron
-      - name: Check retrofit CLI
-        run: |
-          npm run check --prefix frontron
-          npm run typecheck --prefix frontron
-          npm run coverage --prefix frontron
-          npm run build --prefix frontron
-      - name: Check packed consumers
-        run: |
-          npm run test:package-smoke --prefix create-frontron
-          npm run test:package-smoke --prefix frontron
-      - name: Run real React and Vite desktop lifecycles
+      - name: Verify from a clean checkout including real desktop execution
         env:
           FRONTRON_TEST_ELECTRON_RUNTIME: '1'
-        run: npm run test:release-smoke --prefix create-frontron
+        run: node release.mjs verify

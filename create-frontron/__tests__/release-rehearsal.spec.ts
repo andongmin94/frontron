@@ -150,9 +150,12 @@ function runPackagedAppProbe(appRoot: string, appName: string, probePath: string
   if (process.platform !== 'win32' && process.platform !== 'linux') {
     throw new Error('Desktop runtime checks currently support Windows and Linux only.')
   }
+  const packageJson = JSON.parse(readFileSync(join(appRoot, 'package.json'), 'utf8'))
+  const outputDir = packageJson.build?.directories?.output
+  expect(typeof outputDir).toBe('string')
   const executable = process.platform === 'win32'
-    ? join(appRoot, 'output', 'win-unpacked', `${appName}.exe`)
-    : join(appRoot, 'output', 'linux-unpacked', appName)
+    ? join(appRoot, outputDir, 'win-unpacked', `${appName}.exe`)
+    : join(appRoot, outputDir, 'linux-unpacked', appName)
   const invocation = process.platform === 'linux'
     ? { command: 'xvfb-run', args: ['-a', executable, '--no-sandbox'] }
     : { command: executable, args: [] }

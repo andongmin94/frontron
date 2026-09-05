@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -81,10 +81,21 @@ function installRendererProbe(appRoot: string, electronDir = 'src/electron') {
   }
   const instrumented = original.replace(pathImport, `import fs from "node:fs"\n${pathImport}`).replace(
     openWindowSource,
-    `function runRendererProbe() {
+    `function traceRendererProbe(stage: string) {
+  const outputPath = process.env.FRONTRON_RENDERER_PROBE_PATH?.trim()
+  if (outputPath) fs.appendFileSync(outputPath + ".trace", new Date().toISOString() + " " + stage + "\\n")
+}
+traceRendererProbe("main-loaded")
+
+function runRendererProbe() {
   const outputPath = process.env.FRONTRON_RENDERER_PROBE_PATH?.trim()
   if (!outputPath || !mainWindow) return
+  traceRendererProbe("window-created")
+  mainWindow.webContents.on("did-fail-load", (_event, code, description) => {
+    traceRendererProbe("load-failed " + code + " " + description)
+  })
   const capture = async () => {
+    traceRendererProbe("capture-started")
     let exitCode = 0
     let payload: unknown
     try {
@@ -96,7 +107,9 @@ function installRendererProbe(appRoot: string, electronDir = 'src/electron') {
     }
     fs.mkdirSync(path.dirname(outputPath), { recursive: true })
     fs.writeFileSync(outputPath, JSON.stringify(payload, null, 2) + "\\n", "utf8")
+    traceRendererProbe("capture-written")
     await stopRendererServer()
+    traceRendererProbe("server-stopped")
     app.exit(exitCode)
   }
   if (mainWindow.webContents.isLoading()) {
@@ -130,19 +143,73 @@ function expectHealthyRendererProbe(probePath: string, packaged: boolean, counte
   console.log(`[desktop-probe] ${JSON.stringify(probe)}`)
 }
 
-function runDevelopmentAppProbe(appRoot: string, probePath: string, script = 'app', counter = false) {
+async function runDevelopmentAppProbe(appRoot: string, probePath: string, script = 'app', counter = false) {
   const npm = getNpmInvocation(['run', script])
   const invocation = process.platform === 'linux'
     ? { command: 'xvfb-run', args: ['-a', npm.command, ...npm.args] }
     : npm
-  const result = spawnSync(invocation.command, invocation.args, {
-    cwd: appRoot, encoding: 'utf8', timeout: 120_000, maxBuffer: 16 * 1024 * 1024,
-    env: {
-      ...process.env, CI: '1', FRONTRON_RENDERER_PROBE_PATH: probePath,
-      ...(process.platform === 'linux' ? { ELECTRON_DISABLE_SANDBOX: '1' } : {}),
-    },
+  let output = ''
+  let failure: Error | undefined
+  const code = await new Promise<number | null>((resolve) => {
+    const child = spawn(invocation.command, invocation.args, {
+      cwd: appRoot,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: process.platform !== 'win32',
+      env: {
+        ...process.env, CI: '1', FRONTRON_RENDERER_PROBE_PATH: probePath,
+        ...(process.platform === 'linux' ? { ELECTRON_DISABLE_SANDBOX: '1' } : {}),
+      },
+    })
+    let settled = false
+    let drainTimer: ReturnType<typeof setTimeout> | undefined
+    const finish = (status: number | null) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      if (drainTimer) clearTimeout(drainTimer)
+      resolve(status)
+    }
+    const append = (chunk: Buffer) => {
+      output = (output + chunk.toString('utf8')).slice(-16 * 1024 * 1024)
+    }
+    child.stdout.on('data', append)
+    child.stderr.on('data', append)
+    const timer = setTimeout(() => {
+      failure = new Error('Development launcher did not close within 120 seconds')
+      // Kill only this test's process tree; do not leave Vite/Electron children
+      // running after a failed Windows cmd.exe/npm launcher.
+      if (child.pid) {
+        if (process.platform === 'win32') {
+          const killed = spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
+            encoding: 'utf8', timeout: 10_000,
+          })
+          output += `\n[process-cleanup] ${killed.stderr ?? ''}${killed.stdout ?? ''}`
+        } else {
+          try { process.kill(-child.pid, 'SIGKILL') } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ESRCH') output += `\n${error}`
+          }
+        }
+      }
+      drainTimer = setTimeout(() => {
+        child.stdout.destroy()
+        child.stderr.destroy()
+        finish(null)
+      }, 5_000)
+    }, 120_000)
+    child.once('error', (error) => { failure = error; finish(null) })
+    child.once('close', finish)
   })
-  expect(result.status, `${result.error ?? ''}\n${result.stdout}\n${result.stderr}`).toBe(0)
+  if (failure || code !== 0) {
+    // Preserve enough context to distinguish startup, renderer and shutdown
+    // failures. These are only source files from the test's generated app.
+    for (const file of [probePath, `${probePath}.trace`,
+      join(appRoot, 'scripts/tasks.mjs'), join(appRoot, 'src/electron/serve.ts'),
+      join(appRoot, 'electron/serve.ts')]) {
+      if (existsSync(file)) output += `\n=== ${file} ===\n${readFileSync(file, 'utf8').slice(0, 20000)}`
+    }
+  }
+  expect(failure, output).toBeUndefined()
+  expect(code, output).toBe(0)
   expectHealthyRendererProbe(probePath, false, counter)
 }
 
@@ -173,7 +240,7 @@ afterEach(() => {
   }
 }, 60_000)
 
-test('packed create-frontron builds and runs its real Electron starter', () => {
+test('packed create-frontron builds and runs its real Electron starter', async () => {
   const createTarball = packPackageForReal(createPackageRoot, 'create-frontron-release-')
   const rehearsalRoot = mkdtempSync(join(tmpdir(), 'frontron-starter-rehearsal-'))
   tempDirs.push(rehearsalRoot)
@@ -204,12 +271,12 @@ test('packed create-frontron builds and runs its real Electron starter', () => {
   runNpm(['install', '--fund=false'], appRoot)
   runNpm(['audit', '--audit-level=moderate'], appRoot)
   runNpm(['run', 'typecheck'], appRoot)
-  if (testElectronRuntime) runDevelopmentAppProbe(appRoot, join(rehearsalRoot, 'dev.json'))
+  if (testElectronRuntime) await runDevelopmentAppProbe(appRoot, join(rehearsalRoot, 'dev.json'))
   runNpm(['run', 'build', '--', '--dir'], appRoot)
   if (testElectronRuntime) runPackagedAppProbe(appRoot, appName, join(rehearsalRoot, 'packaged.json'))
 }, 600_000)
 
-test('packed frontron retrofits, updates, runs and removes a real Vite app without altering its source', () => {
+test('packed frontron retrofits, updates, runs and removes a real Vite app without altering its source', async () => {
   const createTarball = packPackageForReal(createPackageRoot, 'create-frontron-retrofit-')
   const frontronTarball = packPackageForReal(join(dirname(createPackageRoot), 'frontron'), 'frontron-retrofit-')
   const root = mkdtempSync(join(tmpdir(), 'frontron-real-vite-'))
@@ -252,7 +319,7 @@ createRoot(document.getElementById('root')).render(h(App));
   runNpm(['exec', '--', 'frontron', 'update', '--yes'], appRoot)
   const restoreProbe = installRendererProbe(appRoot, 'electron')
   try {
-    if (testElectronRuntime) runDevelopmentAppProbe(appRoot, join(root, 'dev.json'), 'frontron:dev', true)
+    if (testElectronRuntime) await runDevelopmentAppProbe(appRoot, join(root, 'dev.json'), 'frontron:dev', true)
     runNpm(['run', 'frontron:build', '--', '--dir'], appRoot)
     if (testElectronRuntime) runPackagedAppProbe(appRoot, appName, join(root, 'packaged.json'), true)
   } finally {

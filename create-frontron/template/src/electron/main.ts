@@ -106,16 +106,20 @@ export async function registerRendererProtocol(rendererTargetUrl: string) {
     if (!proxyUrl) return new Response("Not Found", { status: 404 })
 
     try {
-      const upstreamResponse = await net.fetch(proxyUrl.toString(), {
+      // Electron constructs a Node Request internally. Forward the body as a
+      // stream with its required duplex mode instead of buffering uploads.
+      const requestOptions: RequestInit & { duplex: "half" } = {
         method: request.method,
         headers: rewriteRendererRequestHeaders(request, targetOrigin),
         body:
           request.method === "GET" || request.method === "HEAD"
             ? undefined
             : request.body,
+        duplex: "half",
         redirect: "manual",
         signal: request.signal,
-      })
+      }
+      const upstreamResponse = await net.fetch(proxyUrl.toString(), requestOptions)
       const responseHeaders = new Headers(upstreamResponse.headers)
       rewriteRendererLocation(responseHeaders, proxyUrl, targetOrigin)
       ensureRendererCsp(responseHeaders)

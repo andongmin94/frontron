@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import * as ts from 'typescript'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { renderCreateFrontronElectronFile } from '../src/init/runtime/create-frontron-template'
 
 type Handler = (request: Request) => Promise<Response>
@@ -20,7 +20,7 @@ test.each(['POST', 'PUT', 'PATCH', 'GET', 'HEAD'])(
     let forwarded: Request | undefined
     const state: State = {
       async fetch(input, init) {
-        // Electron's net.fetch constructs Request. A Response-only mock does
+        // Node fetch constructs Request. A Response-only mock does
         // not check the duplex requirement and incorrectly accepts bad uploads.
         forwarded = new Request(input, init)
         expect(forwarded.method).toBe(method)
@@ -35,6 +35,7 @@ test.each(['POST', 'PUT', 'PATCH', 'GET', 'HEAD'])(
       },
     }
     runtimeGlobal.__frontronRequestContract = state
+    vi.stubGlobal('fetch', (input: string, init?: RequestInit) => state.fetch(input, init))
     try {
       mkdirSync(join(root, 'node_modules', 'electron'), { recursive: true })
       writeFileSync(join(root, 'package.json'), '{"type":"module"}\n')
@@ -44,7 +45,6 @@ test.each(['POST', 'PUT', 'PATCH', 'GET', 'HEAD'])(
 const state = globalThis.__frontronRequestContract;
 export const app = { requestSingleInstanceLock: () => false, quit() {} };
 export const Menu = {};
-export const net = { fetch: (input, init) => state.fetch(input, init) };
 export const protocol = {
   registerSchemesAsPrivileged() {},
   handle(_scheme, handler) { state.handler = handler; },
@@ -75,6 +75,7 @@ export const protocol = {
       abort.abort()
       expect(forwarded?.signal.aborted).toBe(true)
     } finally {
+      vi.unstubAllGlobals()
       delete runtimeGlobal.__frontronRequestContract
       rmSync(root, { recursive: true, force: true })
     }

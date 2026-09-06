@@ -1,6 +1,6 @@
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { app, Menu, net, protocol } from "electron"
+import { app, Menu, protocol } from "electron"
 
 import { setupDevMenu } from "./dev.js"
 import { setupIpcHandlers } from "./ipc.js"
@@ -106,8 +106,8 @@ export async function registerRendererProtocol(rendererTargetUrl: string) {
     if (!proxyUrl) return new Response("Not Found", { status: 404 })
 
     try {
-      // Electron constructs a Node Request internally. Forward the body as a
-      // stream with its required duplex mode instead of buffering uploads.
+      // The private loopback transport uses Node fetch, not the browser session.
+      // Preserve manual redirects and stream uploads without buffering them.
       const requestOptions: RequestInit & { duplex: "half" } = {
         method: request.method,
         headers: rewriteRendererRequestHeaders(request, targetOrigin),
@@ -119,7 +119,7 @@ export async function registerRendererProtocol(rendererTargetUrl: string) {
         redirect: "manual",
         signal: request.signal,
       }
-      const upstreamResponse = await net.fetch(proxyUrl.toString(), requestOptions)
+      const upstreamResponse = await globalThis.fetch(proxyUrl.toString(), requestOptions)
       const responseHeaders = new Headers(upstreamResponse.headers)
       rewriteRendererLocation(responseHeaders, proxyUrl, targetOrigin)
       ensureRendererCsp(responseHeaders)

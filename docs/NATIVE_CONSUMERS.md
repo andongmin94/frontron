@@ -25,7 +25,9 @@ React mounting, IPC, renderer Node-global isolation and rejection of an injected
 untrusted inline script. A test-only preload reports the documented
 `process.sandboxed` and `process.contextIsolated` properties. The test does not
 modify production BrowserWindow security options or add a production test hook.
-An unrelated sentinel and a user-created file must survive uninstall.
+An unrelated sentinel and a user-created file must survive uninstall. MSI
+arguments retain spaces and use the documented `PROPERTY="value"` syntax through
+Node's explicit `windowsVerbatimArguments` option; no command shell is used.
 
 Code signing, SmartScreen reputation, interactive installer UI, MSI upgrades,
 restricted non-administrator sessions, Windows ARM64 and other Windows releases
@@ -52,6 +54,15 @@ same-origin redirects, client-side Link navigation and IPC. The clean operation
 must restore the original source files and scripts, followed by another web
 build. Exit uses the actual before-quit shutdown path.
 
+The protocol bridge talks to the app-owned HTTP loopback server with Node's
+built-in fetch, not Electron's browser-session fetch. Requests retain streaming
+bodies with `duplex: 'half'` and `redirect: 'manual'`; redirects are returned to
+the renderer after same-origin Location rewriting, never followed inside the
+proxy. A real local HTTP regression checks internal and external redirect
+responses without contacting either destination. There is no browser-session
+transport fallback or implicit Chromium cookie-jar/proxy behavior on this
+internal hop. End-to-end cookies/authentication are not yet certified.
+
 Linux CI uses Xvfb with `--no-sandbox` for its headless test environment. Its
 result **does not certify Linux sandboxing**. Windows distribution tests do not
 use this switch. Cookies/authentication, Server Actions, image optimization,
@@ -71,4 +82,7 @@ Consult the final workflow conclusion for the exact tested commit.
 References:
 - https://www.electronjs.org/docs/latest/api/process
 - https://www.electron.build/msi.html
+- https://learn.microsoft.com/en-us/windows/win32/msi/command-line-options
+- https://nodejs.org/api/child_process.html
+- https://nodejs.org/api/globals.html#fetch
 - https://nextjs.org/docs/app/guides/content-security-policy

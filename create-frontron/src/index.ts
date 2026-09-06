@@ -108,10 +108,7 @@ function packageManagerFromUserAgent(userAgent: string | undefined): PackageMana
 function createPackageManagerFiles(packageManager: PackageManager) {
   if (packageManager === 'pnpm') {
     return new Map([
-      [
-        'pnpm-workspace.yaml',
-        'allowBuilds:\n  electron: true\n  electron-winstaller: true\n',
-      ],
+      ['pnpm-workspace.yaml', 'allowBuilds:\n  electron: true\n  electron-winstaller: true\n'],
     ])
   }
 
@@ -139,6 +136,7 @@ function printNextSteps(cwd: string, root: string, packageManager: string) {
   console.log()
 }
 
+// runCreateFrontron 함수는 입력 검증, 템플릿 메타데이터 치환, 실제 scaffold 순서만 조율한다.
 export async function runCreateFrontron(args = process.argv.slice(2)) {
   const argv = parseArguments(args)
 
@@ -165,6 +163,7 @@ export async function runCreateFrontron(args = process.argv.slice(2)) {
     : normalizedPackageName
   const packageManager = packageManagerFromUserAgent(process.env.npm_config_user_agent)
 
+  // 표시 이름과 npm 패키지명은 규칙이 달라 각각 계산해 템플릿 placeholder에 넣는다.
   packageJson.name = projectPackageName
 
   if (packageJson.productName === '__CREATE_APP_NAME__') {

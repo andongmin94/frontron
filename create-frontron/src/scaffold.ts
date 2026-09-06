@@ -105,6 +105,7 @@ function readTemplateEntries(templateDir: string) {
     .filter((entryName) => entryName !== 'package.json' && !ignoredTemplateEntries.has(entryName))
 }
 
+// scaffoldProject 함수는 기존 경로를 건드리지 않고 새 디렉터리에만 템플릿을 복사한다.
 export function scaffoldProject(
   templateDir: string,
   root: string,
@@ -150,6 +151,7 @@ export function scaffoldProject(
       fs.writeFileSync(targetPath, content, 'utf8')
     }
   } catch (error) {
+    // 실패 시 이번 호출이 새로 만든 루트만 지운다. 기존 사용자 경로는 삭제 대상이 아니다.
     if (rootCreated) {
       fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
     }

@@ -5,14 +5,11 @@
     "correctness": "error"
   },
   "rules": {
-    "complexity": ["error", 50]
+    "complexity": ["error", 25]
   },
   "env": {
     "node": true,
     "es2022": true
   },
-  "ignorePatterns": [
-    "dist",
-    "node_modules"
-  ]
+  "ignorePatterns": ["dist", "node_modules"]
 }

@@ -14,5 +14,8 @@
     "template",
     "__tests__/test-app",
     "__tests__/beginner-docs-smoke"
-  ]
+  ],
+  "rules": {
+    "complexity": ["error", 20]
+  }
 }

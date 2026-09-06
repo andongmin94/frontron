@@ -264,8 +264,202 @@ function planManagedScripts(
   return scripts
 }
 
-// resolveManifestFile 함수는 manifest의 상대 파일 경로를 안전한 절대 경로로 해석한다.
-// createCleanPlan 함수는 manifest를 기준으로 clean이 지울 항목과 막아야 할 항목을 계산한다.
+type CleanPlanningState = {
+  warnings: string[]
+  blockers: string[]
+  packageJsonChanges: CleanPackageJsonChange[]
+  tsconfigJsonChanges: CleanTsconfigJsonChange[]
+  pnpmWorkspaceChanges: CleanPnpmWorkspaceChange[]
+  yarnRcChanges: CleanYarnRcChange[]
+  sourceHashes: Record<string, string>
+  missingSourceGuards: CleanMissingSourceGuard[]
+}
+
+function createPlanningState(cwd: string, packageJsonSource: string): CleanPlanningState {
+  return {
+    warnings: [],
+    blockers: [],
+    packageJsonChanges: [],
+    tsconfigJsonChanges: [],
+    pnpmWorkspaceChanges: [],
+    yarnRcChanges: [],
+    sourceHashes: { [resolve(cwd, 'package.json')]: createFileHash(packageJsonSource) },
+    missingSourceGuards: [],
+  }
+}
+
+// 오래된 manifest는 안전하게 읽을 수 있어도 소유권 정보가 부족할 수 있으므로 갱신을 안내한다.
+function addManifestRefreshWarnings(manifest: Manifest, warnings: string[]) {
+  const missing = [
+    [manifest.fileHashes, 'file hashes'],
+    [manifest.scriptCommands, 'script commands'],
+    [manifest.packageJsonClaims, 'package.json ownership'],
+  ] as const
+  for (const [value, label] of missing) {
+    if (!value) {
+      warnings.push(
+        `${MANIFEST_PATH} does not include ${label}. Run "frontron update --yes" to refresh it.`,
+      )
+    }
+  }
+}
+
+function planPackageJsonClaims(
+  packageJson: PackageJson,
+  manifest: Manifest,
+  options: CleanOptions,
+  state: CleanPlanningState,
+) {
+  for (const claim of manifest.packageJsonClaims ?? []) {
+    const restore = resolveManifestClaimRestore(
+      'Package.json',
+      claim,
+      readPackageJsonPath(packageJson, claim.path),
+      options,
+    )
+    if (restore.warning) state.warnings.push(restore.warning)
+    if (restore.restore) state.packageJsonChanges.push({ claim, action: 'restore' })
+  }
+}
+
+// tsconfig은 JSONC 원문을 보존해야 하므로 파싱 가능할 때만 claim을 계획한다.
+function planTsconfigClaims(
+  cwd: string,
+  manifest: Manifest,
+  options: CleanOptions,
+  state: CleanPlanningState,
+) {
+  if ((manifest.tsconfigJsonClaims ?? []).length === 0) return
+  const path = join(cwd, 'tsconfig.json')
+  const inspection = inspectProjectPath(cwd, path)
+  if (!inspection.safe) {
+    state.blockers.push(formatProjectPathBlocker(cwd, 'tsconfig.json', inspection))
+    return
+  }
+  if (!existsSync(path)) {
+    recordMissingSourceGuard(state.missingSourceGuards, path, cwd)
+    state.warnings.push(
+      'Manifest-owned tsconfig.json changes are already missing because tsconfig.json is missing.',
+    )
+    return
+  }
+
+  try {
+    state.sourceHashes[resolve(path)] = createFileHash(readFileSync(path))
+    const tsconfigJson = readTsconfigJson(path)
+    for (const claim of manifest.tsconfigJsonClaims ?? []) {
+      const restore = resolveManifestClaimRestore(
+        'tsconfig.json',
+        claim,
+        readPackageJsonPath(tsconfigJson, claim.path),
+        options,
+      )
+      if (restore.warning) state.warnings.push(restore.warning)
+      if (restore.restore) state.tsconfigJsonChanges.push({ path, claim, action: 'restore' })
+    }
+  } catch {
+    state.warnings.push('tsconfig.json could not be parsed as JSON or JSONC and was left intact.')
+  }
+}
+
+function planPnpmWorkspaceClaims(
+  cwd: string,
+  manifest: Manifest,
+  options: CleanOptions,
+  state: CleanPlanningState,
+) {
+  if ((manifest.pnpmWorkspaceClaims ?? []).length === 0) return
+  const path = findPnpmWorkspaceYamlPath(cwd)
+  const safetyRoot = dirname(path)
+  const inspection = inspectProjectPath(safetyRoot, path)
+  if (!inspection.safe) {
+    state.blockers.push(formatProjectPathBlocker(safetyRoot, 'pnpm-workspace.yaml', inspection))
+    return
+  }
+  if (!existsSync(path)) {
+    recordMissingSourceGuard(state.missingSourceGuards, path, safetyRoot)
+    state.warnings.push(
+      'Manifest-owned pnpm-workspace.yaml changes are already missing because pnpm-workspace.yaml is missing.',
+    )
+    return
+  }
+
+  const source = readFileSync(path, 'utf8')
+  state.sourceHashes[resolve(path)] = createFileHash(source)
+  for (const claim of manifest.pnpmWorkspaceClaims ?? []) {
+    const current = readPnpmWorkspaceYamlClaimValue(source, claim.path)
+    // 안전하게 판독할 수 없는 YAML은 --force로도 복구하지 않는다.
+    if (!current.safeToEdit) {
+      state.blockers.push(current.blocker ?? 'Cannot safely inspect pnpm-workspace.yaml.')
+      return
+    }
+    const restore = resolveManifestClaimRestore('pnpm-workspace.yaml', claim, current, options)
+    if (restore.warning) state.warnings.push(restore.warning)
+    if (restore.restore) state.pnpmWorkspaceChanges.push({ path, claim, action: 'restore' })
+  }
+}
+
+function planYarnRcClaims(
+  cwd: string,
+  manifest: Manifest,
+  options: CleanOptions,
+  state: CleanPlanningState,
+) {
+  for (const claim of manifest.yarnRcClaims ?? []) {
+    if (!claim.changed) continue
+    const resolution = resolveYarnRcClaimPath(cwd, claim.file)
+    if (!resolution.safe) {
+      state.blockers.push(resolution.blocker)
+      continue
+    }
+    if (!existsSync(resolution.path)) {
+      recordMissingSourceGuard(state.missingSourceGuards, resolution.path, resolution.safetyRoot)
+      state.warnings.push(
+        `Manifest-owned ${YARN_RC_YAML_PATH} changes are already missing because ${claim.file} is missing.`,
+      )
+      continue
+    }
+
+    const stats = lstatSync(resolution.path)
+    if (!stats.isFile() || stats.nlink !== 1) {
+      state.blockers.push(
+        !stats.isFile()
+          ? `Manifest-owned ${YARN_RC_YAML_PATH} is not a regular file: ${claim.file}`
+          : `Manifest-owned ${YARN_RC_YAML_PATH} must have exactly one hard link: ${claim.file}`,
+      )
+      continue
+    }
+
+    const source = readFileSync(resolution.path, 'utf8')
+    state.sourceHashes[resolve(resolution.path)] = createFileHash(source)
+    const current = readYarnRcYamlClaimValue(source)
+    if (!current.safeToEdit) {
+      state.blockers.push(current.blocker ?? `Cannot safely inspect ${claim.file}.`)
+      continue
+    }
+
+    const restore = resolveManifestClaimRestore(YARN_RC_YAML_PATH, claim, current, options)
+    if (restore.warning) state.warnings.push(`${claim.file}: ${restore.warning}`)
+    if (restore.restore) {
+      state.yarnRcChanges.push({ path: resolution.path, claim, action: 'restore' })
+    }
+  }
+}
+
+function readCleanManifest(cwd: string) {
+  const path = resolve(cwd, MANIFEST_PATH)
+  const inspection = inspectProjectPath(cwd, path)
+  if (!inspection.safe) {
+    throw new Error(formatProjectPathBlocker(cwd, 'Frontron manifest', inspection))
+  }
+  const manifest = readManifest(cwd)
+  if (!manifest) {
+    throw new Error(`${MANIFEST_PATH} was not found. Nothing can be cleaned safely.`)
+  }
+  return manifest
+}
+
+// createCleanPlan 함수는 파일 삭제 계획과 설정 복구 계획을 조합만 한다.
 export function createCleanPlan(
   cwd: string,
   packageJson: PackageJson,
@@ -280,228 +474,27 @@ export function createCleanPlan(
     typeof packageJsonSourceOrOptions === 'string'
       ? (maybeOptions as CleanOptions)
       : packageJsonSourceOrOptions
-  const manifestAbsolutePath = resolve(cwd, MANIFEST_PATH)
-  const manifestInspection = inspectProjectPath(cwd, manifestAbsolutePath)
+  const manifest = readCleanManifest(cwd)
+  const state = createPlanningState(cwd, packageJsonSource)
 
-  if (!manifestInspection.safe) {
-    throw new Error(formatProjectPathBlocker(cwd, 'Frontron manifest', manifestInspection))
-  }
-
-  const manifest = readManifest(cwd)
-
-  if (!manifest) {
-    throw new Error(`${MANIFEST_PATH} was not found. Nothing can be cleaned safely.`)
-  }
-
-  const warnings: string[] = []
-
-  if (!manifest.fileHashes) {
-    warnings.push(
-      `${MANIFEST_PATH} does not include file hashes. Run "frontron update --yes" to refresh it.`,
-    )
-  }
-
-  if (!manifest.scriptCommands) {
-    warnings.push(
-      `${MANIFEST_PATH} does not include script commands. Run "frontron update --yes" to refresh it.`,
-    )
-  }
-
-  if (!manifest.packageJsonClaims) {
-    warnings.push(
-      `${MANIFEST_PATH} does not include package.json ownership. Run "frontron update --yes" to refresh it.`,
-    )
-  }
-
-  const blockers: string[] = []
-  const files = planManagedFiles(cwd, manifest, options, warnings, blockers)
-  const scripts = planManagedScripts(packageJson, manifest, options, warnings, blockers)
-  const packageJsonChanges: CleanPackageJsonChange[] = []
-  const tsconfigJsonChanges: CleanTsconfigJsonChange[] = []
-  const pnpmWorkspaceChanges: CleanPnpmWorkspaceChange[] = []
-  const yarnRcChanges: CleanYarnRcChange[] = []
-  const sourceHashes: Record<string, string> = {
-    [resolve(cwd, 'package.json')]: createFileHash(packageJsonSource),
-  }
-  const missingSourceGuards: CleanMissingSourceGuard[] = []
-  for (const claim of manifest.packageJsonClaims ?? []) {
-    const restore = resolveManifestClaimRestore(
-      'Package.json',
-      claim,
-      readPackageJsonPath(packageJson, claim.path),
-      options,
-    )
-
-    if (restore.warning) {
-      warnings.push(restore.warning)
-    }
-
-    if (restore.restore) {
-      packageJsonChanges.push({
-        claim,
-        action: 'restore',
-      })
-    }
-  }
-
-  const tsconfigJsonClaims = manifest.tsconfigJsonClaims ?? []
-
-  if (tsconfigJsonClaims.length > 0) {
-    const tsconfigPath = join(cwd, 'tsconfig.json')
-    const tsconfigInspection = inspectProjectPath(cwd, tsconfigPath)
-
-    if (!tsconfigInspection.safe) {
-      blockers.push(formatProjectPathBlocker(cwd, 'tsconfig.json', tsconfigInspection))
-    } else if (!existsSync(tsconfigPath)) {
-      recordMissingSourceGuard(missingSourceGuards, tsconfigPath, cwd)
-      warnings.push(
-        'Manifest-owned tsconfig.json changes are already missing because tsconfig.json is missing.',
-      )
-    } else {
-      try {
-        sourceHashes[resolve(tsconfigPath)] = createFileHash(readFileSync(tsconfigPath))
-        const tsconfigJson = readTsconfigJson(tsconfigPath)
-
-        for (const claim of tsconfigJsonClaims) {
-          const restore = resolveManifestClaimRestore(
-            'tsconfig.json',
-            claim,
-            readPackageJsonPath(tsconfigJson, claim.path),
-            options,
-          )
-
-          if (restore.warning) {
-            warnings.push(restore.warning)
-          }
-
-          if (restore.restore) {
-            tsconfigJsonChanges.push({
-              path: tsconfigPath,
-              claim,
-              action: 'restore',
-            })
-          }
-        }
-      } catch {
-        warnings.push('tsconfig.json could not be parsed as JSON or JSONC and was left intact.')
-      }
-    }
-  }
-
-  const pnpmWorkspaceClaims = manifest.pnpmWorkspaceClaims ?? []
-
-  if (pnpmWorkspaceClaims.length > 0) {
-    const pnpmWorkspacePath = findPnpmWorkspaceYamlPath(cwd)
-    const pnpmWorkspaceRoot = dirname(pnpmWorkspacePath)
-    const pnpmWorkspaceInspection = inspectProjectPath(pnpmWorkspaceRoot, pnpmWorkspacePath)
-
-    if (!pnpmWorkspaceInspection.safe) {
-      blockers.push(
-        formatProjectPathBlocker(pnpmWorkspaceRoot, 'pnpm-workspace.yaml', pnpmWorkspaceInspection),
-      )
-    } else if (!existsSync(pnpmWorkspacePath)) {
-      recordMissingSourceGuard(missingSourceGuards, pnpmWorkspacePath, pnpmWorkspaceRoot)
-      warnings.push(
-        'Manifest-owned pnpm-workspace.yaml changes are already missing because pnpm-workspace.yaml is missing.',
-      )
-    } else {
-      const pnpmWorkspaceSource = readFileSync(pnpmWorkspacePath, 'utf8')
-      sourceHashes[resolve(pnpmWorkspacePath)] = createFileHash(pnpmWorkspaceSource)
-
-      for (const claim of pnpmWorkspaceClaims) {
-        const current = readPnpmWorkspaceYamlClaimValue(pnpmWorkspaceSource, claim.path)
-
-        // 안전하게 판독할 수 없는 YAML은 --force로도 복구하거나 제거하지 않는다.
-        if (!current.safeToEdit) {
-          blockers.push(current.blocker ?? 'Cannot safely inspect pnpm-workspace.yaml.')
-          break
-        }
-
-        const restore = resolveManifestClaimRestore('pnpm-workspace.yaml', claim, current, options)
-
-        if (restore.warning) {
-          warnings.push(restore.warning)
-        }
-
-        if (restore.restore) {
-          pnpmWorkspaceChanges.push({
-            path: pnpmWorkspacePath,
-            claim,
-            action: 'restore',
-          })
-        }
-      }
-    }
-  }
-
-  for (const claim of manifest.yarnRcClaims ?? []) {
-    if (!claim.changed) {
-      continue
-    }
-
-    const resolution = resolveYarnRcClaimPath(cwd, claim.file)
-
-    if (!resolution.safe) {
-      blockers.push(resolution.blocker)
-      continue
-    }
-
-    if (!existsSync(resolution.path)) {
-      recordMissingSourceGuard(missingSourceGuards, resolution.path, resolution.safetyRoot)
-      warnings.push(
-        `Manifest-owned ${YARN_RC_YAML_PATH} changes are already missing because ${claim.file} is missing.`,
-      )
-      continue
-    }
-
-    const stats = lstatSync(resolution.path)
-
-    if (!stats.isFile()) {
-      blockers.push(`Manifest-owned ${YARN_RC_YAML_PATH} is not a regular file: ${claim.file}`)
-      continue
-    }
-
-    if (stats.nlink !== 1) {
-      blockers.push(
-        `Manifest-owned ${YARN_RC_YAML_PATH} must have exactly one hard link: ${claim.file}`,
-      )
-      continue
-    }
-
-    const yarnRcSource = readFileSync(resolution.path, 'utf8')
-    sourceHashes[resolve(resolution.path)] = createFileHash(yarnRcSource)
-    const current = readYarnRcYamlClaimValue(yarnRcSource)
-
-    if (!current.safeToEdit) {
-      blockers.push(current.blocker ?? `Cannot safely inspect ${claim.file}.`)
-      continue
-    }
-
-    const restore = resolveManifestClaimRestore(YARN_RC_YAML_PATH, claim, current, options)
-
-    if (restore.warning) {
-      warnings.push(`${claim.file}: ${restore.warning}`)
-    }
-
-    if (restore.restore) {
-      yarnRcChanges.push({
-        path: resolution.path,
-        claim,
-        action: 'restore',
-      })
-    }
-  }
+  addManifestRefreshWarnings(manifest, state.warnings)
+  const files = planManagedFiles(cwd, manifest, options, state.warnings, state.blockers)
+  const scripts = planManagedScripts(packageJson, manifest, options, state.warnings, state.blockers)
+  planPackageJsonClaims(packageJson, manifest, options, state)
+  planTsconfigClaims(cwd, manifest, options, state)
+  planPnpmWorkspaceClaims(cwd, manifest, options, state)
+  planYarnRcClaims(cwd, manifest, options, state)
 
   return {
     files,
     scripts,
-    packageJsonChanges,
-    tsconfigJsonChanges,
-    pnpmWorkspaceChanges,
-    yarnRcChanges,
-    sourceHashes,
-    missingSourceGuards,
-    warnings,
-    blockers,
+    packageJsonChanges: state.packageJsonChanges,
+    tsconfigJsonChanges: state.tsconfigJsonChanges,
+    pnpmWorkspaceChanges: state.pnpmWorkspaceChanges,
+    yarnRcChanges: state.yarnRcChanges,
+    sourceHashes: state.sourceHashes,
+    missingSourceGuards: state.missingSourceGuards,
+    warnings: state.warnings,
+    blockers: state.blockers,
   }
 }

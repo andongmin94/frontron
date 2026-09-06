@@ -41,18 +41,103 @@ function handlePendingTransaction(cwd: string, allowRecovery: boolean, output: C
   if (!allowRecovery) {
     throw new Error(
       'A pending transaction exists. No files were changed. Back up user edits and ' +
-      'rerun a write command with --yes (without --dry-run) to attempt recovery. ' +
-      'Conflicting files and the journal will be preserved.',
+        'rerun a write command with --yes (without --dry-run) to attempt recovery. ' +
+        'Conflicting files and the journal will be preserved.',
     )
   }
   const recovery = recoverPendingTransaction(cwd)
   if (recovery.recovered) {
     output.info(
       `[Frontron] Recovered an interrupted ${recovery.operation} transaction. ` +
-      'The requested command was not applied. Inspect the restored project and run it again.',
+        'The requested command was not applied. Inspect the restored project and run it again.',
     )
   }
   return true
+}
+
+function printCommandHelp(
+  command: ReturnType<typeof parseCliOptions>['command'],
+  output: CliOutput,
+) {
+  switch (command) {
+    case 'init':
+      printInitHelp(output)
+      return
+    case 'doctor':
+      printDoctorHelp(output)
+      return
+    case 'clean':
+      printCleanHelp(output)
+      return
+    case 'update':
+      printUpdateHelp(output)
+      return
+    default:
+      printHelp(output)
+  }
+}
+
+// 프로젝트 선택과 중단 트랜잭션 복구 판단을 CLI 진입점에서 분리한다.
+function resolveCommandProject(
+  invocationCwd: string,
+  command: NonNullable<ReturnType<typeof parseCliOptions>['command']>,
+  project: string | undefined,
+  allowRecovery: boolean,
+  output: CliOutput,
+) {
+  // package.json이 반쯤 쓰인 상태에서도 루트 저널은 먼저 확인할 수 있어야 한다.
+  if (
+    command !== 'doctor' &&
+    !project &&
+    handlePendingTransaction(invocationCwd, allowRecovery, output)
+  ) {
+    return null
+  }
+
+  const resolution = resolveWorkspaceProject(invocationCwd, command, project)
+  const cwd = resolution.projectRoot
+  if (cwd !== invocationCwd) {
+    output.info(
+      `[Frontron] Using workspace project: ${relative(resolution.invocationRoot, cwd).replace(/\\/g, '/')}`,
+    )
+  }
+
+  if (
+    command !== 'doctor' &&
+    (project || cwd !== invocationCwd) &&
+    handlePendingTransaction(cwd, allowRecovery, output)
+  ) {
+    return null
+  }
+
+  return cwd
+}
+
+async function runParsedCommand(
+  command: NonNullable<ReturnType<typeof parseCliOptions>['command']>,
+  parsed: ReturnType<typeof parseCliOptions>,
+  cwd: string,
+  output: CliOutput,
+  context: CliContext,
+) {
+  const io = {
+    cwd,
+    output,
+    stdin: context.stdin ?? process.stdin,
+    stdout: context.stdout ?? process.stdout,
+    prompter: context.prompter,
+  }
+
+  switch (command) {
+    case 'init':
+      return await runInit(parsed.options, io)
+    case 'doctor':
+      return await runDoctor({ cwd, output })
+    case 'clean':
+      return await runClean(parsed.options, { cwd, output })
+    case 'update':
+      return await runUpdate(parsed.options, io)
+  }
 }
 
 export async function runCli(
@@ -71,22 +156,7 @@ export async function runCli(
   }
 
   if (parsed.help) {
-    switch (parsed.command) {
-      case 'init':
-        printInitHelp(output)
-        break
-      case 'doctor':
-        printDoctorHelp(output)
-        break
-      case 'clean':
-        printCleanHelp(output)
-        break
-      case 'update':
-        printUpdateHelp(output)
-        break
-      default:
-        printHelp(output)
-    }
+    printCommandHelp(parsed.command, output)
     return 0
   }
 
@@ -96,53 +166,11 @@ export async function runCli(
     return 0
   }
 
-  const allowRecovery = command !== 'doctor' && parsed.options.yes && !parsed.options.dryRun
-  let cwd: string
   try {
-    // A partially written package.json can prevent workspace resolution. Only
-    // inspect the invocation root here when no other project was selected.
-    // Doctor owns its existing read-only diagnostics, not this recovery path.
-    if (command !== 'doctor' && !parsed.project && handlePendingTransaction(invocationCwd, allowRecovery, output)) {
-      return 1
-    }
-    const resolution = resolveWorkspaceProject(invocationCwd, command, parsed.project)
-    cwd = resolution.projectRoot
-    if (cwd !== invocationCwd) {
-      output.info(
-        `[Frontron] Using workspace project: ${relative(resolution.invocationRoot, cwd).replace(/\\/g, '/')}`,
-      )
-    }
-    if (command !== 'doctor' && (parsed.project || cwd !== invocationCwd) && handlePendingTransaction(cwd, allowRecovery, output)) {
-      return 1
-    }
-  } catch (error) {
-    output.error(`[Frontron] ${(error as Error).message}`)
-    return 1
-  }
-
-  try {
-    switch (command) {
-      case 'init':
-        return await runInit(parsed.options, {
-          cwd,
-          output,
-          stdin: context.stdin ?? process.stdin,
-          stdout: context.stdout ?? process.stdout,
-          prompter: context.prompter,
-        })
-      case 'doctor':
-        return await runDoctor({ cwd, output })
-      case 'clean':
-        return await runClean(parsed.options, { cwd, output })
-      case 'update':
-        return await runUpdate(parsed.options, {
-          cwd,
-          output,
-          stdin: context.stdin ?? process.stdin,
-          stdout: context.stdout ?? process.stdout,
-          prompter: context.prompter,
-        })
-    }
+    const allowRecovery = command !== 'doctor' && parsed.options.yes && !parsed.options.dryRun
+    const cwd = resolveCommandProject(invocationCwd, command, parsed.project, allowRecovery, output)
+    if (!cwd) return 1
+    return await runParsedCommand(command, parsed, cwd, output, context)
   } catch (error) {
     output.error(`[Frontron] ${(error as Error).message}`)
     return 1

@@ -68,7 +68,7 @@ function createDoctorNextSteps(
 ) {
   if (pendingTransactionState) {
     return [
-      'Run a valid init, clean, or update command to recover the pending transaction, then run doctor again.',
+      'Run init, clean, or update with --yes (without --dry-run) to recover the pending transaction, then inspect the project and rerun doctor.',
     ]
   }
 
@@ -288,10 +288,191 @@ function inspectTemplateState(
   inspectToolDependencies(packageJson, templateDependencies, findings)
 }
 
-// runDoctor 함수는 현재 프로젝트의 Frontron 초기화 상태를 점검한다.
+// manifest의 선택적 메타데이터가 빠졌을 때 갱신 필요성을 한곳에서 안내한다.
+function inspectManifestMetadata(manifest: FrontronManifest, findings: DoctorFindings) {
+  const fields = [
+    [manifest.fileHashes, 'file hashes'],
+    [manifest.scriptCommands, 'script commands'],
+    [manifest.packageJsonClaims, 'package.json ownership'],
+  ] as const
+
+  for (const [value, label] of fields) {
+    if (!value) {
+      findings.warnings.push(
+        `${MANIFEST_PATH} does not include ${label}. Run "frontron update --yes" to refresh it.`,
+      )
+    }
+  }
+}
+
+// tsconfig claim은 JSONC 파싱 실패와 경로 안전 문제를 별도로 보고한다.
+function inspectTsconfigClaims(cwd: string, manifest: FrontronManifest, findings: DoctorFindings) {
+  if (manifest.tsconfigJsonClaims.length === 0) return
+
+  const tsconfigPath = join(cwd, 'tsconfig.json')
+  const inspection = inspectProjectPath(cwd, tsconfigPath)
+  if (!inspection.safe) {
+    findings.blockers.push(formatProjectPathBlocker(cwd, 'tsconfig.json', inspection))
+    return
+  }
+  if (!existsSync(tsconfigPath)) {
+    findings.warnings.push(
+      'Manifest-owned tsconfig.json changes cannot be checked because tsconfig.json is missing.',
+    )
+    return
+  }
+
+  try {
+    const tsconfigJson = readTsconfigJson(tsconfigPath)
+    for (const claim of manifest.tsconfigJsonClaims) {
+      addClaimInspection(
+        findings,
+        inspectManifestClaim('tsconfig.json', claim, readPackageJsonPath(tsconfigJson, claim.path)),
+      )
+    }
+  } catch {
+    findings.warnings.push('tsconfig.json could not be parsed as JSON or JSONC.')
+  }
+}
+
+// pnpm workspace claim은 파일 자체의 안전성과 YAML 편집 가능성을 모두 검사한다.
+function inspectPnpmWorkspaceClaims(
+  cwd: string,
+  manifest: FrontronManifest,
+  findings: DoctorFindings,
+) {
+  if (manifest.pnpmWorkspaceClaims.length === 0) return
+
+  const workspacePath = findPnpmWorkspaceYamlPath(cwd)
+  const workspaceRoot = dirname(workspacePath)
+  const inspection = inspectProjectPath(workspaceRoot, workspacePath)
+  if (!inspection.safe) {
+    findings.blockers.push(
+      formatProjectPathBlocker(workspaceRoot, 'pnpm-workspace.yaml', inspection),
+    )
+    return
+  }
+  if (!existsSync(workspacePath)) {
+    findings.warnings.push(
+      'Manifest-owned pnpm-workspace.yaml changes cannot be checked because pnpm-workspace.yaml is missing.',
+    )
+    return
+  }
+
+  const source = readFileSync(workspacePath, 'utf8')
+  for (const claim of manifest.pnpmWorkspaceClaims) {
+    const current = readPnpmWorkspaceYamlClaimValue(source, claim.path)
+    if (!current.safeToEdit) {
+      findings.blockers.push(current.blocker ?? 'Cannot safely inspect pnpm-workspace.yaml.')
+      return
+    }
+    addClaimInspection(findings, inspectManifestClaim('pnpm-workspace.yaml', claim, current))
+  }
+}
+
+// Yarn 설정은 프로젝트 밖 상위 workspace 파일을 가리킬 수 있어 해석된 safetyRoot를 그대로 따른다.
+function inspectYarnRcClaims(cwd: string, manifest: FrontronManifest, findings: DoctorFindings) {
+  for (const claim of manifest.yarnRcClaims) {
+    const resolution = resolveYarnRcClaimPath(cwd, claim.file)
+    if (!resolution.safe) {
+      findings.blockers.push(resolution.blocker)
+      continue
+    }
+    if (!existsSync(resolution.path)) {
+      findings.warnings.push(
+        `Manifest-owned ${YARN_RC_YAML_PATH} changes cannot be checked because ${claim.file} is missing.`,
+      )
+      continue
+    }
+
+    const stats = lstatSync(resolution.path)
+    if (!stats.isFile() || stats.nlink !== 1) {
+      findings.blockers.push(
+        !stats.isFile()
+          ? `Manifest-owned ${YARN_RC_YAML_PATH} is not a regular file: ${claim.file}`
+          : `Manifest-owned ${YARN_RC_YAML_PATH} must have exactly one hard link: ${claim.file}`,
+      )
+      continue
+    }
+
+    const current = readYarnRcYamlClaimValue(readFileSync(resolution.path, 'utf8'))
+    if (!current.safeToEdit) {
+      findings.blockers.push(current.blocker ?? `Cannot safely inspect ${claim.file}.`)
+      continue
+    }
+
+    addClaimInspection(
+      findings,
+      inspectManifestClaim(YARN_RC_YAML_PATH, claim, current),
+      `${claim.file}: `,
+    )
+  }
+}
+
+function inspectPackageJsonClaims(
+  packageJson: PackageJson,
+  manifest: FrontronManifest,
+  findings: DoctorFindings,
+) {
+  for (const claim of manifest.packageJsonClaims) {
+    addClaimInspection(
+      findings,
+      inspectManifestClaim('package.json', claim, readPackageJsonPath(packageJson, claim.path)),
+    )
+  }
+}
+
+// 런타임별 필수 조건과 Electron 진입점을 별도 검증해 runDoctor의 분기를 줄인다.
+function inspectRuntimeRequirements(
+  cwd: string,
+  packageJson: PackageJson,
+  manifest: FrontronManifest,
+  findings: DoctorFindings,
+) {
+  if (isValidAppVersion(packageJson.version)) {
+    findings.checks.push(`package.json version is valid (${packageJson.version})`)
+  } else {
+    findings.blockers.push(
+      'package.json version must be a valid SemVer value for Electron packaging',
+    )
+  }
+
+  if (manifest.adapter === 'remix-node-server') {
+    for (const dependency of ['@remix-run/serve', 'esbuild']) {
+      if (hasPackageDependency(packageJson, dependency)) {
+        findings.checks.push(`${dependency} dependency found`)
+      } else {
+        findings.blockers.push(`Remix packaging requires ${dependency}`)
+      }
+    }
+  }
+
+  if (packageJson.build?.extraMetadata?.main === 'dist-electron/main.js') {
+    findings.checks.push('build.extraMetadata.main points to dist-electron/main.js')
+  } else {
+    findings.blockers.push('build.extraMetadata.main must point to dist-electron/main.js')
+  }
+
+  const electronTsconfigPath = join(cwd, 'tsconfig.electron.json')
+  const inspection = inspectProjectPath(cwd, electronTsconfigPath)
+  if (!inspection.safe) {
+    findings.blockers.push(formatProjectPathBlocker(cwd, 'tsconfig.electron.json', inspection))
+  } else if (existsSync(electronTsconfigPath)) {
+    findings.checks.push('tsconfig.electron.json exists')
+  } else {
+    findings.blockers.push('Missing tsconfig.electron.json')
+  }
+}
+
+function createDoctorStatus(findings: DoctorFindings) {
+  if (findings.blockers.length > 0) return 'blocked'
+  if (findings.warnings.length > 0) return 'warnings'
+  return 'healthy'
+}
+
+// runDoctor 함수는 읽기 전용 진입점으로서 각 검사 모듈을 순서대로 조율한다.
 export async function runDoctor(context: DoctorContext) {
   const pendingTransactionState = collectPendingTransactionState(context.cwd)
-
   if (pendingTransactionState.length > 0) {
     writeDoctorReport(
       context,
@@ -306,219 +487,63 @@ export async function runDoctor(context: DoctorContext) {
   }
 
   const packageJsonPath = join(context.cwd, 'package.json')
-
   assertProjectPathSafe(context.cwd, packageJsonPath, 'package.json')
-
   if (!existsSync(packageJsonPath)) {
     throw new Error('package.json was not found in the current directory.')
   }
 
   const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as PackageJson
-  const warnings: string[] = []
-  const blockers: string[] = []
-  const checks: string[] = ['package.json found']
-  const findings = { checks, warnings, blockers }
+  const findings: DoctorFindings = { checks: ['package.json found'], warnings: [], blockers: [] }
   const manifestPath = resolve(context.cwd, MANIFEST_PATH)
   const manifestInspection = inspectProjectPath(context.cwd, manifestPath)
-
   if (!manifestInspection.safe) {
-    blockers.push(formatProjectPathBlocker(context.cwd, 'Frontron manifest', manifestInspection))
-    writeDoctorReport(context, 'blocked', true, checks, warnings, blockers)
+    findings.blockers.push(
+      formatProjectPathBlocker(context.cwd, 'Frontron manifest', manifestInspection),
+    )
+    writeDoctorReport(
+      context,
+      'blocked',
+      true,
+      findings.checks,
+      findings.warnings,
+      findings.blockers,
+    )
     return 1
   }
 
   const manifest = readManifest(context.cwd)
-
   if (!manifest) {
-    warnings.push(`${MANIFEST_PATH} was not found. Run "frontron init" before doctor.`)
-    blockers.push('Frontron has not been initialized in this project.')
-    writeDoctorReport(context, 'not initialized', false, checks, warnings, blockers)
+    findings.warnings.push(`${MANIFEST_PATH} was not found. Run "frontron init" before doctor.`)
+    findings.blockers.push('Frontron has not been initialized in this project.')
+    writeDoctorReport(
+      context,
+      'not initialized',
+      false,
+      findings.checks,
+      findings.warnings,
+      findings.blockers,
+    )
     return 1
   }
 
-  checks.push(`${MANIFEST_PATH} found`)
-
-  if (!manifest.fileHashes) {
-    warnings.push(
-      `${MANIFEST_PATH} does not include file hashes. Run "frontron update --yes" to refresh it.`,
-    )
-  }
-
-  if (!manifest.scriptCommands) {
-    warnings.push(
-      `${MANIFEST_PATH} does not include script commands. Run "frontron update --yes" to refresh it.`,
-    )
-  }
-
-  if (!manifest.packageJsonClaims) {
-    warnings.push(
-      `${MANIFEST_PATH} does not include package.json ownership. Run "frontron update --yes" to refresh it.`,
-    )
-  }
-
-  const tsconfigJsonClaims = manifest.tsconfigJsonClaims ?? []
-
-  if (tsconfigJsonClaims.length > 0) {
-    const tsconfigPath = join(context.cwd, 'tsconfig.json')
-    const tsconfigInspection = inspectProjectPath(context.cwd, tsconfigPath)
-
-    if (!tsconfigInspection.safe) {
-      blockers.push(formatProjectPathBlocker(context.cwd, 'tsconfig.json', tsconfigInspection))
-    } else if (!existsSync(tsconfigPath)) {
-      warnings.push(
-        'Manifest-owned tsconfig.json changes cannot be checked because tsconfig.json is missing.',
-      )
-    } else {
-      try {
-        const tsconfigJson = readTsconfigJson(tsconfigPath)
-
-        for (const claim of tsconfigJsonClaims) {
-          const status = inspectManifestClaim(
-            'tsconfig.json',
-            claim,
-            readPackageJsonPath(tsconfigJson, claim.path),
-          )
-
-          addClaimInspection(findings, status)
-        }
-      } catch {
-        warnings.push('tsconfig.json could not be parsed as JSON or JSONC.')
-      }
-    }
-  }
-
-  const pnpmWorkspaceClaims = manifest.pnpmWorkspaceClaims ?? []
-
-  if (pnpmWorkspaceClaims.length > 0) {
-    const pnpmWorkspacePath = findPnpmWorkspaceYamlPath(context.cwd)
-    const pnpmWorkspaceRoot = dirname(pnpmWorkspacePath)
-    const pnpmWorkspaceInspection = inspectProjectPath(pnpmWorkspaceRoot, pnpmWorkspacePath)
-
-    if (!pnpmWorkspaceInspection.safe) {
-      blockers.push(
-        formatProjectPathBlocker(pnpmWorkspaceRoot, 'pnpm-workspace.yaml', pnpmWorkspaceInspection),
-      )
-    } else if (!existsSync(pnpmWorkspacePath)) {
-      warnings.push(
-        'Manifest-owned pnpm-workspace.yaml changes cannot be checked because pnpm-workspace.yaml is missing.',
-      )
-    } else {
-      const pnpmWorkspaceSource = readFileSync(pnpmWorkspacePath, 'utf8')
-
-      for (const claim of pnpmWorkspaceClaims) {
-        const current = readPnpmWorkspaceYamlClaimValue(pnpmWorkspaceSource, claim.path)
-
-        // 안전하게 판독할 수 없는 YAML은 누락 경고가 아니라 blocker로 보고한다.
-        if (!current.safeToEdit) {
-          blockers.push(current.blocker ?? 'Cannot safely inspect pnpm-workspace.yaml.')
-          break
-        }
-
-        const status = inspectManifestClaim('pnpm-workspace.yaml', claim, current)
-
-        addClaimInspection(findings, status)
-      }
-    }
-  }
-
-  const yarnRcClaims = manifest.yarnRcClaims ?? []
-
-  for (const claim of yarnRcClaims) {
-    const resolution = resolveYarnRcClaimPath(context.cwd, claim.file)
-
-    if (!resolution.safe) {
-      blockers.push(resolution.blocker)
-      continue
-    }
-
-    if (!existsSync(resolution.path)) {
-      warnings.push(
-        `Manifest-owned ${YARN_RC_YAML_PATH} changes cannot be checked because ${claim.file} is missing.`,
-      )
-      continue
-    }
-
-    const stats = lstatSync(resolution.path)
-
-    if (!stats.isFile()) {
-      blockers.push(`Manifest-owned ${YARN_RC_YAML_PATH} is not a regular file: ${claim.file}`)
-      continue
-    }
-
-    if (stats.nlink !== 1) {
-      blockers.push(
-        `Manifest-owned ${YARN_RC_YAML_PATH} must have exactly one hard link: ${claim.file}`,
-      )
-      continue
-    }
-
-    const current = readYarnRcYamlClaimValue(readFileSync(resolution.path, 'utf8'))
-
-    if (!current.safeToEdit) {
-      blockers.push(current.blocker ?? `Cannot safely inspect ${claim.file}.`)
-      continue
-    }
-
-    const status = inspectManifestClaim(YARN_RC_YAML_PATH, claim, current)
-
-    addClaimInspection(findings, status, `${claim.file}: `)
-  }
-
+  findings.checks.push(`${MANIFEST_PATH} found`)
+  inspectManifestMetadata(manifest, findings)
+  inspectTsconfigClaims(context.cwd, manifest, findings)
+  inspectPnpmWorkspaceClaims(context.cwd, manifest, findings)
+  inspectYarnRcClaims(context.cwd, manifest, findings)
   inspectTemplateState(manifest, packageJson, findings)
   inspectManifestFiles(context.cwd, manifest, findings)
   inspectManifestScripts(packageJson, manifest, findings)
+  inspectPackageJsonClaims(packageJson, manifest, findings)
+  inspectRuntimeRequirements(context.cwd, packageJson, manifest, findings)
 
-  for (const claim of manifest.packageJsonClaims ?? []) {
-    const status = inspectManifestClaim(
-      'package.json',
-      claim,
-      readPackageJsonPath(packageJson, claim.path),
-    )
-
-    addClaimInspection(findings, status)
-  }
-
-  if (isValidAppVersion(packageJson.version)) {
-    checks.push(`package.json version is valid (${packageJson.version})`)
-  } else {
-    blockers.push('package.json version must be a valid SemVer value for Electron packaging')
-  }
-
-  if (manifest?.adapter === 'remix-node-server') {
-    if (hasPackageDependency(packageJson, '@remix-run/serve')) {
-      checks.push('@remix-run/serve dependency found')
-    } else {
-      blockers.push('Remix packaging requires @remix-run/serve')
-    }
-
-    if (hasPackageDependency(packageJson, 'esbuild')) {
-      checks.push('esbuild dependency found')
-    } else {
-      blockers.push('Remix packaging requires esbuild')
-    }
-  }
-
-  if (packageJson.build?.extraMetadata?.main === 'dist-electron/main.js') {
-    checks.push('build.extraMetadata.main points to dist-electron/main.js')
-  } else {
-    blockers.push('build.extraMetadata.main must point to dist-electron/main.js')
-  }
-
-  const electronTsconfigPath = join(context.cwd, 'tsconfig.electron.json')
-  const electronTsconfigInspection = inspectProjectPath(context.cwd, electronTsconfigPath)
-
-  if (!electronTsconfigInspection.safe) {
-    blockers.push(
-      formatProjectPathBlocker(context.cwd, 'tsconfig.electron.json', electronTsconfigInspection),
-    )
-  } else if (existsSync(electronTsconfigPath)) {
-    checks.push('tsconfig.electron.json exists')
-  } else {
-    blockers.push('Missing tsconfig.electron.json')
-  }
-
-  const status = blockers.length > 0 ? 'blocked' : warnings.length > 0 ? 'warnings' : 'healthy'
-  writeDoctorReport(context, status, true, checks, warnings, blockers)
-
-  return blockers.length > 0 ? 1 : 0
+  writeDoctorReport(
+    context,
+    createDoctorStatus(findings),
+    true,
+    findings.checks,
+    findings.warnings,
+    findings.blockers,
+  )
+  return findings.blockers.length > 0 ? 1 : 0
 }

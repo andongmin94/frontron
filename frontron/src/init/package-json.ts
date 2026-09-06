@@ -375,70 +375,60 @@ function applyDefaultAppIcon(
   if (!hasExistingIcon) build.icon = `${config.desktopDir}/icon.svg`
 }
 
-export function patchPackageJson(config: InitConfig) {
-  const packageJson = config.packageJson
-  const scripts = { ...(packageJson.scripts ?? {}) }
-  const dependencies = { ...(packageJson.dependencies ?? {}) }
-  const devDependencies = { ...(packageJson.devDependencies ?? {}) }
-  const build = ensureObject<NonNullable<PackageJson['build']>>(packageJson.build, 'build', {})
-  const directories = ensureObject<{ output?: string; buildResources?: string }>(
-    build.directories, 'build.directories', {},
-  )
-  const extraMetadata = ensureObject<Record<string, unknown>>(
-    build.extraMetadata,
-    'build.extraMetadata',
-    {},
-  )
-  const files = ensureArray(build.files, 'build.files')
-  const templateDependencies =
-    config.templateDependencies ?? loadCreateFrontronTemplate().dependencies
-
+// 패키지 버전은 electron-builder가 읽을 수 있는 SemVer로 정규화한다.
+function normalizePackageVersion(packageJson: PackageJson) {
   if (typeof packageJson.version === 'undefined') {
     packageJson.version = '0.0.0'
-  } else if (!isValidAppVersion(packageJson.version)) {
+    return
+  }
+
+  if (!isValidAppVersion(packageJson.version)) {
     throw new Error(
       `package.json version must be a valid SemVer value for Electron packaging: ${String(packageJson.version)}`,
     )
   }
+}
 
-  Object.assign(scripts, createDesktopScriptCommands(config))
+// 기존 프로젝트의 의존성은 우선 보존하고, 빠진 Electron 도구만 개발 의존성으로 채운다.
+function applyToolDependencies(
+  packageJson: PackageJson,
+  devDependencies: Record<string, string>,
+  templateDependencies: InitConfig['templateDependencies'],
+) {
+  const template = templateDependencies ?? loadCreateFrontronTemplate().dependencies
 
   if (!packageJson.dependencies?.electron) {
-    devDependencies.electron ??= templateDependencies.electron
+    devDependencies.electron ??= template.electron
   }
-
   if (!packageJson.dependencies?.['electron-builder']) {
-    devDependencies['electron-builder'] ??= templateDependencies.electronBuilder
+    devDependencies['electron-builder'] ??= template.electronBuilder
   }
-
   if (!packageJson.dependencies?.['@types/node']) {
-    devDependencies['@types/node'] ??= templateDependencies.nodeTypes
+    devDependencies['@types/node'] ??= template.nodeTypes
   }
-
   if (!packageJson.dependencies?.typescript && shouldUseFrontronTypescriptVersion(packageJson)) {
-    devDependencies.typescript = templateDependencies.typescript
+    devDependencies.typescript = template.typescript
+  }
+}
+
+// Bun은 네이티브 설치 스크립트를 실행할 패키지를 명시적으로 신뢰 목록에 넣어야 한다.
+function applyBunTrustedDependencies(packageJson: PackageJson) {
+  const trustedDependencies = ensureArray(packageJson.trustedDependencies, 'trustedDependencies')
+
+  for (const dependencyName of BUN_TRUSTED_DEPENDENCIES) {
+    if (!trustedDependencies.includes(dependencyName)) trustedDependencies.push(dependencyName)
   }
 
-  if (config.packageManager === 'bun') {
-    const trustedDependencies = ensureArray(
-      packageJson.trustedDependencies,
-      'trustedDependencies',
-    )
+  packageJson.trustedDependencies = trustedDependencies
+}
 
-    for (const dependencyName of BUN_TRUSTED_DEPENDENCIES) {
-      if (!trustedDependencies.includes(dependencyName)) {
-        trustedDependencies.push(dependencyName)
-      }
-    }
-
-    packageJson.trustedDependencies = trustedDependencies
-  }
-
-  if (
-    config.adapter === 'remix-node-server' &&
-    !dependencies['@remix-run/serve'] &&
-    !devDependencies['@remix-run/serve']
-  ) {
+// Remix 런타임에만 필요한 도구는 중복 선언 없이 보충한다.
+function applyRemixDependencies(
+  packageJson: PackageJson,
+  dependencies: Record<string, string>,
+  devDependencies: Record<string, string>,
+) {
+  if (!dependencies['@remix-run/serve'] && !devDependencies['@remix-run/serve']) {
     devDependencies['@remix-run/serve'] =
       packageJson.devDependencies?.['@remix-run/serve'] ??
       packageJson.dependencies?.['@remix-run/node'] ??
@@ -446,51 +436,80 @@ export function patchPackageJson(config: InitConfig) {
       '^2.0.0'
   }
 
-  if (config.adapter === 'remix-node-server' && !devDependencies.esbuild) {
+  // dependencies에 이미 esbuild가 있으면 devDependencies에 다시 만들지 않는다.
+  if (!dependencies.esbuild && !devDependencies.esbuild) {
     devDependencies.esbuild = ESBUILD_VERSION
   }
+}
 
+// electron-builder가 가져갈 파일·asar·출력 경로를 한곳에서 구성한다.
+function applyBuildPackaging(
+  config: InitConfig,
+  build: NonNullable<PackageJson['build']>,
+  directories: { output?: string; buildResources?: string },
+  extraMetadata: Record<string, unknown>,
+  files: string[],
+) {
   applyDefaultAppIcon(config, build, directories.buildResources)
-
   build.appId ??= config.appId
   build.productName ??= config.productName
 
   const packageRootRuntimeDependencies = usesRootRuntimeDependencies(config)
-
-  if (!packageRootRuntimeDependencies) {
-    build.npmRebuild ??= false
-  }
+  if (!packageRootRuntimeDependencies) build.npmRebuild ??= false
 
   const filePatterns = ['dist-electron{,/**/*}', `${config.outDir}{,/**/*}`, 'package.json']
-
-  if (!packageRootRuntimeDependencies) {
-    filePatterns.push('!node_modules{,/**/*}')
-  }
-
+  if (!packageRootRuntimeDependencies) filePatterns.push('!node_modules{,/**/*}')
   filePatterns.push('public{,/**/*}')
 
   for (const pattern of filePatterns) {
     if (!files.includes(pattern)) files.push(pattern)
   }
-
   build.files = files
 
   if (config.runtimeStrategy === 'node-server') {
     const asarUnpack = ensureArray(build.asarUnpack, 'build.asarUnpack')
     const unpackPattern = `${config.outDir}{,/**/*}`
-
     if (!asarUnpack.includes(unpackPattern)) asarUnpack.push(unpackPattern)
     build.asarUnpack = asarUnpack
   }
 
   directories.output ??= 'release'
   build.directories = directories
-
   if (typeof extraMetadata.main === 'undefined' || config.allowExtraMetadataMainOverride) {
     extraMetadata.main = 'dist-electron/main.js'
   }
-
   build.extraMetadata = extraMetadata
+}
+
+// patchPackageJson 함수는 세부 정책을 조합만 하고, 각 정책의 분기는 전용 helper가 담당한다.
+export function patchPackageJson(config: InitConfig) {
+  const packageJson = config.packageJson
+  const scripts = { ...(packageJson.scripts ?? {}) }
+  const dependencies = { ...(packageJson.dependencies ?? {}) }
+  const devDependencies = { ...(packageJson.devDependencies ?? {}) }
+  const build = ensureObject<NonNullable<PackageJson['build']>>(packageJson.build, 'build', {})
+  const directories = ensureObject<{ output?: string; buildResources?: string }>(
+    build.directories,
+    'build.directories',
+    {},
+  )
+  const extraMetadata = ensureObject<Record<string, unknown>>(
+    build.extraMetadata,
+    'build.extraMetadata',
+    {},
+  )
+  const files = ensureArray(build.files, 'build.files')
+
+  normalizePackageVersion(packageJson)
+  Object.assign(scripts, createDesktopScriptCommands(config))
+  applyToolDependencies(packageJson, devDependencies, config.templateDependencies)
+
+  if (config.packageManager === 'bun') applyBunTrustedDependencies(packageJson)
+  if (config.adapter === 'remix-node-server') {
+    applyRemixDependencies(packageJson, dependencies, devDependencies)
+  }
+
+  applyBuildPackaging(config, build, directories, extraMetadata, files)
 
   packageJson.scripts = scripts
   if (Object.keys(dependencies).length > 0 || packageJson.dependencies) {

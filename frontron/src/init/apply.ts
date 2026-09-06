@@ -19,13 +19,11 @@ import type { TsconfigJsonPatchPlan } from './tsconfig-json'
 import type { PnpmWorkspaceYamlPatchPlan } from './pnpm-workspace-yaml'
 import type { YarnRcYamlPatchPlan } from './yarnrc-yaml'
 
-// createPlannedSourceExpectedHash 함수는 계획 원문과 생성 여부를 transaction expected hash로 바꾼다.
 function createPlannedSourceExpectedHash(source: string, created: boolean) {
   if (created) return null
   return createTransactionSourceHash(source)
 }
 
-// writeTrackedFile 함수는 transaction 저널이 보호하는 파일을 안전 경로 재검사 후 기록한다.
 function writeTrackedFile(
   transaction: TransactionHandle,
   filePath: string,
@@ -37,7 +35,6 @@ function writeTrackedFile(
   writeTransactionFile(transaction, filePath, content, safetyRoot)
 }
 
-// createInitTransactionTargets 함수는 init이 쓸 모든 파일과 각 파일의 안전 경계를 한곳에 모은다.
 function createInitTransactionTargets(
   projectRoot: string,
   packageJsonPath: string,
@@ -108,29 +105,93 @@ function createInitTransactionTargets(
   return targets
 }
 
-// applyInitChanges 함수는 init 계획에 따라 생성 파일과 설정 파일을 실제 프로젝트에 기록한다.
+function resolveExternalSafetyRoot(projectRoot: string, path: string) {
+  return isInsideDirectory(projectRoot, resolve(path)) ? projectRoot : dirname(resolve(path))
+}
+
+function writeTsconfigPlan(
+  transaction: TransactionHandle,
+  projectRoot: string,
+  plan: TsconfigJsonPatchPlan | null,
+) {
+  if (!plan || plan.blockers.length > 0 || plan.changes.length === 0) return
+  assertProjectPathSafe(projectRoot, plan.path, 'tsconfig.json')
+  const unsupportedChange = plan.changes.find((change) => change.path !== 'exclude')
+  if (unsupportedChange) {
+    throw new Error(
+      `Cannot patch tsconfig.json without replacing JSONC formatting: ${unsupportedChange.path}`,
+    )
+  }
+
+  const nextSource = addTsconfigExcludeValues(
+    plan.source,
+    plan.changes.map((change) => change.value),
+  )
+  writeTrackedFile(transaction, plan.path, nextSource, projectRoot)
+}
+
+function writePnpmPlan(
+  transaction: TransactionHandle,
+  plan: PnpmWorkspaceYamlPatchPlan | null,
+  safetyRoot: string,
+) {
+  if (!plan || plan.blockers.length > 0 || plan.changes.length === 0) return
+  writeTrackedFile(transaction, plan.path, plan.nextSource, safetyRoot)
+}
+
+// Yarn 원문은 계획 이후 바뀌지 않았을 때만 덮어쓴다.
+function writeYarnPlan(
+  transaction: TransactionHandle,
+  plan: YarnRcYamlPatchPlan | null,
+  safetyRoot: string,
+) {
+  if (!plan || plan.blockers.length > 0 || plan.changes.length === 0) return
+  const exists = existsSync(plan.path)
+  const changedAfterPlan =
+    (plan.created && exists) ||
+    (!plan.created && (!exists || readFileSync(plan.path, 'utf8') !== plan.source))
+  if (changedAfterPlan) {
+    throw new Error(`${plan.path} changed after the init plan was created.`)
+  }
+  writeTrackedFile(transaction, plan.path, plan.nextSource, safetyRoot)
+}
+
+function rollbackInitTransaction(transaction: TransactionHandle | null, error: unknown): never {
+  let rollbackFailure: string | null = null
+  if (transaction) {
+    try {
+      rollbackTransaction(transaction)
+    } catch (rollbackError) {
+      rollbackFailure = `persistent journal: ${(rollbackError as Error).message}`
+    }
+  }
+
+  const rollbackMessage = rollbackFailure
+    ? ` Rollback also failed for: ${rollbackFailure}`
+    : ' Written files were rolled back.'
+  throw new Error(
+    `Init failed while writing project changes: ${(error as Error).message}.${rollbackMessage}`,
+    { cause: error },
+  )
+}
+
+// applyInitChanges 함수는 트랜잭션 순서만 관리하고 설정별 쓰기 정책은 helper에 맡긴다.
 export function applyInitChanges(packageJsonPath: string, plan: InitPlan) {
-  const {
-    packageJsonPlan: { packageJson },
-    tsconfigJsonPlan = null,
-    pnpmWorkspacePlan = null,
-    yarnRcPlan = null,
-  } = plan
+  const { packageJson } = plan.packageJsonPlan
+  const tsconfigJsonPlan = plan.tsconfigJsonPlan ?? null
+  const pnpmWorkspacePlan = plan.pnpmWorkspacePlan ?? null
+  const yarnRcPlan = plan.yarnRcPlan ?? null
   const writableFiles = plan.files.filter((file) => file.action !== 'blocked')
   const obsoleteFiles = plan.obsoleteFiles ?? []
-  const manifestPath = resolve(plan.config.cwd, MANIFEST_PATH)
+  const projectRoot = resolve(plan.config.cwd)
+  const manifestPath = resolve(projectRoot, MANIFEST_PATH)
   const generatedFiles = writableFiles.filter((file) => resolve(file.path) !== manifestPath)
   const manifestFiles = writableFiles.filter((file) => resolve(file.path) === manifestPath)
-  const projectRoot = resolve(plan.config.cwd)
   const pnpmWorkspaceSafetyRoot = pnpmWorkspacePlan
-    ? isInsideDirectory(projectRoot, resolve(pnpmWorkspacePlan.path))
-      ? projectRoot
-      : dirname(resolve(pnpmWorkspacePlan.path))
+    ? resolveExternalSafetyRoot(projectRoot, pnpmWorkspacePlan.path)
     : projectRoot
   const yarnRcSafetyRoot = yarnRcPlan
-    ? isInsideDirectory(projectRoot, resolve(yarnRcPlan.path))
-      ? projectRoot
-      : dirname(resolve(yarnRcPlan.path))
+    ? resolveExternalSafetyRoot(projectRoot, yarnRcPlan.path)
     : projectRoot
   const transactionTargets = createInitTransactionTargets(
     projectRoot,
@@ -148,99 +209,26 @@ export function applyInitChanges(packageJsonPath: string, plan: InitPlan) {
 
   try {
     transaction = beginTransaction(projectRoot, 'init', transactionTargets)
-
     for (const file of generatedFiles) {
       writeTrackedFile(transaction, file.path, file.content, projectRoot)
     }
-
     writeTrackedFile(
       transaction,
       packageJsonPath,
       `${JSON.stringify(packageJson, null, 2)}\n`,
       projectRoot,
     )
+    writeTsconfigPlan(transaction, projectRoot, tsconfigJsonPlan)
+    writePnpmPlan(transaction, pnpmWorkspacePlan, pnpmWorkspaceSafetyRoot)
+    writeYarnPlan(transaction, yarnRcPlan, yarnRcSafetyRoot)
 
-    if (
-      tsconfigJsonPlan &&
-      tsconfigJsonPlan.blockers.length === 0 &&
-      tsconfigJsonPlan.changes.length > 0
-    ) {
-      assertProjectPathSafe(projectRoot, tsconfigJsonPlan.path, 'tsconfig.json')
-
-      const unsupportedChange = tsconfigJsonPlan.changes.find((change) => change.path !== 'exclude')
-
-      if (unsupportedChange) {
-        throw new Error(
-          `Cannot patch tsconfig.json without replacing JSONC formatting: ${unsupportedChange.path}`,
-        )
-      }
-
-      const nextTsconfigSource = addTsconfigExcludeValues(
-        tsconfigJsonPlan.source,
-        tsconfigJsonPlan.changes.map((change) => change.value),
-      )
-
-      writeTrackedFile(transaction, tsconfigJsonPlan.path, nextTsconfigSource, projectRoot)
-    }
-
-    if (
-      pnpmWorkspacePlan &&
-      pnpmWorkspacePlan.blockers.length === 0 &&
-      pnpmWorkspacePlan.changes.length > 0
-    ) {
-      writeTrackedFile(
-        transaction,
-        pnpmWorkspacePlan.path,
-        pnpmWorkspacePlan.nextSource,
-        pnpmWorkspaceSafetyRoot,
-      )
-    }
-
-    if (yarnRcPlan && yarnRcPlan.blockers.length === 0 && yarnRcPlan.changes.length > 0) {
-      const yarnRcExists = existsSync(yarnRcPlan.path)
-
-      // 계획 이후 바뀐 workspace 설정을 오래된 preview로 덮어쓰지 않는다.
-      if (
-        (yarnRcPlan.created && yarnRcExists) ||
-        (!yarnRcPlan.created &&
-          (!yarnRcExists || readFileSync(yarnRcPlan.path, 'utf8') !== yarnRcPlan.source))
-      ) {
-        throw new Error(`${yarnRcPlan.path} changed after the init plan was created.`)
-      }
-
-      writeTrackedFile(transaction, yarnRcPlan.path, yarnRcPlan.nextSource, yarnRcSafetyRoot)
-    }
-
-    // manifest는 "적용 완료 증명서"에 가깝다.
-    // 중간 쓰기가 실패하면 rollback 후 manifest가 남지 않도록 마지막에만 기록한다.
-    for (const file of obsoleteFiles) {
-      removeTransactionFile(transaction, file.path, projectRoot)
-    }
-
+    // manifest는 적용 완료 증명서이므로 다른 변경이 끝난 뒤 마지막에 기록한다.
+    for (const file of obsoleteFiles) removeTransactionFile(transaction, file.path, projectRoot)
     for (const file of manifestFiles) {
       writeTrackedFile(transaction, file.path, file.content, projectRoot)
     }
-
     commitTransaction(transaction)
   } catch (error) {
-    const rollbackErrors: string[] = []
-
-    if (transaction) {
-      try {
-        rollbackTransaction(transaction)
-      } catch (rollbackError) {
-        rollbackErrors.push(`persistent journal: ${(rollbackError as Error).message}`)
-      }
-    }
-
-    const rollbackMessage =
-      rollbackErrors.length > 0
-        ? ` Rollback also failed for: ${rollbackErrors.join('; ')}`
-        : ' Written files were rolled back.'
-
-    throw new Error(
-      `Init failed while writing project changes: ${(error as Error).message}.${rollbackMessage}`,
-      { cause: error },
-    )
+    rollbackInitTransaction(transaction, error)
   }
 }

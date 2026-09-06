@@ -12,8 +12,6 @@ jobs:
   windows-distribution:
     runs-on: windows-latest
     timeout-minutes: 25
-    env:
-      FRONTRON_SMOKE_REPORT_DIR: ${{ runner.temp }}/frontron-windows-reports
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,6 +25,8 @@ jobs:
           npm ci --prefix create-frontron --fund=false --audit=false
           npm ci --prefix frontron --fund=false --audit=false
       - name: Check real MSI and portable consumers
+        env:
+          FRONTRON_SMOKE_REPORT_DIR: ${{ runner.temp }}/frontron-windows-reports
         run: node scripts/windows-distribution-smoke.mjs
       - name: Preserve validation reports
         if: always()

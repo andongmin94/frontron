@@ -28,10 +28,11 @@ icons are not silently overwritten. Electron-builder performs image conversion.
 
 For each app it runs the portable executable twice, silently installs the MSI,
 runs the exact installed product executable, and uninstalls the MSI. It checks
-React mounting, IPC, renderer Node-global isolation and rejection of an injected
-untrusted inline script. A test-only preload reports the documented
-`process.sandboxed` and `process.contextIsolated` properties. The test does not
-modify production BrowserWindow security options or add a production test hook.
+React mounting, IPC, renderer Node-global isolation and rejection of an inline
+event-handler attribute, including a real CSP violation event. A test-only
+preload reports the documented `process.sandboxed` and
+`process.contextIsolated` properties. The test does not modify production
+BrowserWindow security options or add a production test hook.
 An unrelated sentinel and a user-created file must survive uninstall. MSI
 arguments retain spaces and use the documented `PROPERTY="value"` syntax through
 Node's explicit `windowsVerbatimArguments` option; no command shell is used.
@@ -51,8 +52,13 @@ The fixture is an actual App Router application with `output: 'standalone'`,
 dynamic rendering and an **application-owned nonce CSP**, following Next.js's
 CSP guidance. The request and response contain the nonce policy so Next.js can
 nonce its framework/hydration scripts. Frontron must preserve that policy,
-including a different nonce per response, while a script without a nonce stays
-blocked. The fixture does not loosen Frontron's default script policy.
+including a different nonce per response. The server HTML deliberately includes
+a parser-inserted script without a nonce: it must be present, remain unnonced,
+and not execute. The shared probe separately requires an inline event-handler
+attribute to be blocked, with a CSP violation event. `strict-dynamic` permits
+non-parser-inserted script elements; treating those as necessarily blocked was
+an incorrect test assumption, not a reason to weaken the application policy.
+The fixture does not loosen Frontron's default script policy.
 
 It builds the original web app, performs init/update and desktop packaging,
 moves the packaged application away from its source, then tests real React
@@ -97,3 +103,4 @@ References:
 - https://nodejs.org/api/child_process.html
 - https://nodejs.org/api/globals.html#fetch
 - https://nextjs.org/docs/app/guides/content-security-policy
+- https://www.w3.org/TR/CSP3/#match-element-to-source-list

@@ -23,7 +23,13 @@ const sources = {
   'next.config.mjs': "export default { output: 'standalone' }\n",
   'app/layout.jsx': `import './globals.css';
 export const dynamic = 'force-dynamic';
-export default function Layout({children}) { return <html lang="en"><body>{children}</body></html>; }\n`,
+export default function Layout({children}) {
+  return <html lang="en"><body>
+    <div id="csp-parser-probe" dangerouslySetInnerHTML={{
+      __html: '<script id="untrusted-parser-script">window.__frontronUntrustedParser = true</script>'
+    }} />
+    {children}</body></html>;
+}\n`,
   'app/globals.css': 'h1 { font-size: 31px; }\n',
   'app/page.jsx': `'use client';
 import {useState} from 'react';
@@ -63,6 +69,10 @@ const rendererProbe = `(async () => {
     catch (error) { throw new Error('Fetch failed for ' + input + ': ' + String(error)); }
   };
   const base = await ${reactProbe};
+  // This element came from the server HTML parser, not a trusted dynamic script.
+  const untrustedScript = document.querySelector('#untrusted-parser-script');
+  if (!untrustedScript || untrustedScript.nonce || untrustedScript.textContent !== 'window.__frontronUntrustedParser = true') throw new Error('Parser CSP fixture missing or unexpectedly nonced');
+  if (window.__frontronUntrustedParser === true) throw new Error('Untrusted parser-inserted script executed');
   if (getComputedStyle(document.querySelector('h1')).fontSize !== '31px') throw new Error('CSS asset did not load');
   const asset = await checkedFetch('/probe.txt');
   if (!asset.ok || await asset.text() !== 'packaged Next.js public asset\\n') throw new Error('Missing public asset');
@@ -90,7 +100,7 @@ const rendererProbe = `(async () => {
   }
   if (window.__frontronNavigationProbe !== 'client-side') throw new Error('Navigation was a document reload, not client routing');
   if (location.pathname !== '/second' || location.search !== '?from=client') throw new Error('Navigation URL mismatch');
-  return {...base, css: true, publicAsset: true, getQuery: true, postBody: true,
+  return {...base, parserInlineBlocked: true, css: true, publicAsset: true, getQuery: true, postBody: true,
     noncePolicy: true, nonceChanges: true, redirect: true, clientNavigation: true};
 })()`
 
@@ -121,7 +131,7 @@ try {
       const probePath = join(reports, 'next-packaged.json')
       await run('xvfb-run', ['-a', executable, '--no-sandbox', '--enable-logging=stderr'], cwd, {timeout: 120_000, env: {FRONTRON_CONSUMER_PROBE: probePath, NODE_ENV:'production'}})
       const probe = assertSecureProbe(probePath, {counter: true, sandbox: false})
-      for (const name of ['css', 'publicAsset', 'getQuery', 'postBody', 'noncePolicy', 'nonceChanges', 'redirect', 'clientNavigation']) assert.equal(probe[name], true)
+      for (const name of ['parserInlineBlocked', 'css', 'publicAsset', 'getQuery', 'postBody', 'noncePolicy', 'nonceChanges', 'redirect', 'clientNavigation']) assert.equal(probe[name], true)
       writeJson(join(reports, 'summary.json'), {next: pkg.dependencies.next, strategy: 'next-standalone', sourceUnavailable: true, passed: true, linuxSandboxCertified: false, cookiesTested: false})
     } finally {
       renameSync(sourceOffline, appRoot)

@@ -353,6 +353,28 @@ export function createDesktopScriptCommands(config: InitConfig) {
   }
 }
 
+// Keep icon discovery separate from dependency and packaging changes.
+function applyDefaultAppIcon(
+  config: InitConfig,
+  build: NonNullable<PackageJson['build']>,
+  resourceDirectory: unknown,
+) {
+  if (typeof build.icon !== 'undefined') return
+
+  const buildResources = resourceDirectory ?? 'build'
+  if (typeof buildResources !== 'string') {
+    throw new Error('build.directories.buildResources must be a string.')
+  }
+
+  // Preserve electron-builder's resource discovery and leave image conversion
+  // to the installed builder rather than introducing an icon dependency.
+  const iconNames = ['icon.ico', 'icon.icns', 'icon.png', 'icon.svg', 'icons', 'icon']
+  const hasExistingIcon = [buildResources, '.'].some((directory) =>
+    iconNames.some((name) => existsSync(join(config.cwd, directory, name))),
+  )
+  if (!hasExistingIcon) build.icon = `${config.desktopDir}/icon.svg`
+}
+
 export function patchPackageJson(config: InitConfig) {
   const packageJson = config.packageJson
   const scripts = { ...(packageJson.scripts ?? {}) }
@@ -428,20 +450,7 @@ export function patchPackageJson(config: InitConfig) {
     devDependencies.esbuild = ESBUILD_VERSION
   }
 
-  // Supply the same app-owned SVG as the starter. Do not override explicit
-  // icons or electron-builder's existing resource discovery. Conversion stays
-  // electron-builder's responsibility; no icon dependency is added to the app.
-  if (typeof build.icon === 'undefined') {
-    const buildResources = directories.buildResources ?? 'build'
-    if (typeof buildResources !== 'string') {
-      throw new Error('build.directories.buildResources must be a string.')
-    }
-    const iconNames = ['icon.ico', 'icon.icns', 'icon.png', 'icon.svg', 'icons', 'icon']
-    const hasExistingIcon = [buildResources, '.'].some((directory) =>
-      iconNames.some((name) => existsSync(join(config.cwd, directory, name))),
-    )
-    if (!hasExistingIcon) build.icon = `${config.desktopDir}/icon.svg`
-  }
+  applyDefaultAppIcon(config, build, directories.buildResources)
 
   build.appId ??= config.appId
   build.productName ??= config.productName

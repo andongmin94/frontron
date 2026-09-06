@@ -124,10 +124,23 @@ export const reactProbe = `(async () => {
     button.click();
     await wait(() => button.dataset.value === '1', 'React click');
   }
-  const script = document.createElement('script');
-  script.textContent = 'window.__frontronUntrustedInline = true';
-  document.body.appendChild(script);
-  await new Promise(resolve => setTimeout(resolve, 100));
+  // strict-dynamic intentionally permits non-parser-inserted script elements.
+  // Inline event attributes must still be blocked by both tested policies.
+  const untrustedButton = document.createElement('button');
+  untrustedButton.setAttribute('onclick', 'window.__frontronUntrustedHandler = true');
+  document.body.appendChild(untrustedButton);
+  let inlineViolation = false;
+  const onViolation = (event) => {
+    if (event.blockedURI === 'inline' && event.effectiveDirective === 'script-src-attr') inlineViolation = true;
+  };
+  document.addEventListener('securitypolicyviolation', onViolation);
+  try {
+    untrustedButton.click();
+    await wait(() => inlineViolation || window.__frontronUntrustedHandler === true, 'inline handler CSP');
+  } finally {
+    untrustedButton.remove();
+    document.removeEventListener('securitypolicyviolation', onViolation);
+  }
   return {
     heading: document.querySelector('h1').textContent,
     protocol: location.protocol,
@@ -136,7 +149,7 @@ export const reactProbe = `(async () => {
     appInfo: info,
     security: window.__frontronSecurityProbe,
     counterWorked: button ? button.dataset.value === '1' : null,
-    untrustedInlineBlocked: window.__frontronUntrustedInline !== true,
+    untrustedEventHandlerBlocked: inlineViolation && window.__frontronUntrustedHandler !== true,
   };
 })()`
 
@@ -196,7 +209,7 @@ export function assertSecureProbe(file, { counter = false, sandbox = true } = {}
   assert.equal(probe.requireType, 'undefined')
   assert.equal(probe.processType, 'undefined')
   assert.ok(probe.appInfo?.name)
-  assert.equal(probe.untrustedInlineBlocked, true)
+  assert.equal(probe.untrustedEventHandlerBlocked, true)
   assert.equal(probe.security.contextIsolation, true)
   if (sandbox) assert.equal(probe.security.sandbox, true)
   if (counter) assert.equal(probe.counterWorked, true)

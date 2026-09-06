@@ -71,6 +71,7 @@ const PACKAGE_JSON_CLAIM_PATH_ALLOWLIST = new Set([
   'devDependencies.typescript',
   'devDependencies.@remix-run/serve',
   'devDependencies.esbuild',
+  'build.icon',
   'build.appId',
   'build.productName',
   'build.npmRebuild',
@@ -391,3 +392,4 @@ export function splitFileConflicts(
 
   return { safeToOverwrite, blocked }
 }
+

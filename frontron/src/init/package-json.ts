@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { type InitConfig, type PackageJson, ESBUILD_VERSION } from './shared'
 import { loadCreateFrontronTemplate } from './runtime/create-frontron-template'
 import { inspectToolDependencyDeclarations } from './dependency-compatibility'
@@ -164,6 +167,7 @@ function createPackageJsonPatchChanges(before: PackageJson, after: PackageJson) 
     'trustedDependencies',
   )
   addScalarChange(changes, before.version, after.version, 'version')
+  addScalarChange(changes, before.build?.icon, after.build?.icon, 'build.icon')
   addScalarChange(changes, before.build?.appId, after.build?.appId, 'build.appId')
   addScalarChange(changes, before.build?.productName, after.build?.productName, 'build.productName')
   addScalarChange(changes, before.build?.npmRebuild, after.build?.npmRebuild, 'build.npmRebuild')
@@ -259,6 +263,7 @@ function createPackageJsonOwnershipClaims(before: PackageJson, after: PackageJso
 
   for (const path of [
     'version',
+    'build.icon',
     'build.appId',
     'build.productName',
     'build.npmRebuild',
@@ -354,7 +359,9 @@ export function patchPackageJson(config: InitConfig) {
   const dependencies = { ...(packageJson.dependencies ?? {}) }
   const devDependencies = { ...(packageJson.devDependencies ?? {}) }
   const build = ensureObject<NonNullable<PackageJson['build']>>(packageJson.build, 'build', {})
-  const directories = ensureObject<{ output?: string }>(build.directories, 'build.directories', {})
+  const directories = ensureObject<{ output?: string; buildResources?: string }>(
+    build.directories, 'build.directories', {},
+  )
   const extraMetadata = ensureObject<Record<string, unknown>>(
     build.extraMetadata,
     'build.extraMetadata',
@@ -419,6 +426,21 @@ export function patchPackageJson(config: InitConfig) {
 
   if (config.adapter === 'remix-node-server' && !devDependencies.esbuild) {
     devDependencies.esbuild = ESBUILD_VERSION
+  }
+
+  // Supply the same app-owned SVG as the starter. Do not override explicit
+  // icons or electron-builder's existing resource discovery. Conversion stays
+  // electron-builder's responsibility; no icon dependency is added to the app.
+  if (typeof build.icon === 'undefined') {
+    const buildResources = directories.buildResources ?? 'build'
+    if (typeof buildResources !== 'string') {
+      throw new Error('build.directories.buildResources must be a string.')
+    }
+    const iconNames = ['icon.ico', 'icon.icns', 'icon.png', 'icon.svg', 'icons', 'icon']
+    const hasExistingIcon = [buildResources, '.'].some((directory) =>
+      iconNames.some((name) => existsSync(join(config.cwd, directory, name))),
+    )
+    if (!hasExistingIcon) build.icon = `${config.desktopDir}/icon.svg`
   }
 
   build.appId ??= config.appId

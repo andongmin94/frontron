@@ -19,6 +19,13 @@ It copies the distributions away from the build output and moves the original
 consumer directory out of the way before launching them from an unrelated
 working directory.
 
+The retrofit fixture deliberately starts without an icon. Frontron supplies the
+canonical template SVG in the managed desktop directory and uses it as the
+packaging default when there is no explicit icon or discoverable icon resource.
+Existing icon settings and files remain user-owned. The generated icon and its
+package setting participate in ordinary update/clean ownership checks; edited
+icons are not silently overwritten. Electron-builder performs image conversion.
+
 For each app it runs the portable executable twice, silently installs the MSI,
 runs the exact installed product executable, and uninstalls the MSI. It checks
 React mounting, IPC, renderer Node-global isolation and rejection of an injected
@@ -58,7 +65,10 @@ The protocol bridge talks to the app-owned HTTP loopback server with Node's
 built-in fetch, not Electron's browser-session fetch. Requests retain streaming
 bodies with `duplex: 'half'` and `redirect: 'manual'`; redirects are returned to
 the renderer after same-origin Location rewriting, never followed inside the
-proxy. A real local HTTP regression checks internal and external redirect
+proxy. Next.js may normalize 127.0.0.1 to localhost in absolute redirects. Those
+two HTTP host spellings are rewritten only for the exact runtime port, without
+credentials. Other ports, protocols, hosts and IPv6 addresses are not treated as
+aliases. A real local HTTP regression checks internal and external redirect
 responses without contacting either destination. There is no browser-session
 transport fallback or implicit Chromium cookie-jar/proxy behavior on this
 internal hop. End-to-end cookies/authentication are not yet certified.
@@ -82,6 +92,7 @@ Consult the final workflow conclusion for the exact tested commit.
 References:
 - https://www.electronjs.org/docs/latest/api/process
 - https://www.electron.build/msi.html
+- https://www.electron.build/docs/features/icons-and-images/
 - https://learn.microsoft.com/en-us/windows/win32/msi/command-line-options
 - https://nodejs.org/api/child_process.html
 - https://nodejs.org/api/globals.html#fetch

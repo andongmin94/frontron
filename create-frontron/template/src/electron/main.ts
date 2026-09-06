@@ -56,7 +56,18 @@ function rewriteRendererLocation(
 
   try {
     const redirectUrl = new URL(location, proxyUrl)
-    if (redirectUrl.origin === targetOrigin) {
+    const targetUrl = new URL(targetOrigin)
+    // Next.js normalizes 127.0.0.1 to localhost in absolute redirects. Only
+    // aliases of this exact HTTP runtime port belong to the renderer origin.
+    const loopbackHosts = ["127.0.0.1", "localhost"]
+    const sameRuntime =
+      redirectUrl.origin === targetOrigin ||
+      (targetUrl.protocol === "http:" &&
+        redirectUrl.protocol === "http:" &&
+        redirectUrl.port === targetUrl.port &&
+        loopbackHosts.includes(targetUrl.hostname) &&
+        loopbackHosts.includes(redirectUrl.hostname))
+    if (sameRuntime && !redirectUrl.username && !redirectUrl.password) {
       headers.set(
         "location",
         `${rendererOrigin}${redirectUrl.pathname}${redirectUrl.search}${redirectUrl.hash}`

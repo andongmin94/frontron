@@ -134,6 +134,7 @@ export const reactProbe = `(async () => {
     requireType: typeof window.require,
     processType: typeof window.process,
     appInfo: info,
+    security: window.__frontronSecurityProbe,
     counterWorked: button ? button.dataset.value === '1' : null,
     untrustedInlineBlocked: window.__frontronUntrustedInline !== true,
   };
@@ -144,6 +145,12 @@ export const reactProbe = `(async () => {
 export function installProbe(appRoot, electronDir, rendererScript = reactProbe) {
   const file = join(appRoot, electronDir, 'main.ts')
   const original = readFileSync(file, 'utf8')
+  const preloadFile = join(appRoot, electronDir, 'preload.ts')
+  const preload = readFileSync(preloadFile, 'utf8')
+  const windowSource = readFileSync(join(appRoot, electronDir, 'window.ts'), 'utf8')
+  for (const expected of [/nodeIntegration:\s*false/, /sandbox:\s*true/, /contextIsolation:\s*true/]) assert.match(windowSource, expected)
+  assert.doesNotMatch(windowSource, /webSecurity:\s*false/)
+  assert.ok(preload.includes('contextBridge.exposeInMainWorld'), 'Preload bridge contract changed')
   const anchor = `function openMainWindow() {\n  if (!rendererUrl) return\n  createWindow(rendererUrl, setupIpcHandlers)\n}\n`
   assert.ok(original.includes(anchor), 'Electron window entry changed; update the probe explicitly')
   assert.ok(original.includes('import path from "node:path"\n'))
@@ -163,12 +170,9 @@ function openMainWindow() {
     let payload: unknown
     try {
       const value = await mainWindow!.webContents.executeJavaScript(${JSON.stringify(rendererScript)}, true)
-      const prefs = mainWindow!.webContents.getLastWebPreferences()
       payload = { ok: true, isPackaged: app.isPackaged, execPath: process.execPath,
-        appPath: app.getAppPath(), versions: process.versions,
-        security: { sandbox: prefs.sandbox, contextIsolation: prefs.contextIsolation,
-          nodeIntegration: prefs.nodeIntegration, webSecurity: prefs.webSecurity }, ...value }
-    } catch (error) { payload = { ok: false, error: String(error) } }
+        appPath: app.getAppPath(), versions: process.versions, ...value }
+    } catch (error) { console.error("[consumer-probe]", error); payload = { ok: false, error: String(error) } }
     fs.writeFileSync(smokePath!, JSON.stringify(payload, null, 2) + "\\n")
     // Exercise the actual before-quit server cleanup, not app.exit().
     app.quit()
@@ -177,7 +181,10 @@ function openMainWindow() {
 }
 `
   writeFileSync(file, original.replace('import path from "node:path"\n', 'import fs from "node:fs"\nimport path from "node:path"\n').replace(anchor, injected))
-  return () => writeFileSync(file, original)
+  // Read sandbox/isolation from the documented preload process properties.
+  // Do not cast to Electron's private getLastWebPreferences method.
+  writeFileSync(preloadFile, preload + '\ncontextBridge.exposeInMainWorld("__frontronSecurityProbe", { sandbox: process.sandboxed === true, contextIsolation: process.contextIsolated === true })\n')
+  return () => { writeFileSync(file, original); writeFileSync(preloadFile, preload) }
 }
 
 export function assertSecureProbe(file, { counter = false, sandbox = true } = {}) {
@@ -190,9 +197,7 @@ export function assertSecureProbe(file, { counter = false, sandbox = true } = {}
   assert.equal(probe.processType, 'undefined')
   assert.ok(probe.appInfo?.name)
   assert.equal(probe.untrustedInlineBlocked, true)
-  assert.equal(probe.security.nodeIntegration, false)
   assert.equal(probe.security.contextIsolation, true)
-  assert.equal(probe.security.webSecurity, true)
   if (sandbox) assert.equal(probe.security.sandbox, true)
   if (counter) assert.equal(probe.counterWorked, true)
   console.log(`[consumer-probe] ${JSON.stringify(probe)}`)

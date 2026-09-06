@@ -219,10 +219,19 @@ function runPackagedAppProbe(appRoot: string, appName: string, probePath: string
   }
   const packageJson = JSON.parse(readFileSync(join(appRoot, 'package.json'), 'utf8'))
   const outputDir = packageJson.build?.directories?.output
+  const productName = packageJson.build?.productName
   expect(typeof outputDir).toBe('string')
+  expect(typeof productName).toBe('string')
+  expect(packageJson.name).toBe(appName)
+  // These fixtures exercise default builder names: productName on Windows,
+  // package name on Linux. Do not guess an executable or override the product.
+  expect(packageJson.build?.executableName).toBeUndefined()
+  expect(packageJson.build?.win?.executableName).toBeUndefined()
+  expect(packageJson.build?.linux?.executableName).toBeUndefined()
   const executable = process.platform === 'win32'
-    ? join(appRoot, outputDir, 'win-unpacked', `${appName}.exe`)
+    ? join(appRoot, outputDir, 'win-unpacked', `${productName}.exe`)
     : join(appRoot, outputDir, 'linux-unpacked', appName)
+  expect(existsSync(executable), `Packaged executable not found: ${executable}`).toBe(true)
   const invocation = process.platform === 'linux'
     ? { command: 'xvfb-run', args: ['-a', executable, '--no-sandbox'] }
     : { command: executable, args: [] }
@@ -317,6 +326,8 @@ createRoot(document.getElementById('root')).render(h(App));
   runNpm(['exec', '--', 'frontron', 'update', '--dry-run'], appRoot)
   expect(readFileSync(manifestPath)).toEqual(manifestBefore)
   runNpm(['exec', '--', 'frontron', 'update', '--yes'], appRoot)
+  const updated = JSON.parse(readFileSync(join(appRoot, 'package.json'), 'utf8'))
+  expect(updated.build?.productName).toBe('Retrofit Smoke App')
   const restoreProbe = installRendererProbe(appRoot, 'electron')
   try {
     if (testElectronRuntime) await runDevelopmentAppProbe(appRoot, join(root, 'dev.json'), 'frontron:dev', true)

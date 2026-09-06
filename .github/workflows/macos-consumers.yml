@@ -35,7 +35,9 @@ jobs:
         with:
           name: macos-arm64-reports
           path: |
-            ${{ runner.temp }}/frontron-macos-reports/**/*.log
-            ${{ runner.temp }}/frontron-macos-reports/**/*.json
+            ${{ runner.temp }}/frontron-macos-reports/*.log
+            ${{ runner.temp }}/frontron-macos-reports/summary.json
+            ${{ runner.temp }}/frontron-macos-reports/frontron-macos-starter/*.json
+            ${{ runner.temp }}/frontron-macos-reports/frontron-macos-retrofit/*.json
           if-no-files-found: warn
           retention-days: 7

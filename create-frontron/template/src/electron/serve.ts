@@ -10,7 +10,8 @@ import {
 } from "./static-server.js"
 
 const runtimeDir = path.dirname(fileURLToPath(import.meta.url))
-const rootDir = path.resolve(runtimeDir, "../..")
+// Use one filesystem identity for Windows short names and Vite's access checks.
+const rootDir = fs.realpathSync.native(path.resolve(runtimeDir, "../.."))
 const require = createRequire(import.meta.url)
 const electronExecutablePath = require("electron") as string
 const { ELECTRON_RUN_AS_NODE: _ignoredElectronRunAsNode, ...childEnv } =

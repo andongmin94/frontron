@@ -1,4 +1,6 @@
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
+import { once } from 'node:events'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -55,10 +57,6 @@ export const app = {
 
 export const Menu = {
   setApplicationMenu() {},
-}
-
-export const net = {
-  fetch(input, init) { return state.fetch(input, init) },
 }
 
 export const protocol = {
@@ -227,6 +225,7 @@ export const isDev = false
 }
 
 afterEach(() => {
+  vi.unstubAllGlobals()
   delete mockGlobal.__frontronElectronMock
 
   for (const tempDir of tempDirs.splice(0)) {
@@ -265,6 +264,7 @@ describe('create-frontron runtime security', () => {
       })
     }
     mockGlobal.__frontronElectronMock = state
+    vi.stubGlobal('fetch', (input: string, init?: RequestInit) => state.fetch(input, init))
 
     const runtime = await importMainRuntime()
     await runtime.registerRendererProtocol('http://127.0.0.1:4321')
@@ -342,6 +342,45 @@ describe('create-frontron runtime security', () => {
 
     const redirectResponse = await handler!(new Request('frontron://app/account'))
     expect(redirectResponse.headers.get('location')).toBe('frontron://app/login?next=%2Fdesktop')
+  })
+
+  test('returns real loopback redirects without following or leaking the private origin', async () => {
+    const hits: string[] = []
+    const server = createServer((request, response) => {
+      hits.push(request.url ?? '')
+      if (request.url === '/redirect') {
+        response.writeHead(307, { location: '/target?from=redirect' })
+      } else if (request.url === '/external') {
+        response.writeHead(302, { location: 'https://example.invalid/no-request' })
+      } else {
+        response.writeHead(200)
+      }
+      response.end()
+    })
+    server.listen(0, '127.0.0.1')
+    await once(server, 'listening')
+    try {
+      const address = server.address()
+      if (!address || typeof address === 'string') throw new Error('Missing loopback address')
+      const state = createElectronMockState()
+      mockGlobal.__frontronElectronMock = state
+      const runtime = await importMainRuntime()
+      await runtime.registerRendererProtocol(`http://127.0.0.1:${address.port}`)
+      const redirect = await state.protocolHandler!(new Request('frontron://app/redirect'))
+      expect(redirect.status).toBe(307)
+      expect(redirect.headers.get('location')).toBe('frontron://app/target?from=redirect')
+      await redirect.arrayBuffer()
+      const external = await state.protocolHandler!(new Request('frontron://app/external'))
+      expect(external.status).toBe(302)
+      expect(external.headers.get('location')).toBe('https://example.invalid/no-request')
+      await external.arrayBuffer()
+      expect(hits).toEqual(['/redirect', '/external'])
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => error ? reject(error) : resolve())
+        server.closeAllConnections()
+      })
+    }
   })
 
   test('blocks non-renderer navigation and opens only external HTTP URLs', async () => {

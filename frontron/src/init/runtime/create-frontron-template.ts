@@ -11,6 +11,7 @@ import type {
 
 const REQUIRED_TEMPLATE_FILES = [
   'package.json',
+  'public/logo.svg',
   'src/electron/main.ts',
   'src/electron/window.ts',
   'src/electron/preload.ts',
@@ -322,6 +323,13 @@ export function loadCreateFrontronTemplate(): CreateFrontronTemplateSnapshot {
       adaptElectronSource(readFileSync(assertTemplateFile(electronDir, relativePath), 'utf8')),
     )
   }
+
+  // Keep the icon in the managed file set so update/clean use the same
+  // ownership hashes and conflict protection as the generated source files.
+  electronFiles.set(
+    'icon.svg',
+    readFileSync(assertTemplateFile(template.templateDir, 'public/logo.svg'), 'utf8'),
+  )
 
   return {
     info: info(template),

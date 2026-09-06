@@ -1,0 +1,45 @@
+name: macOS consumers
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: macos-consumers-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  apple-silicon:
+    runs-on: macos-15
+    timeout-minutes: 35
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify packages on macOS
+        run: node release.mjs verify
+      - name: Check macOS probe contracts
+        run: node --test scripts/consumer-smoke/macos-probe.test.mjs
+      - name: Execute native development and distributed consumers
+        env:
+          FRONTRON_SMOKE_REPORT_DIR: ${{ runner.temp }}/frontron-macos-reports
+        run: node scripts/macos-consumer-smoke.mjs
+      - name: Preserve validation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64-reports
+          path: |
+            ${{ runner.temp }}/frontron-macos-reports/*.log
+            ${{ runner.temp }}/frontron-macos-reports/summary.json
+            ${{ runner.temp }}/frontron-macos-reports/frontron-macos-starter/*.json
+            ${{ runner.temp }}/frontron-macos-reports/frontron-macos-retrofit/*.json
+          if-no-files-found: warn
+          retention-days: 7

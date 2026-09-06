@@ -89,8 +89,6 @@ function assertMetadata() {
 }
 
 function verifyPackage(spec) {
-  log(`installing ${spec.name}`)
-  runNpm(['ci', '--fund=false', '--audit=false'], spec.root)
   runNpm(['ls', '--all'], spec.root)
   runNpm(['audit', '--audit-level=moderate'], spec.root)
   runNpm(['run', 'check'], spec.root)
@@ -103,11 +101,18 @@ function verifyPackage(spec) {
 function verifyRelease() {
   assertMetadata()
 
+  // Cross-package release tests build both packages; prepare both dependency
+  // trees before verification so this also works from a clean checkout.
+  for (const spec of packages) {
+    log(`installing ${spec.name}`)
+    runNpm(['ci', '--fund=false', '--audit=false'], spec.root)
+  }
+
   for (const spec of packages) {
     verifyPackage(spec)
   }
 
-  log('testing a packed generated starter')
+  log('testing packed starter and retrofit consumers')
   runNpm(['run', 'test:release-smoke'], packages[0].root)
 
   if (process.env.FRONTRON_TEST_PACKAGE_MANAGERS === '1') {

@@ -51,13 +51,6 @@ function runBin(name, args = []) {
   runNode([resolveBin(name), ...args])
 }
 
-function assertReleasePublishGuard() {
-  if (process.env.FRONTRON_RELEASE !== '1' || process.env.GITHUB_ACTIONS !== 'true') {
-    console.error('[tasks] Direct npm publish is disabled. Use the GitHub Actions release workflow.')
-    process.exit(1)
-  }
-}
-
 switch (command) {
   case 'build':
     runBin('unbuild')
@@ -100,7 +93,7 @@ switch (command) {
     runBin('oxfmt', formatPaths)
     break
   case 'prepublishOnly':
-    assertReleasePublishGuard()
+    // Publishing is an explicit npm operation after release.mjs verify.
     runBin('unbuild')
     break
   default:

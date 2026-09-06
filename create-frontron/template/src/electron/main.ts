@@ -1,6 +1,6 @@
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { app, Menu, net, protocol } from "electron"
+import { app, Menu, protocol } from "electron"
 
 import { setupDevMenu } from "./dev.js"
 import { setupIpcHandlers } from "./ipc.js"
@@ -56,7 +56,18 @@ function rewriteRendererLocation(
 
   try {
     const redirectUrl = new URL(location, proxyUrl)
-    if (redirectUrl.origin === targetOrigin) {
+    const targetUrl = new URL(targetOrigin)
+    // Next.js normalizes 127.0.0.1 to localhost in absolute redirects. Only
+    // aliases of this exact HTTP runtime port belong to the renderer origin.
+    const loopbackHosts = ["127.0.0.1", "localhost"]
+    const sameRuntime =
+      redirectUrl.origin === targetOrigin ||
+      (targetUrl.protocol === "http:" &&
+        redirectUrl.protocol === "http:" &&
+        redirectUrl.port === targetUrl.port &&
+        loopbackHosts.includes(targetUrl.hostname) &&
+        loopbackHosts.includes(redirectUrl.hostname))
+    if (sameRuntime && !redirectUrl.username && !redirectUrl.password) {
       headers.set(
         "location",
         `${rendererOrigin}${redirectUrl.pathname}${redirectUrl.search}${redirectUrl.hash}`
@@ -106,16 +117,20 @@ export async function registerRendererProtocol(rendererTargetUrl: string) {
     if (!proxyUrl) return new Response("Not Found", { status: 404 })
 
     try {
-      const upstreamResponse = await net.fetch(proxyUrl.toString(), {
+      // The private loopback transport uses Node fetch, not the browser session.
+      // Preserve manual redirects and stream uploads without buffering them.
+      const requestOptions: RequestInit & { duplex: "half" } = {
         method: request.method,
         headers: rewriteRendererRequestHeaders(request, targetOrigin),
         body:
           request.method === "GET" || request.method === "HEAD"
             ? undefined
             : request.body,
+        duplex: "half",
         redirect: "manual",
         signal: request.signal,
-      })
+      }
+      const upstreamResponse = await globalThis.fetch(proxyUrl.toString(), requestOptions)
       const responseHeaders = new Headers(upstreamResponse.headers)
       rewriteRendererLocation(responseHeaders, proxyUrl, targetOrigin)
       ensureRendererCsp(responseHeaders)

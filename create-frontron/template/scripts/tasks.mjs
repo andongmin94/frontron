@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process"
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, readFileSync, realpathSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
-const root = dirname(dirname(fileURLToPath(import.meta.url)))
+const root = realpathSync.native(dirname(dirname(fileURLToPath(import.meta.url))))
 const command = process.argv[2]
 const extraArgs = process.argv.slice(3)
 const formatTargets = ["src", "scripts", "vite.config.ts", "package.json"]

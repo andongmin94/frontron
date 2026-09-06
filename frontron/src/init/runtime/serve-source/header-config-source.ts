@@ -11,6 +11,7 @@ export function renderServeHeaderAndConfigSource(config: InitConfig, devUrl: str
   const usesRemixRuntime = usesNodeServer && config.adapter === 'remix-node-server'
   const fileSystemImports = [
     'existsSync',
+    'realpathSync',
     'writeFileSync',
     ...(usesNodeServer ? ['cpSync', 'mkdirSync', 'rmSync'] : []),
     ...(usesRemixRuntime ? ['readFileSync', 'readdirSync'] : []),
@@ -95,7 +96,8 @@ const DEV_URL = readEmbeddedJson<string>(${embedJson(devUrl)})
 ${nodeServerConstants}
 const LOOPBACK_HOST = '127.0.0.1'
 const runtimeDir = path.dirname(fileURLToPath(import.meta.url))
-const ROOT_DIR = path.resolve(runtimeDir, '..')
+// Resolve Windows short names before npm/Vite derives its workspace allow list.
+const ROOT_DIR = realpathSync.native(path.resolve(runtimeDir, '..'))
 const DIST_DIR = path.resolve(ROOT_DIR, 'dist-electron')
 const MAIN_ENTRY_PATH = path.join(DIST_DIR, 'main.js')
 const RUNTIME_PACKAGE_PATH = path.join(DIST_DIR, 'package.json')

@@ -37,20 +37,18 @@ function waitForChildExit(child: ChildProcess, timeoutMs: number) {
   })
 }
 
-// runWindowsTaskkill 함수는 Windows에서 PID 아래의 전체 프로세스 트리를 종료한다.
-function runWindowsTaskkill(processId: number, force: boolean) {
+// Windows console descendants must be stopped in one forced tree operation.
+// A non-forced taskkill can close the shared console (including our launcher)
+// before it can stop the remaining npm/Vite descendants.
+function runWindowsTaskkill(processId: number) {
   return new Promise<boolean>((resolve) => {
-    const args = ['/pid', String(processId), '/t']
-
-    if (force) args.push('/f')
-
-    const taskkillProcess = spawn('taskkill', args, {
+    const taskkillProcess = spawn('taskkill', ['/pid', String(processId), '/t', '/f'], {
       stdio: 'ignore',
       windowsHide: true,
+      timeout: 5_000,
     })
     let settled = false
 
-    // finish 함수는 taskkill 결과를 한 번만 확정한다.
     const finish = (succeeded: boolean) => {
       if (settled) return
       settled = true
@@ -69,9 +67,12 @@ async function signalChildProcessTree(child: ChildProcess, force: boolean) {
   const signal = force ? 'SIGKILL' : 'SIGTERM'
 
   if (process.platform === 'win32' && child.pid) {
-    const killedTree = await runWindowsTaskkill(child.pid, force)
+    const killedTree = await runWindowsTaskkill(child.pid)
 
-    if (killedTree) return
+    if (!killedTree && isChildProcessRunning(child)) {
+      throw new Error('Failed to terminate the Windows process tree for PID ' + child.pid)
+    }
+    return
   }
 
   if (process.platform !== 'win32' && child.pid) {
@@ -101,7 +102,9 @@ async function terminateChildProcessTree(child: ChildProcess, timeoutMs = 5_000)
   if (await waitForChildExit(child, timeoutMs)) return
 
   await signalChildProcessTree(child, true)
-  await waitForChildExit(child, 1_000)
+  if (!(await waitForChildExit(child, 1_000))) {
+    throw new Error('Process did not exit after tree termination: ' + child.pid)
+  }
 }
 `
 }

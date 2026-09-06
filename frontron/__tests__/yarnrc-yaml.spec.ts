@@ -12,7 +12,7 @@ import {
   readYarnRcYamlClaimValue,
   restoreYarnRcYamlClaim,
 } from '../src/init/yarnrc-yaml'
-import { beginTransaction, rollbackTransaction } from '../src/transaction-journal'
+import { beginTransaction, rollbackTransaction, writeTransactionFile } from '../src/transaction-journal'
 import * as fixtures from './helpers/frontron-cli-fixtures'
 
 function setYarnPackageManager(projectRoot: string) {
@@ -121,10 +121,22 @@ describe('Yarn configuration', () => {
       { path: configPath, safetyRoot: dirname(configPath) },
     ])
 
-    writeFileSync(configPath, 'nodeLinker: node-modules\n')
+    writeTransactionFile(transaction, configPath, 'nodeLinker: node-modules\n', workspaceRoot)
     rollbackTransaction(transaction)
 
     expect(readFileSync(configPath, 'utf8')).toBe('nodeLinker: pnp\n')
+  })
+
+  test('an untracked user edit to an ancestor Yarn config is not rolled back', () => {
+    const { workspaceRoot, projectRoot } = createNestedYarnProject()
+    const configPath = join(workspaceRoot, '.yarnrc.yml')
+    writeFileSync(configPath, 'nodeLinker: pnp\n')
+    const transaction = beginTransaction(projectRoot, 'init', [
+      { path: configPath, safetyRoot: workspaceRoot },
+    ])
+    writeFileSync(configPath, 'nodeLinker: node-modules\n')
+    rollbackTransaction(transaction)
+    expect(readFileSync(configPath, 'utf8')).toBe('nodeLinker: node-modules\n')
   })
 })
 

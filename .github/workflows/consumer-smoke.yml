@@ -1,0 +1,71 @@
+name: Native consumers
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native-consumers-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  windows-distribution:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install locked tool dependencies
+        shell: bash
+        run: |
+          npm ci --prefix create-frontron --fund=false --audit=false
+          npm ci --prefix frontron --fund=false --audit=false
+      - name: Check real MSI and portable consumers
+        env:
+          FRONTRON_SMOKE_REPORT_DIR: ${{ runner.temp }}/frontron-windows-reports
+        run: node scripts/windows-distribution-smoke.mjs
+      - name: Preserve validation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-distribution-reports
+          path: |
+            ${{ runner.temp }}/frontron-windows-reports/*.log
+            ${{ runner.temp }}/frontron-windows-reports/*.json
+          if-no-files-found: warn
+          retention-days: 7
+  next-standalone:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install locked tool dependencies
+        run: |
+          npm ci --prefix create-frontron --fund=false --audit=false
+          npm ci --prefix frontron --fund=false --audit=false
+      - name: Check real Next.js standalone consumer
+        env:
+          FRONTRON_SMOKE_REPORT_DIR: ${{ runner.temp }}/frontron-next-reports
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: node scripts/next-standalone-smoke.mjs
+      - name: Preserve validation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: next-standalone-reports
+          path: |
+            ${{ runner.temp }}/frontron-next-reports/*.log
+            ${{ runner.temp }}/frontron-next-reports/*.json
+          if-no-files-found: warn
+          retention-days: 7

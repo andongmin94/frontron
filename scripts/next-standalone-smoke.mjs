@@ -58,24 +58,28 @@ export const config = {matcher: ['/((?!api|_next/static|_next/image|favicon.ico)
 }
 writeFiles(appRoot, sources)
 const rendererProbe = `(async () => {
+  const checkedFetch = async (input, init) => {
+    try { return await fetch(input, init); }
+    catch (error) { throw new Error('Fetch failed for ' + input + ': ' + String(error)); }
+  };
   const base = await ${reactProbe};
   if (getComputedStyle(document.querySelector('h1')).fontSize !== '31px') throw new Error('CSS asset did not load');
-  const asset = await fetch('/probe.txt');
+  const asset = await checkedFetch('/probe.txt');
   if (!asset.ok || await asset.text() !== 'packaged Next.js public asset\\n') throw new Error('Missing public asset');
-  const get = await fetch('/api/echo?value=frontron%20query');
+  const get = await checkedFetch('/api/echo?value=frontron%20query');
   if (!get.ok || (await get.json()).query !== 'frontron query') throw new Error('GET query was not preserved');
-  const post = await fetch('/api/echo', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({message:'body preserved', unicode:'한글'})});
+  const post = await checkedFetch('/api/echo', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({message:'body preserved', unicode:'한글'})});
   const postBody = await post.json();
   if (!post.ok || postBody.body.message !== 'body preserved' || postBody.body.unicode !== '한글') throw new Error('POST body was not preserved');
   const nonce = async () => {
-    const response = await fetch('/', {cache:'no-store'});
+    const response = await checkedFetch('/', {cache:'no-store'});
     const policy = response.headers.get('content-security-policy') || '';
     const value = policy.match(/'nonce-([^']+)'/);
     if (!response.ok || !value || policy.includes('unsafe-eval')) throw new Error('Application CSP was not preserved');
     return value[1];
   };
   if (await nonce() === await nonce()) throw new Error('Nonce was reused across responses');
-  const redirect = await fetch('/redirect');
+  const redirect = await checkedFetch('/redirect');
   if (!redirect.ok || !redirect.url.startsWith(location.origin + '/second?from=redirect')) throw new Error('Redirect escaped the application origin: ' + redirect.url);
   window.__frontronNavigationProbe = 'client-side';
   document.querySelector('#next-link').click();
@@ -115,7 +119,7 @@ try {
       const cwd = join(root, 'unrelated working directory')
       mkdirSync(cwd)
       const probePath = join(reports, 'next-packaged.json')
-      await run('xvfb-run', ['-a', executable, '--no-sandbox'], cwd, {timeout: 120_000, env: {FRONTRON_CONSUMER_PROBE: probePath, NODE_ENV:'production'}})
+      await run('xvfb-run', ['-a', executable, '--no-sandbox', '--enable-logging=stderr'], cwd, {timeout: 120_000, env: {FRONTRON_CONSUMER_PROBE: probePath, NODE_ENV:'production'}})
       const probe = assertSecureProbe(probePath, {counter: true, sandbox: false})
       for (const name of ['css', 'publicAsset', 'getQuery', 'postBody', 'noncePolicy', 'nonceChanges', 'redirect', 'clientNavigation']) assert.equal(probe[name], true)
       writeJson(join(reports, 'summary.json'), {next: pkg.dependencies.next, strategy: 'next-standalone', sourceUnavailable: true, passed: true, linuxSandboxCertified: false, cookiesTested: false})

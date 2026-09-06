@@ -11,7 +11,7 @@ concurrency:
 jobs:
   windows-distribution:
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:

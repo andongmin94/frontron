@@ -44,7 +44,8 @@ build({ projectDir: ${JSON.stringify(appRoot)},
 }).then(paths => fs.writeFileSync(${JSON.stringify(manifest)}, JSON.stringify(paths, null, 2) + '\\n'))
   .catch(error => { console.error(error); process.exitCode = 1; });
 `)
-    await run(process.execPath, [driver], appRoot)
+    // Cold tool downloads plus MSI and portable compression can exceed five minutes.
+    await run(process.execPath, [driver], appRoot, { timeout: 600_000 })
     const artifacts = readJson(manifest)
     const select = (extension) => {
       const paths = artifacts.filter(file => file.endsWith(extension))

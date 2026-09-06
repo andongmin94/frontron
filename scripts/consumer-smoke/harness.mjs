@@ -24,7 +24,7 @@ export function createHarness(label) {
   mkdirSync(reports, { recursive: true })
   let sequence = 0
 
-  async function run(command, args, cwd = root, { timeout = 300_000, env = {}, codes = [0] } = {}) {
+  async function run(command, args, cwd = root, { timeout = 300_000, env = {}, codes = [0], windowsVerbatimArguments = false } = {}) {
     const logPath = join(reports, `${String(++sequence).padStart(2, '0')}-${basename(command)}.log`)
     writeFileSync(logPath, `${command} ${args.join(' ')}\ncwd=${cwd}\n`)
     console.log(`[consumer] ${command} ${args.join(' ')}`)
@@ -37,7 +37,7 @@ export function createHarness(label) {
       const childEnv = { ...process.env, ...env }
       delete childEnv.ELECTRON_RUN_AS_NODE
       const child = spawn(command, args, {
-        cwd, env: childEnv, shell: false, stdio: ['ignore', 'pipe', 'pipe'],
+        cwd, env: childEnv, shell: false, windowsVerbatimArguments, stdio: ['ignore', 'pipe', 'pipe'],
         detached: process.platform !== 'win32',
       })
       const finish = (code) => {

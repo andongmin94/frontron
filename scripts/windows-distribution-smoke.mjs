@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { basename, join } from 'node:path'
 import { assertSecureProbe, createHarness, installProbe, readJson, repoRoot, writeFiles, writeJson } from './consumer-smoke/harness.mjs'
 
 assert.equal(process.platform, 'win32', 'Run this check on a disposable Windows runner: it installs and removes test MSIs.')
@@ -10,6 +10,15 @@ const { root, reports, npm, run, pack } = harness
 const template = readJson(join(repoRoot, 'create-frontron/template/package.json'))
 const outcomes = []
 writeJson(join(root, 'package.json'), { private: true })
+
+// msiexec parses PROPERTY="value with spaces" itself. Node's default Windows
+// argument quoting instead quotes the entire PROPERTY=value token. Supply the
+// documented MSI command line verbatim, without invoking a command shell.
+function quoteMsiPath(value) {
+  assert.equal(typeof value, 'string')
+  assert.ok(value.length > 0 && !/["\r\n\0]/.test(value), 'Invalid MSI path')
+  return `"${value}"`
+}
 
 async function checkDistribution(appRoot, buildScript, electronDir, counter) {
   const pkg = readJson(join(appRoot, 'package.json'))
@@ -72,7 +81,7 @@ build({ projectDir: ${JSON.stringify(appRoot)},
       const errors = []
       let installed = false
       try {
-        await run('msiexec.exe', ['/i', msi, '/qn', '/norestart', `APPLICATIONFOLDER=${installDir}`, '/L*v', join(reports, `${pkg.name}-install.log`)], unrelatedCwd, { codes: [0, 3010] })
+        await run('msiexec.exe', ['/i', quoteMsiPath(msi), '/qn', '/norestart', `APPLICATIONFOLDER=${quoteMsiPath(installDir)}`, '/L*v', quoteMsiPath(join(reports, `${pkg.name}-install.log`))], unrelatedCwd, { codes: [0, 3010], windowsVerbatimArguments: true })
         installed = true
         result.msiInstalled = true
         assert.ok(existsSync(executable), `MSI did not install ${executable}`)
@@ -85,7 +94,7 @@ build({ projectDir: ${JSON.stringify(appRoot)},
       finally {
         if (installed) {
           try {
-            await run('msiexec.exe', ['/x', msi, '/qn', '/norestart', '/L*v', join(reports, `${pkg.name}-uninstall.log`)], unrelatedCwd, { codes: [0, 3010] })
+            await run('msiexec.exe', ['/x', quoteMsiPath(msi), '/qn', '/norestart', '/L*v', quoteMsiPath(join(reports, `${pkg.name}-uninstall.log`))], unrelatedCwd, { codes: [0, 3010], windowsVerbatimArguments: true })
             assert.equal(existsSync(executable), false, 'Uninstall left the application executable')
             assert.equal(readFileSync(userFile, 'utf8'), 'user data must survive uninstall\n')
             result.msiRemoved = true

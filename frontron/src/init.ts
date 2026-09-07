@@ -3,7 +3,7 @@ import { join, relative } from 'node:path'
 
 import { applyInitChanges } from './init/apply'
 import { createInitProjectPlan } from './init/create-plan'
-import { readExistingManifest, readManifest } from './init/manifest'
+import { readManifest } from './init/manifest'
 import { createDryRunReport, type InitPlan } from './init/plan'
 import { createReadlinePrompter } from './init/prompts'
 import { resolveInitConfig } from './init/resolve-config'
@@ -19,22 +19,10 @@ type InitProjectInput = {
   packageJsonSource: string
   packageJson: PackageJson
   template: ReturnType<typeof loadCreateFrontronTemplate>
-  existingManifest: ReturnType<typeof readExistingManifest>
-  existingManifestDetails: ReturnType<typeof readManifest>
+  existingManifest: ReturnType<typeof readManifest>
 }
 
-// 강제 재설정에서는 이전 소유권 정보를 이어 쓰되, 손상된 manifest는 새 설치처럼 처리한다.
-function readExistingManifestDetails(cwd: string, force: boolean) {
-  if (!force) return null
-
-  try {
-    return readManifest(cwd)
-  } catch {
-    return null
-  }
-}
-
-// init에 필요한 프로젝트 원문과 create-frontron 템플릿 스냅샷을 한 번만 읽는다.
+// --force에서도 manifest는 한 번만 엄격히 읽는다. 손상된 소유권을 추측하거나 무시하지 않는다.
 function readInitProjectInput(cwd: string, force: boolean): InitProjectInput {
   const packageJsonPath = join(cwd, 'package.json')
 
@@ -49,8 +37,7 @@ function readInitProjectInput(cwd: string, force: boolean): InitProjectInput {
     packageJsonSource,
     packageJson: JSON.parse(packageJsonSource) as PackageJson,
     template: loadCreateFrontronTemplate(),
-    existingManifest: force ? readExistingManifest(cwd) : null,
-    existingManifestDetails: readExistingManifestDetails(cwd, force),
+    existingManifest: force ? readManifest(cwd) : null,
   }
 }
 
@@ -104,7 +91,7 @@ export async function runInit(options: InitOptions, context: InitContext) {
       options,
       prompter: promptSession.prompter,
       promptEnabled: promptSession.promptEnabled,
-      allowedExistingScriptNames: project.existingManifest?.scripts ?? new Set<string>(),
+      allowedExistingScriptNames: new Set(project.existingManifest?.scripts ?? []),
       template: project.template,
     })
     const plan = createInitProjectPlan({
@@ -112,7 +99,6 @@ export async function runInit(options: InitOptions, context: InitContext) {
       template: project.template,
       packageJsonSource: project.packageJsonSource,
       existingManifest: project.existingManifest,
-      existingManifestDetails: project.existingManifestDetails,
       force: options.force,
       configurationWarnings: resolved.successWarnings,
       packageMetadataBlockers: resolved.packageMetadataBlockers,

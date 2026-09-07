@@ -75,7 +75,7 @@ describe('frontron manifest', () => {
     expect(() => parseManifest(forgedClaimManifest)).toThrow('.frontron/manifest.json is invalid')
   })
 
-  test('clean and update reject a manifest that claims package.json as a generated file', async () => {
+  test('forced write commands reject an invalid manifest instead of guessing ownership', async () => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)
 
@@ -90,6 +90,7 @@ describe('frontron manifest', () => {
     writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
 
     for (const command of [
+      ['init', '--yes', '--force'],
       ['clean', '--yes', '--force'],
       ['update', '--yes', '--force'],
     ]) {

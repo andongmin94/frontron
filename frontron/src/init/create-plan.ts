@@ -1,14 +1,14 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
+import { inspectManagedFile } from '../managed-state'
 import { addManifestSource, createInitFileSources } from './file-sources'
 import {
   createFileHash,
   MANIFEST_PATH,
   normalizeManifestPath,
-  readExistingManifest,
-  readManifest,
   splitFileConflicts,
+  type FrontronManifest,
 } from './manifest'
 import { mergePackageJsonClaims, replacePackageJsonClaims } from './ownership-claims'
 import { previewPackageJsonPatch } from './package-json'
@@ -18,7 +18,6 @@ import type { CreateFrontronTemplateSnapshot } from './runtime/create-frontron-t
 import type { InitConfig } from './shared'
 import { previewTsconfigJsonPatch } from './tsconfig-json'
 import { mergeYarnRcClaims, previewYarnRcYamlPatch } from './yarnrc-yaml'
-import { inspectManagedFile } from '../managed-state'
 
 type InitPatchPlans = ReturnType<typeof createPatchPlans>
 
@@ -26,15 +25,14 @@ export type CreateInitProjectPlanInput = {
   config: InitConfig
   template: CreateFrontronTemplateSnapshot
   packageJsonSource: string
-  existingManifest: ReturnType<typeof readExistingManifest>
-  existingManifestDetails: ReturnType<typeof readManifest>
+  existingManifest: FrontronManifest | null
   force: boolean
   configurationWarnings: string[]
   packageMetadataBlockers: string[]
 }
 
 // package.json과 패키지 매니저별 설정 파일을 실제 쓰기 없이 미리 계산한다.
-function createPatchPlans(config: InitConfig, manifest: ReturnType<typeof readManifest>) {
+function createPatchPlans(config: InitConfig, manifest: FrontronManifest | null) {
   return {
     packageJson: previewPackageJsonPatch(config, manifest?.packageJsonClaims),
     tsconfigJson: previewTsconfigJsonPatch(config.cwd, config.desktopDir),
@@ -44,7 +42,7 @@ function createPatchPlans(config: InitConfig, manifest: ReturnType<typeof readMa
 }
 
 // 이전 manifest의 소유권과 이번 패치의 소유권을 병합해 update·clean의 기준을 보존한다.
-function mergePatchClaims(manifest: ReturnType<typeof readManifest>, patchPlans: InitPatchPlans) {
+function mergePatchClaims(manifest: FrontronManifest | null, patchPlans: InitPatchPlans) {
   return {
     packageJson: replacePackageJsonClaims(
       manifest?.packageJsonClaims,
@@ -89,14 +87,14 @@ function collectPlanBlockers(
   ]
 }
 
-// createObsoleteFilePlan 함수는 새 템플릿에서 빠진 기존 소유 파일을 검증 가능한 삭제 계획으로 만든다.
+// 새 템플릿에서 빠진 기존 소유 파일만 검증 가능한 삭제 계획으로 만든다.
 function createObsoleteFilePlan(
   input: CreateInitProjectPlanInput,
   filesToWrite: Map<string, string>,
 ) {
   const obsoleteFiles: ObsoleteFileChange[] = []
   const blockers: string[] = []
-  const manifest = input.existingManifestDetails
+  const manifest = input.existingManifest
 
   if (!manifest) return { obsoleteFiles, blockers }
 
@@ -133,9 +131,9 @@ function createObsoleteFilePlan(
 // 해시와 소유권이 포함된 완전한 init 계획을 만들되 프로젝트에는 아직 쓰지 않는다.
 export function createInitProjectPlan(input: CreateInitProjectPlanInput) {
   const filesToWrite = createInitFileSources(input.config, input.template)
-  const patchPlans = createPatchPlans(input.config, input.existingManifestDetails)
+  const patchPlans = createPatchPlans(input.config, input.existingManifest)
   const obsoleteFilePlan = createObsoleteFilePlan(input, filesToWrite)
-  const claims = mergePatchClaims(input.existingManifestDetails, patchPlans)
+  const claims = mergePatchClaims(input.existingManifest, patchPlans)
   addManifestSource(
     input.config,
     filesToWrite,

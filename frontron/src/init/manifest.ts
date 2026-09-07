@@ -290,7 +290,7 @@ function hasValidClaimOwnership(value: Record<string, unknown>) {
   )
 }
 
-// isManifest 함수는 검증 책임을 작은 판정 함수로 나눠 필드 그룹별 의미가 드러나게 한다.
+// manifest 검증 책임을 작은 판정 함수로 나눠 필드 그룹별 의미가 드러나게 한다.
 function isManifest(value: Record<string, unknown>): value is FrontronManifest {
   return (
     hasValidManifestIdentity(value) &&
@@ -376,30 +376,21 @@ export function readManifest(cwd: string) {
   return parseManifest(JSON.parse(readFileSync(manifestPath, 'utf8')))
 }
 
-export function readExistingManifest(cwd: string) {
-  const manifest = readManifest(cwd)
-  if (!manifest) return null
-
-  return {
-    createdFiles: new Set(manifest.createdFiles),
-    scripts: new Set(manifest.scripts),
-  }
-}
-
 export function splitFileConflicts(
   cwd: string,
   conflicts: string[],
   force: boolean,
-  existingManifest: ReturnType<typeof readExistingManifest>,
+  existingManifest: FrontronManifest | null,
 ) {
-  const manifestFiles = force ? existingManifest : null
+  // 강제 덮어쓰기도 검증된 manifest가 명시적으로 소유한 파일에만 허용한다.
+  const managedFiles = force && existingManifest ? new Set(existingManifest.createdFiles) : null
   const safeToOverwrite: string[] = []
   const blocked: string[] = []
 
   for (const filePath of conflicts) {
     const relativePath = normalizeManifestPath(cwd, filePath)
 
-    if (manifestFiles?.createdFiles.has(relativePath)) {
+    if (managedFiles?.has(relativePath)) {
       safeToOverwrite.push(filePath)
     } else {
       blocked.push(filePath)
@@ -408,4 +399,3 @@ export function splitFileConflicts(
 
   return { safeToOverwrite, blocked }
 }
-

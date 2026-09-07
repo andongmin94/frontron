@@ -81,6 +81,38 @@ function throwUnexpectedPositional(command: CliCommand, argument: string): never
   )
 }
 
+// 값 없는 공통 플래그는 여기서 처리해 명령별 허용 범위를 한눈에 보이게 한다.
+function applyFlagOption(
+  command: CliCommand,
+  rawArgument: string,
+  argument: string,
+  inlineValue: string | null,
+  options: InitOptions,
+) {
+  if (argument === '--yes' || argument === '-y') {
+    if (command === 'doctor') throwUnknownOption(command, rawArgument)
+    rejectInlineValue(argument, inlineValue)
+    options.yes = true
+    return true
+  }
+
+  if (argument === '--force') {
+    if (command !== 'clean' && command !== 'update') throwUnknownOption(command, rawArgument)
+    rejectInlineValue(argument, inlineValue)
+    options.force = true
+    return true
+  }
+
+  if (argument === '--dry-run') {
+    if (command === 'doctor') throwUnknownOption(command, rawArgument)
+    rejectInlineValue(argument, inlineValue)
+    options.dryRun = true
+    return true
+  }
+
+  return false
+}
+
 export function parseCliOptions(argv: string[]): ParsedCliOptions {
   const options = createDefaultOptions()
   const rawCommand = argv[0]
@@ -122,29 +154,7 @@ export function parseCliOptions(argv: string[]): ParsedCliOptions {
       continue
     }
 
-    if (argument === '--yes' || argument === '-y') {
-      if (rawCommand === 'doctor') throwUnknownOption(rawCommand, rawArgument)
-      rejectInlineValue(argument, inlineValue)
-      options.yes = true
-      continue
-    }
-
-    if (argument === '--force') {
-      if (rawCommand !== 'clean' && rawCommand !== 'update') {
-        throwUnknownOption(rawCommand, rawArgument)
-      }
-
-      rejectInlineValue(argument, inlineValue)
-      options.force = true
-      continue
-    }
-
-    if (argument === '--dry-run') {
-      if (rawCommand === 'doctor') throwUnknownOption(rawCommand, rawArgument)
-      rejectInlineValue(argument, inlineValue)
-      options.dryRun = true
-      continue
-    }
+    if (applyFlagOption(rawCommand, rawArgument, argument, inlineValue, options)) continue
 
     const valueOption = INIT_VALUE_OPTIONS.get(argument)
 

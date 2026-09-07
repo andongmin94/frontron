@@ -33,8 +33,8 @@ version and complete [release preparation](docs/RELEASING.md) before publication
   Safety-sensitive orchestration points include concise Korean comments so the
   recovery and ownership boundaries are visible without tracing every branch.
 - The Frontron cyclomatic-complexity gate is reduced from the previous 50-point
-  ceiling to 25 after the large orchestration functions were decomposed.
-  `create-frontron` keeps its separate 20-point gate.
+  ceiling to 20 after the orchestration and parsing paths were decomposed.
+  `frontron` and `create-frontron` now enforce the same 20-point ceiling.
 
 ### Validation and release process
 
@@ -47,6 +47,8 @@ version and complete [release preparation](docs/RELEASING.md) before publication
   scripts permitted by strict-dynamic; production security is not weakened.
 - Explicit local verification and npm publication replace obsolete Actions-only
   publishing assumptions. CI now also verifies pushes to `main`.
+- Active workflows use `actions/checkout@v7.0.1` and `actions/setup-node@v7.0.0`
+  so repository checks do not rely on the deprecated Node 20 action runtime.
 
 ### Intentional compatibility boundaries
 

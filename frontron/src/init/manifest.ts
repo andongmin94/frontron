@@ -58,6 +58,15 @@ export type FrontronManifest = {
   yarnRcClaims: YarnRcOwnershipClaim[]
 }
 
+type YarnRcClaimRecord = Record<string, unknown> & {
+  file: string
+  path: 'nodeLinker'
+  value: 'node-modules'
+  created: boolean
+  changed: boolean
+  previous: Record<string, unknown>
+}
+
 const VALID_CONFIDENCE = new Set<AdapterConfidence>(['high', 'medium', 'low'])
 const VALID_STRATEGIES = new Set<RuntimeStrategy>(['static-export', 'node-server'])
 const VALID_TEMPLATE_RESOLUTIONS = new Set<InitTemplateResolvedFrom>(['env', 'repo', 'dependency'])
@@ -202,39 +211,52 @@ function isClaimArray(value: unknown, pathAllowlist: ReadonlySet<string>) {
   )
 }
 
-function isYarnRcOwnershipClaim(value: unknown): value is YarnRcOwnershipClaim {
-  if (!isRecord(value) || !isRecord(value.previous)) return false
+// Yarn 소유권의 공통 필드와 이전 상태 변형을 분리해 검증 규칙을 읽기 쉽게 유지한다.
+function isYarnRcClaimRecord(value: unknown): value is YarnRcClaimRecord {
+  return (
+    isRecord(value) &&
+    isRecord(value.previous) &&
+    typeof value.file === 'string' &&
+    value.file.length > 0 &&
+    value.path === 'nodeLinker' &&
+    value.value === 'node-modules' &&
+    typeof value.created === 'boolean' &&
+    typeof value.changed === 'boolean' &&
+    (!value.created || value.file === '.yarnrc.yml')
+  )
+}
 
-  if (
-    typeof value.file !== 'string' ||
-    value.file.length === 0 ||
-    value.path !== 'nodeLinker' ||
-    value.value !== 'node-modules' ||
-    typeof value.created !== 'boolean' ||
-    typeof value.changed !== 'boolean' ||
-    (value.created && value.file !== '.yarnrc.yml')
-  ) {
-    return false
-  }
+function hasValidMissingYarnRcPrevious(previous: Record<string, unknown>, changed: boolean) {
+  return (
+    changed &&
+    typeof previous.previousHadFinalEol === 'boolean' &&
+    typeof previous.previousSourceHash === 'string' &&
+    SHA256_PATTERN.test(previous.previousSourceHash)
+  )
+}
 
-  const previous = value.previous
-
-  if (previous.state === 'missing') {
-    return (
-      value.changed === true &&
-      typeof previous.previousHadFinalEol === 'boolean' &&
-      typeof previous.previousSourceHash === 'string' &&
-      SHA256_PATTERN.test(previous.previousSourceHash)
-    )
-  }
-
+function hasValidExistingYarnRcPrevious(
+  previous: Record<string, unknown>,
+  created: boolean,
+  changed: boolean,
+) {
   return (
     previous.state === 'value' &&
     (previous.value === 'pnp' || previous.value === 'node-modules') &&
     typeof previous.source === 'string' &&
-    !value.created &&
-    (value.changed || previous.value === 'node-modules')
+    !created &&
+    (changed || previous.value === 'node-modules')
   )
+}
+
+function isYarnRcOwnershipClaim(value: unknown): value is YarnRcOwnershipClaim {
+  if (!isYarnRcClaimRecord(value)) return false
+
+  if (value.previous.state === 'missing') {
+    return hasValidMissingYarnRcPrevious(value.previous, value.changed)
+  }
+
+  return hasValidExistingYarnRcPrevious(value.previous, value.created, value.changed)
 }
 
 function hasValidManifestIdentity(value: Record<string, unknown>) {

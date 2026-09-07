@@ -28,6 +28,7 @@ jobs:
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: '22'
+          package-manager-cache: false
       - name: Verify from a clean checkout including real desktop execution
         env:
           FRONTRON_TEST_ELECTRON_RUNTIME: '1'

@@ -21,6 +21,7 @@ jobs:
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: '22'
+          package-manager-cache: false
       - name: Install locked tool dependencies
         shell: bash
         run: |
@@ -50,6 +51,7 @@ jobs:
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: '22'
+          package-manager-cache: false
       - name: Install locked tool dependencies
         run: |
           npm ci --prefix create-frontron --fund=false --audit=false

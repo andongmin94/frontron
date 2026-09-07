@@ -23,6 +23,7 @@ jobs:
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: '22'
+          package-manager-cache: false
       - name: Verify packages on macOS
         run: node release.mjs verify
       - name: Check macOS probe contracts

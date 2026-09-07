@@ -154,66 +154,53 @@ function addArrayValueChanges(
   }
 }
 
-function addPathScalarChange(
+// build 하위 변경은 중첩 객체를 한 번 정규화한 뒤 기존 보고 순서대로 추가한다.
+function addBuildPatchChanges(
   changes: PackageJsonPatchChange[],
-  before: PackageJson,
-  after: PackageJson,
-  path: string,
+  beforeValue: PackageJson['build'],
+  afterValue: PackageJson['build'],
 ) {
+  const before: NonNullable<PackageJson['build']> = beforeValue ?? {}
+  const after: NonNullable<PackageJson['build']> = afterValue ?? {}
+  const beforeDirectories = before.directories ?? {}
+  const afterDirectories = after.directories ?? {}
+  const beforeExtraMetadata = before.extraMetadata ?? {}
+  const afterExtraMetadata = after.extraMetadata ?? {}
+
+  addScalarChange(changes, before.icon, after.icon, 'build.icon')
+  addScalarChange(changes, before.appId, after.appId, 'build.appId')
+  addScalarChange(changes, before.productName, after.productName, 'build.productName')
+  addScalarChange(changes, before.npmRebuild, after.npmRebuild, 'build.npmRebuild')
+  addArrayValueChanges(changes, before.files, after.files, 'build.files')
+  addArrayValueChanges(changes, before.asarUnpack, after.asarUnpack, 'build.asarUnpack')
   addScalarChange(
     changes,
-    readPackageJsonPath(before, path).value,
-    readPackageJsonPath(after, path).value,
-    path,
+    beforeDirectories.output,
+    afterDirectories.output,
+    'build.directories.output',
   )
-}
-
-function addPathArrayValueChanges(
-  changes: PackageJsonPatchChange[],
-  before: PackageJson,
-  after: PackageJson,
-  path: string,
-) {
-  addArrayValueChanges(
+  addScalarChange(
     changes,
-    readPackageJsonPath(before, path).value,
-    readPackageJsonPath(after, path).value,
-    path,
+    beforeExtraMetadata.main,
+    afterExtraMetadata.main,
+    'build.extraMetadata.main',
   )
 }
 
-// 변경 목록은 record, 배열 원소, scalar 경로별로 순회해 build 중첩 분기를 만들지 않는다.
 function createPackageJsonPatchChanges(before: PackageJson, after: PackageJson) {
   const changes: PackageJsonPatchChange[] = []
-  const recordSections: Array<[
-    string,
-    Record<string, string> | undefined,
-    Record<string, string> | undefined,
-  ]> = [
-    ['scripts', before.scripts, after.scripts],
-    ['dependencies', before.dependencies, after.dependencies],
-    ['devDependencies', before.devDependencies, after.devDependencies],
-  ]
 
-  for (const [prefix, beforeRecord, afterRecord] of recordSections) {
-    addRecordChanges(changes, beforeRecord, afterRecord, prefix)
-  }
-
-  for (const path of ['trustedDependencies', 'build.files', 'build.asarUnpack']) {
-    addPathArrayValueChanges(changes, before, after, path)
-  }
-
-  for (const path of [
-    'version',
-    'build.icon',
-    'build.appId',
-    'build.productName',
-    'build.npmRebuild',
-    'build.directories.output',
-    'build.extraMetadata.main',
-  ]) {
-    addPathScalarChange(changes, before, after, path)
-  }
+  addRecordChanges(changes, before.scripts, after.scripts, 'scripts')
+  addRecordChanges(changes, before.dependencies, after.dependencies, 'dependencies')
+  addRecordChanges(changes, before.devDependencies, after.devDependencies, 'devDependencies')
+  addArrayValueChanges(
+    changes,
+    before.trustedDependencies,
+    after.trustedDependencies,
+    'trustedDependencies',
+  )
+  addScalarChange(changes, before.version, after.version, 'version')
+  addBuildPatchChanges(changes, before.build, after.build)
 
   return changes
 }
@@ -264,12 +251,12 @@ function addArrayValueOwnershipClaims(
       value,
       previous: beforeValue.exists
         ? {
-          state: 'value',
-          value: cloneJsonValue(beforeValue.value),
-        }
+            state: 'value',
+            value: cloneJsonValue(beforeValue.value),
+          }
         : {
-          state: 'missing',
-        },
+            state: 'missing',
+          },
     })
   }
 }

@@ -12,6 +12,9 @@ version and complete [release preparation](docs/RELEASING.md) before publication
 - Recovery checks recorded before/after states and refuses to overwrite or
   delete conflicting user edits. Unsafe links and unrecognized partial writes
   preserve both files and the journal instead of forcing restoration.
+- Transaction journal snapshot permissions are validated against the actual
+  captured Unix permission-bit range before recovery. Invalid journal metadata
+  is rejected without modifying the current files or discarding the journal.
 - Help, doctor, dry-run and unapproved commands do not recover pending work.
   Explicit recovery exits before a new operation is planned.
 - Windows path canonicalization and owned-process-tree shutdown are covered by
@@ -22,6 +25,16 @@ version and complete [release preparation](docs/RELEASING.md) before publication
 - Iconless retrofits receive the managed canonical SVG packaging default.
   Custom icons/settings and edits to managed icons remain subject to ownership
   checks during update and clean.
+
+### Maintainability
+
+- High-branching CLI, doctor, init/package patching, clean planning/application,
+  manifest validation and dry-run reporting paths are split into focused helpers.
+  Safety-sensitive orchestration points include concise Korean comments so the
+  recovery and ownership boundaries are visible without tracing every branch.
+- The Frontron cyclomatic-complexity gate is reduced from the previous 50-point
+  ceiling to 25 after the large orchestration functions were decomposed.
+  `create-frontron` keeps its separate 20-point gate.
 
 ### Validation and release process
 

@@ -13,6 +13,8 @@ const VITE_CONFIG_FILE_NAMES = [
   'vite.config.cjs',
 ]
 
+type CommandQuote = '"' | "'" | '`'
+
 // hasViteConfig 함수는 일반 Vite 계열 프로젝트의 설정 파일 존재 여부를 확인한다.
 export function hasViteConfig(cwd: string, fileNames = VITE_CONFIG_FILE_NAMES) {
   return fileNames.some((fileName) => existsSync(resolve(cwd, fileName)))
@@ -55,12 +57,24 @@ export function getScriptCommand(packageJson: PackageJson, scriptName: string) {
   return packageJson.scripts?.[scriptName] ?? null
 }
 
+function isCommandQuote(char: string): char is CommandQuote {
+  return char === '"' || char === "'" || char === '`'
+}
+
+function isCommandSeparator(char: string) {
+  return char === ';' || char === '&' || char === '|'
+}
+
+function isEscapableUnquotedCharacter(char: string | undefined) {
+  return Boolean(char && (/\s/.test(char) || isCommandQuote(char)))
+}
+
 // splitCommandSegments 함수는 따옴표와 Windows 역슬래시를 보존하며 shell 명령 구간을 나눈다.
 function splitCommandSegments(command: string) {
   const segments: string[][] = []
   let args: string[] = []
   let current = ''
-  let quote: '"' | "'" | '`' | null = null
+  let quote: CommandQuote | null = null
 
   // flushArg 함수는 현재까지 읽은 명령 인자를 현재 구간에 확정한다.
   const flushArg = () => {
@@ -97,7 +111,7 @@ function splitCommandSegments(command: string) {
       continue
     }
 
-    if (char === '"' || char === "'" || char === '`') {
+    if (isCommandQuote(char)) {
       quote = char
       continue
     }
@@ -105,7 +119,7 @@ function splitCommandSegments(command: string) {
     if (char === '\\') {
       const next = command[index + 1]
 
-      if (next && (/\s/.test(next) || next === '"' || next === "'" || next === '`')) {
+      if (isEscapableUnquotedCharacter(next)) {
         current += next
         index += 1
       } else {
@@ -119,7 +133,7 @@ function splitCommandSegments(command: string) {
       continue
     }
 
-    if (char === ';' || char === '&' || char === '|') {
+    if (isCommandSeparator(char)) {
       flushSegment()
       if (command[index + 1] === char) index += 1
       continue

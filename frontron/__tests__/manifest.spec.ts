@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
 import { runCli } from '../src/cli'
+import { runInit } from '../src/init'
 import { createFileHash, parseManifest } from '../src/init/manifest'
 import * as fixtures from './helpers/frontron-cli-fixtures'
 
@@ -75,7 +76,7 @@ describe('frontron manifest', () => {
     expect(() => parseManifest(forgedClaimManifest)).toThrow('.frontron/manifest.json is invalid')
   })
 
-  test('forced write commands reject an invalid manifest instead of guessing ownership', async () => {
+  test('forced internal init and maintenance commands reject invalid ownership', async () => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)
 
@@ -89,8 +90,17 @@ describe('frontron manifest', () => {
     manifest.fileHashes['package.json'] = createFileHash(packageJsonSource)
     writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
 
+    // --force는 init의 공개 CLI 옵션이 아니다. update가 사용하는 내부 강제 init 경로를 직접 검사한다.
+    await expect(
+      runInit(
+        { yes: true, force: true, dryRun: false },
+        { cwd: projectRoot, output: fixtures.createOutput() },
+      ),
+    ).rejects.toThrow('.frontron/manifest.json is invalid')
+    expect(readFileSync(packageJsonPath, 'utf8')).toBe(packageJsonSource)
+    expect(existsSync(manifestPath)).toBe(true)
+
     for (const command of [
-      ['init', '--yes', '--force'],
       ['clean', '--yes', '--force'],
       ['update', '--yes', '--force'],
     ]) {

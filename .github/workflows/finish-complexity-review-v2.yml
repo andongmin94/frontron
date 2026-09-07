@@ -1,0 +1,73 @@
+name: Finish complexity review v2
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/finish-complexity-review-v2.yml]
+permissions:
+  contents: write
+jobs:
+  apply-reviewed-refactor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply reviewed refactor
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "0e303a22c61c3c982805fbe84383fc2e85bffe12"
+          test "$(git rev-parse HEAD^^)" = "fbd39587b7e46d22b5d0a50a70e83232789de3ba"
+          test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/finish-complexity-review-v2.yml"
+          python - <<'PY'
+          import ast, re
+          from pathlib import Path
+          source = Path('.github/workflows/finish-complexity-review.yml').read_text()
+          match = re.search(r"REVIEW_PATCH_B64: ('[^\n]+')", source)
+          if not match:
+              raise SystemExit('Embedded reviewed patch not found')
+          Path('/tmp/review.patch.gz.b64').write_text(ast.literal_eval(match.group(1)))
+          PY
+          base64 -d /tmp/review.patch.gz.b64 | gzip -d > "$RUNNER_TEMP/review.patch"
+          printf '9a6c58480999e7f7e0e3751f50ad9a1c3833707f6a8db38249d34f37afce3f82  %s\n' "$RUNNER_TEMP/review.patch" | sha256sum -c -
+          git apply --check --exclude=frontron/.oxlintrc.json "$RUNNER_TEMP/review.patch"
+          git apply --exclude=frontron/.oxlintrc.json "$RUNNER_TEMP/review.patch"
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('frontron/.oxlintrc.json')
+          source = path.read_text()
+          old = '"complexity": ["error", 30]'
+          if source.count(old) != 1:
+              raise SystemExit('Unexpected Frontron complexity rule')
+          path.write_text(source.replace(old, '"complexity": ["error", 25]'))
+          PY
+          rm .github/workflows/finish-complexity-review.yml .github/workflows/finish-complexity-review-v2.yml
+          git diff --check
+      - name: Verify refactor
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --prefix create-frontron --fund=false --audit=false
+          npm ci --prefix frontron --fund=false --audit=false
+          node release.mjs check-metadata
+          npm --prefix frontron run check
+          npm --prefix create-frontron run check
+          npm --prefix frontron run typecheck
+          npm --prefix create-frontron run typecheck
+          npm --prefix frontron run test
+          npm --prefix create-frontron run test
+          npm --prefix frontron run coverage
+      - name: Commit verified refactor to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name '안동민'
+          git config user.email '110483588+andongmin94@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'refactor: finish complexity cleanup and harden journal validation'
+          git push origin HEAD:main

@@ -210,6 +210,136 @@ function createCleanTransactionTargets(
   return targets
 }
 
+// createNextPackageJson 함수는 clean 시 script와 package claim 복구 결과를 먼저 계산한다.
+function createNextPackageJson(packageJson: PackageJson, plan: CleanPlan) {
+  const nextPackageJson = cloneJsonValue(packageJson)
+  const scripts = { ...(nextPackageJson.scripts ?? {}) }
+  let changed = false
+
+  for (const script of plan.scripts) {
+    if (script.action !== 'remove') continue
+    delete scripts[script.name]
+    changed = true
+  }
+  for (const change of plan.packageJsonChanges) {
+    restorePackageJsonClaim(nextPackageJson, change.claim)
+    changed = true
+  }
+  if (changed) nextPackageJson.scripts = scripts
+  return { nextPackageJson, changed }
+}
+
+// applyTsconfigClaims 함수는 같은 tsconfig 파일의 claim을 묶어 한 번만 기록한다.
+function applyTsconfigClaims(
+  transaction: TransactionHandle,
+  projectRoot: string,
+  claimsByPath: Map<string, PackageJsonOwnershipClaim[]>,
+) {
+  for (const [path, claims] of claimsByPath) {
+    assertProjectPathSafe(projectRoot, path, 'tsconfig.json')
+    const source = readFileSync(path, 'utf8')
+    writeSafeFile(transaction, path, restoreTsconfigJsonClaims(source, claims), projectRoot)
+  }
+}
+
+// applyPnpmClaims 함수는 복구 결과가 빈 YAML이면 생성했던 설정 파일을 제거한다.
+function applyPnpmClaims(
+  transaction: TransactionHandle,
+  claimsByPath: Map<string, PackageJsonOwnershipClaim[]>,
+) {
+  for (const [path, claims] of claimsByPath) {
+    const safetyRoot = dirname(resolve(path))
+    assertProjectPathSafe(safetyRoot, path, 'pnpm-workspace.yaml')
+    let source = readFileSync(path, 'utf8')
+    for (const claim of claims) source = restorePnpmWorkspaceYamlClaim(source, claim)
+    assertProjectPathSafe(safetyRoot, path, 'pnpm-workspace.yaml')
+    if (source.trim()) writeSafeFile(transaction, path, source, safetyRoot)
+    else removeTransactionFile(transaction, path, safetyRoot)
+  }
+}
+
+// applyYarnClaims 함수는 파일별 claim을 순서대로 복구하고 생성 파일 여부에 따라 삭제까지 처리한다.
+function applyYarnClaims(
+  transaction: TransactionHandle,
+  projectRoot: string,
+  claimsByPath: Map<string, CleanPlan['yarnRcChanges'][number]['claim'][]>,
+) {
+  for (const [path, claims] of claimsByPath) {
+    const absolutePath = resolve(path)
+    const safetyRoot = isInsideDirectory(projectRoot, absolutePath)
+      ? projectRoot
+      : dirname(absolutePath)
+    assertProjectPathSafe(safetyRoot, path, YARN_RC_YAML_PATH)
+    let source = readFileSync(path, 'utf8')
+    for (const claim of claims) {
+      const restored = restoreYarnRcYamlClaim(source, claim)
+      if (restored.blocker) throw new Error(restored.blocker)
+      source = restored.source
+    }
+    assertProjectPathSafe(safetyRoot, path, YARN_RC_YAML_PATH)
+    if (source === '' && claims.some((claim) => claim.created)) {
+      removeTransactionFile(transaction, path, safetyRoot)
+    } else {
+      writeSafeFile(transaction, path, source, safetyRoot)
+    }
+  }
+}
+
+// deleteManagedFiles 함수는 계획 이후 파일이 바뀌지 않았는지 마지막으로 검사한 뒤 삭제한다.
+function deleteManagedFiles(
+  transaction: TransactionHandle,
+  projectRoot: string,
+  files: CleanPlan['files'],
+) {
+  const deletedFiles: string[] = []
+  for (const file of files.filter((entry) => entry.action === 'delete')) {
+    assertProjectPathSafe(projectRoot, file.absolutePath, 'Manifest file entry')
+    if (existsSync(file.absolutePath)) {
+      const stats = lstatSync(file.absolutePath)
+      if (!stats.isFile()) {
+        throw new Error(`Manifest file entry is no longer a regular file: ${file.manifestPath}`)
+      }
+      if (file.expectedHash && createFileHash(readFileSync(file.absolutePath)) !== file.expectedHash) {
+        throw new Error(`Manifest-owned file changed after planning: ${file.manifestPath}`)
+      }
+    }
+    assertProjectPathSafe(projectRoot, file.absolutePath, 'Manifest file entry')
+    removeTransactionFile(transaction, file.absolutePath, projectRoot)
+    deletedFiles.push(file.absolutePath)
+  }
+  return deletedFiles
+}
+
+// assertMissingTargets 함수는 계획 당시 없던 파일이 중간에 생기지 않았는지 transaction snapshot으로 확인한다.
+function assertMissingTargets(transaction: TransactionHandle, plan: CleanPlan, projectRoot: string) {
+  for (const file of plan.files.filter((entry) => entry.action === 'missing')) {
+    assertTransactionTargetUnchanged(transaction, file.absolutePath, projectRoot)
+  }
+  for (const guard of plan.missingSourceGuards ?? []) {
+    assertTransactionTargetUnchanged(transaction, guard.path, guard.safetyRoot)
+  }
+}
+
+// rollbackCleanTransaction 함수는 원래 clean 오류와 rollback 오류를 함께 전달한다.
+function rollbackCleanTransaction(transaction: TransactionHandle | null, error: unknown): never {
+  const rollbackErrors: string[] = []
+  if (transaction) {
+    try {
+      rollbackTransaction(transaction)
+    } catch (rollbackError) {
+      rollbackErrors.push(`persistent journal: ${(rollbackError as Error).message}`)
+    }
+  }
+  const rollbackMessage =
+    rollbackErrors.length > 0
+      ? ` Rollback also failed for: ${rollbackErrors.join('; ')}`
+      : ' Project files were rolled back from the persistent journal.'
+  throw new Error(
+    `Clean failed while applying project changes: ${(error as Error).message}.${rollbackMessage}`,
+    { cause: error },
+  )
+}
+
 // applyCleanPlan 함수는 모든 대상의 스냅샷을 만든 뒤 clean 계획을 하나의 트랜잭션으로 적용한다.
 export function applyCleanPlan(
   cwd: string,
@@ -218,31 +348,10 @@ export function applyCleanPlan(
   plan: CleanPlan,
 ) {
   const projectRoot = resolve(cwd)
-  const nextPackageJson = cloneJsonValue(packageJson)
-  const scripts = { ...(nextPackageJson.scripts ?? {}) }
-  let packageJsonChanged = false
-
-  for (const script of plan.scripts) {
-    if (script.action === 'remove') {
-      delete scripts[script.name]
-      packageJsonChanged = true
-    }
-  }
-
-  for (const change of plan.packageJsonChanges) {
-    restorePackageJsonClaim(nextPackageJson, change.claim)
-    packageJsonChanged = true
-  }
-
-  if (packageJsonChanged) {
-    nextPackageJson.scripts = scripts
-  }
-
+  const { nextPackageJson, changed: packageJsonChanged } = createNextPackageJson(packageJson, plan)
   const tsconfigClaimsByPath = groupClaimsByPath(plan.tsconfigJsonChanges)
   const pnpmClaimsByPath = groupClaimsByPath(plan.pnpmWorkspaceChanges)
   const yarnRcClaimsByPath = groupClaimsByPath(plan.yarnRcChanges)
-  const filesToDelete = plan.files.filter((file) => file.action === 'delete')
-  const missingFiles = plan.files.filter((file) => file.action === 'missing')
   const missingSourceGuards = plan.missingSourceGuards ?? []
   const transactionTargets = createCleanTransactionTargets(
     projectRoot,
@@ -259,7 +368,6 @@ export function applyCleanPlan(
 
   try {
     transaction = beginTransaction(projectRoot, 'clean', transactionTargets)
-
     if (packageJsonChanged) {
       writeSafeFile(
         transaction,
@@ -268,112 +376,15 @@ export function applyCleanPlan(
         projectRoot,
       )
     }
+    applyTsconfigClaims(transaction, projectRoot, tsconfigClaimsByPath)
+    applyPnpmClaims(transaction, pnpmClaimsByPath)
+    applyYarnClaims(transaction, projectRoot, yarnRcClaimsByPath)
 
-    for (const [tsconfigPath, claims] of tsconfigClaimsByPath) {
-      assertProjectPathSafe(projectRoot, tsconfigPath, 'tsconfig.json')
-      const source = readFileSync(tsconfigPath, 'utf8')
-      const nextSource = restoreTsconfigJsonClaims(source, claims)
-      writeSafeFile(transaction, tsconfigPath, nextSource, projectRoot)
-    }
-
-    for (const [pnpmWorkspacePath, claims] of pnpmClaimsByPath) {
-      const safetyRoot = dirname(resolve(pnpmWorkspacePath))
-      assertProjectPathSafe(safetyRoot, pnpmWorkspacePath, 'pnpm-workspace.yaml')
-      let source = readFileSync(pnpmWorkspacePath, 'utf8')
-
-      for (const claim of claims) {
-        source = restorePnpmWorkspaceYamlClaim(source, claim)
-      }
-
-      assertProjectPathSafe(safetyRoot, pnpmWorkspacePath, 'pnpm-workspace.yaml')
-
-      if (source.trim()) {
-        writeSafeFile(transaction, pnpmWorkspacePath, source, safetyRoot)
-      } else {
-        removeTransactionFile(transaction, pnpmWorkspacePath, safetyRoot)
-      }
-    }
-
-    for (const [yarnRcPath, claims] of yarnRcClaimsByPath) {
-      const safetyRoot = isInsideDirectory(projectRoot, resolve(yarnRcPath))
-        ? projectRoot
-        : dirname(resolve(yarnRcPath))
-      assertProjectPathSafe(safetyRoot, yarnRcPath, YARN_RC_YAML_PATH)
-      let source = readFileSync(yarnRcPath, 'utf8')
-
-      for (const claim of claims) {
-        const restored = restoreYarnRcYamlClaim(source, claim)
-
-        if (restored.blocker) {
-          throw new Error(restored.blocker)
-        }
-
-        source = restored.source
-      }
-
-      assertProjectPathSafe(safetyRoot, yarnRcPath, YARN_RC_YAML_PATH)
-
-      if (source === '' && claims.some((claim) => claim.created)) {
-        removeTransactionFile(transaction, yarnRcPath, safetyRoot)
-      } else {
-        writeSafeFile(transaction, yarnRcPath, source, safetyRoot)
-      }
-    }
-
-    const deletedFiles: string[] = []
-
-    for (const file of filesToDelete) {
-      assertProjectPathSafe(projectRoot, file.absolutePath, 'Manifest file entry')
-
-      if (existsSync(file.absolutePath)) {
-        const stats = lstatSync(file.absolutePath)
-
-        if (!stats.isFile()) {
-          throw new Error(`Manifest file entry is no longer a regular file: ${file.manifestPath}`)
-        }
-
-        if (
-          file.expectedHash &&
-          createFileHash(readFileSync(file.absolutePath)) !== file.expectedHash
-        ) {
-          throw new Error(`Manifest-owned file changed after planning: ${file.manifestPath}`)
-        }
-      }
-
-      assertProjectPathSafe(projectRoot, file.absolutePath, 'Manifest file entry')
-      removeTransactionFile(transaction, file.absolutePath, projectRoot)
-      deletedFiles.push(file.absolutePath)
-    }
-
-    for (const file of missingFiles) {
-      assertTransactionTargetUnchanged(transaction, file.absolutePath, projectRoot)
-    }
-
-    for (const guard of missingSourceGuards) {
-      assertTransactionTargetUnchanged(transaction, guard.path, guard.safetyRoot)
-    }
-
+    const deletedFiles = deleteManagedFiles(transaction, projectRoot, plan.files)
+    assertMissingTargets(transaction, plan, projectRoot)
     removeEmptyParents(cwd, deletedFiles)
     commitTransaction(transaction)
   } catch (error) {
-    const rollbackErrors: string[] = []
-
-    if (transaction) {
-      try {
-        rollbackTransaction(transaction)
-      } catch (rollbackError) {
-        rollbackErrors.push(`persistent journal: ${(rollbackError as Error).message}`)
-      }
-    }
-
-    const rollbackMessage =
-      rollbackErrors.length > 0
-        ? ` Rollback also failed for: ${rollbackErrors.join('; ')}`
-        : ' Project files were rolled back from the persistent journal.'
-
-    throw new Error(
-      `Clean failed while applying project changes: ${(error as Error).message}.${rollbackMessage}`,
-      { cause: error },
-    )
+    rollbackCleanTransaction(transaction, error)
   }
 }

@@ -102,6 +102,53 @@ export function createInitPlan(input: {
   }
 }
 
+// appendSection 함수는 dry-run 보고서의 공통 섹션 출력 규칙을 통일한다.
+function appendSection(lines: string[], title: string, entries: string[]) {
+  lines.push('', title)
+  lines.push(...(entries.length > 0 ? entries : ['  (none)']))
+}
+
+// formatPlannedFileChanges 함수는 생성/덮어쓰기/제거 파일을 섹션별 문자열로 만든다.
+function formatPlannedFileChanges(plan: InitPlan) {
+  const cwd = plan.config.cwd
+  const formatPath = (filePath: string) => normalizePathValue(relative(cwd, filePath), filePath)
+  return {
+    create: plan.files
+      .filter((file) => file.action === 'create')
+      .map((file) => `  + ${formatPath(file.path)}`),
+    overwrite: plan.files
+      .filter((file) => file.action === 'overwrite')
+      .map((file) => `  ~ ${formatPath(file.path)}`),
+    remove: plan.obsoleteFiles.map((file) => `  - ${file.manifestPath}`),
+    blocked: plan.files
+      .filter((file) => file.action === 'blocked')
+      .map((file) => `  - Existing file will not be overwritten automatically: ${formatPath(file.path)}`),
+  }
+}
+
+// formatConfigChanges 함수는 각 설정 파일 계획을 dry-run 표시용 문자열로 변환한다.
+function formatConfigChanges(plan: InitPlan) {
+  const config = plan.config
+  const yarnRcDisplayPath = plan.yarnRcPlan
+    ? normalizePathValue(relative(config.cwd, plan.yarnRcPlan.path), plan.yarnRcPlan.path)
+    : '.yarnrc.yml'
+  return {
+    packageJson: plan.packageJsonPlan.changes.map(formatPackageJsonPatchChange),
+    tsconfig:
+      plan.tsconfigJsonPlan?.changes.map((change) => `  + ${change.path}: ${change.value}`) ?? [],
+    pnpm:
+      plan.pnpmWorkspacePlan?.changes.map(
+        (change) => `  + ${change.path}: ${String(change.value)}`,
+      ) ?? [],
+    yarn:
+      plan.yarnRcPlan?.changes.map((change) => {
+        const marker = change.action === 'create' || change.action === 'add' ? '+' : '~'
+        const previous = change.previous === 'missing' ? '(missing)' : change.previous
+        return `  ${marker} ${yarnRcDisplayPath} ${change.path}: ${previous} -> ${change.value}`
+      }) ?? [],
+  }
+}
+
 export function createDryRunReport(plan: InitPlan) {
   const config = plan.config
   const lines = [
@@ -114,95 +161,28 @@ export function createDryRunReport(plan: InitPlan) {
   ]
 
   if (config.adapterReasons.length > 0) {
-    lines.push('  Reasons:')
-
-    for (const reason of config.adapterReasons) {
-      lines.push(`    - ${reason}`)
-    }
+    lines.push('  Reasons:', ...config.adapterReasons.map((reason) => `    - ${reason}`))
   }
 
-  lines.push('', 'Files to create:')
+  const files = formatPlannedFileChanges(plan)
+  appendSection(lines, 'Files to create:', files.create)
+  appendSection(lines, 'Files to overwrite:', files.overwrite)
+  appendSection(lines, 'Files to remove:', files.remove)
 
-  for (const file of plan.files) {
-    if (file.action !== 'create') continue
-    lines.push(`  + ${normalizePathValue(relative(config.cwd, file.path), file.path)}`)
-  }
-
-  const overwriteFiles = plan.files.filter((file) => file.action === 'overwrite')
-
-  if (overwriteFiles.length > 0) {
-    lines.push('', 'Files to overwrite:')
-
-    for (const file of overwriteFiles) {
-      lines.push(`  ~ ${normalizePathValue(relative(config.cwd, file.path), file.path)}`)
-    }
-  }
-
-  if (plan.obsoleteFiles.length > 0) {
-    lines.push('', 'Files to remove:')
-
-    for (const file of plan.obsoleteFiles) {
-      lines.push(`  - ${file.manifestPath}`)
-    }
-  }
-
-  lines.push('', 'package.json changes:')
-  const packageJsonChangeLines = plan.packageJsonPlan.changes.map(formatPackageJsonPatchChange)
-  lines.push(...(packageJsonChangeLines.length > 0 ? packageJsonChangeLines : ['  (none)']))
-
-  lines.push('', 'tsconfig.json changes:')
-  const tsconfigJsonChangeLines =
-    plan.tsconfigJsonPlan?.changes.map((change) => `  + ${change.path}: ${change.value}`) ?? []
-  lines.push(...(tsconfigJsonChangeLines.length > 0 ? tsconfigJsonChangeLines : ['  (none)']))
-
-  lines.push('', 'pnpm-workspace.yaml changes:')
-  const pnpmWorkspaceChangeLines =
-    plan.pnpmWorkspacePlan?.changes.map(
-      (change) => `  + ${change.path}: ${String(change.value)}`,
-    ) ?? []
-  lines.push(...(pnpmWorkspaceChangeLines.length > 0 ? pnpmWorkspaceChangeLines : ['  (none)']))
-
-  lines.push('', '.yarnrc.yml changes:')
-  const yarnRcDisplayPath = plan.yarnRcPlan
-    ? normalizePathValue(relative(config.cwd, plan.yarnRcPlan.path), plan.yarnRcPlan.path)
-    : '.yarnrc.yml'
-  const yarnRcChangeLines =
-    plan.yarnRcPlan?.changes.map((change) => {
-      const marker = change.action === 'create' || change.action === 'add' ? '+' : '~'
-      const previous = change.previous === 'missing' ? '(missing)' : change.previous
-      return `  ${marker} ${yarnRcDisplayPath} ${change.path}: ${previous} -> ${change.value}`
-    }) ?? []
-  lines.push(...(yarnRcChangeLines.length > 0 ? yarnRcChangeLines : ['  (none)']))
+  const configChanges = formatConfigChanges(plan)
+  appendSection(lines, 'package.json changes:', configChanges.packageJson)
+  appendSection(lines, 'tsconfig.json changes:', configChanges.tsconfig)
+  appendSection(lines, 'pnpm-workspace.yaml changes:', configChanges.pnpm)
+  appendSection(lines, '.yarnrc.yml changes:', configChanges.yarn)
 
   if (plan.warnings.length > 0) {
-    lines.push('', 'Warnings:')
-
-    for (const warning of plan.warnings) {
-      lines.push(`  - ${warning}`)
-    }
+    appendSection(lines, 'Warnings:', plan.warnings.map((warning) => `  - ${warning}`))
   }
 
-  const blockedFiles = plan.files.filter((file) => file.action === 'blocked')
-
-  if (blockedFiles.length > 0 || plan.blockers.length > 0) {
-    lines.push('', 'Blockers:')
-
-    for (const blocker of plan.blockers) {
-      lines.push(`  - ${blocker}`)
-    }
-
-    for (const file of blockedFiles) {
-      lines.push(
-        `  - Existing file will not be overwritten automatically: ${normalizePathValue(
-          relative(config.cwd, file.path),
-          file.path,
-        )}`,
-      )
-    }
-  }
+  const blockers = [...plan.blockers.map((blocker) => `  - ${blocker}`), ...files.blocked]
+  if (blockers.length > 0) appendSection(lines, 'Blockers:', blockers)
 
   lines.push('', 'No changes were written because --dry-run was used.')
-
   return lines.join('\n')
 }
 

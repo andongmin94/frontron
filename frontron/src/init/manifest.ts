@@ -237,53 +237,69 @@ function isYarnRcOwnershipClaim(value: unknown): value is YarnRcOwnershipClaim {
   )
 }
 
-function isManifest(value: Record<string, unknown>): value is FrontronManifest {
+function hasValidManifestIdentity(value: Record<string, unknown>) {
   const requiredStrings = [
-    'desktopDir',
-    'appScript',
-    'buildScript',
-    'webDevScript',
-    'webBuildScript',
-    'outDir',
-    'productName',
-    'appId',
-    'templateVersion',
+    'desktopDir', 'appScript', 'buildScript', 'webDevScript', 'webBuildScript',
+    'outDir', 'productName', 'appId', 'templateVersion',
   ]
+  return (
+    value.schemaVersion === CURRENT_MANIFEST_SCHEMA_VERSION &&
+    typeof value.adapter === 'string' &&
+    VALID_ADAPTERS.includes(value.adapter as InitAdapterId) &&
+    typeof value.adapterConfidence === 'string' &&
+    VALID_CONFIDENCE.has(value.adapterConfidence as AdapterConfidence) &&
+    isStringArray(value.adapterReasons) &&
+    typeof value.strategy === 'string' &&
+    VALID_STRATEGIES.has(value.strategy as RuntimeStrategy) &&
+    requiredStrings.every((key) => typeof value[key] === 'string')
+  )
+}
 
-  if (
-    value.schemaVersion !== CURRENT_MANIFEST_SCHEMA_VERSION ||
-    typeof value.adapter !== 'string' ||
-    !VALID_ADAPTERS.includes(value.adapter as InitAdapterId) ||
-    typeof value.adapterConfidence !== 'string' ||
-    !VALID_CONFIDENCE.has(value.adapterConfidence as AdapterConfidence) ||
-    !isStringArray(value.adapterReasons) ||
-    typeof value.strategy !== 'string' ||
-    !VALID_STRATEGIES.has(value.strategy as RuntimeStrategy) ||
-    !requiredStrings.every((key) => typeof value[key] === 'string') ||
-    (value.nodeServerSourceRoot !== null && typeof value.nodeServerSourceRoot !== 'string') ||
-    (value.nodeServerSourceEntry !== null && typeof value.nodeServerSourceEntry !== 'string') ||
-    (value.nodeServerEntry !== null && typeof value.nodeServerEntry !== 'string') ||
-    value.templateSource !== 'create-frontron' ||
-    value.templatePackage !== 'create-frontron' ||
-    typeof value.templateResolvedFrom !== 'string' ||
-    !VALID_TEMPLATE_RESOLUTIONS.has(value.templateResolvedFrom as InitTemplateResolvedFrom) ||
-    !hasValidManifestFileOwnership(value.createdFiles, value.fileHashes, value.desktopDir) ||
-    !isStringArray(value.scripts) ||
-    new Set(value.scripts).size !== value.scripts.length ||
-    !isStringRecord(value.scriptCommands) ||
-    !value.scripts.every((scriptName) =>
+function hasValidServerMetadata(value: Record<string, unknown>) {
+  return [value.nodeServerSourceRoot, value.nodeServerSourceEntry, value.nodeServerEntry].every(
+    (entry) => entry === null || typeof entry === 'string',
+  )
+}
+
+function hasValidTemplateMetadata(value: Record<string, unknown>) {
+  return (
+    value.templateSource === 'create-frontron' &&
+    value.templatePackage === 'create-frontron' &&
+    typeof value.templateResolvedFrom === 'string' &&
+    VALID_TEMPLATE_RESOLUTIONS.has(value.templateResolvedFrom as InitTemplateResolvedFrom)
+  )
+}
+
+function hasValidScriptOwnership(value: Record<string, unknown>) {
+  if (!isStringArray(value.scripts) || !isStringRecord(value.scriptCommands)) return false
+  return (
+    new Set(value.scripts).size === value.scripts.length &&
+    value.scripts.every((scriptName) =>
       Object.prototype.hasOwnProperty.call(value.scriptCommands, scriptName),
-    ) ||
-    !isClaimArray(value.packageJsonClaims, PACKAGE_JSON_CLAIM_PATH_ALLOWLIST) ||
-    !isClaimArray(value.tsconfigJsonClaims, TSCONFIG_JSON_CLAIM_PATH_ALLOWLIST) ||
-    !isClaimArray(value.pnpmWorkspaceClaims, PNPM_WORKSPACE_CLAIM_PATH_ALLOWLIST) ||
-    !Array.isArray(value.yarnRcClaims) ||
-    !value.yarnRcClaims.every(isYarnRcOwnershipClaim)
-  ) {
-    return false
-  }
+    )
+  )
+}
 
-  return true
+function hasValidClaimOwnership(value: Record<string, unknown>) {
+  return (
+    isClaimArray(value.packageJsonClaims, PACKAGE_JSON_CLAIM_PATH_ALLOWLIST) &&
+    isClaimArray(value.tsconfigJsonClaims, TSCONFIG_JSON_CLAIM_PATH_ALLOWLIST) &&
+    isClaimArray(value.pnpmWorkspaceClaims, PNPM_WORKSPACE_CLAIM_PATH_ALLOWLIST) &&
+    Array.isArray(value.yarnRcClaims) &&
+    value.yarnRcClaims.every(isYarnRcOwnershipClaim)
+  )
+}
+
+// isManifest 함수는 검증 책임을 작은 판정 함수로 나눠 필드 그룹별 의미가 드러나게 한다.
+function isManifest(value: Record<string, unknown>): value is FrontronManifest {
+  return (
+    hasValidManifestIdentity(value) &&
+    hasValidServerMetadata(value) &&
+    hasValidTemplateMetadata(value) &&
+    hasValidManifestFileOwnership(value.createdFiles, value.fileHashes, value.desktopDir) &&
+    hasValidScriptOwnership(value) &&
+    hasValidClaimOwnership(value)
+  )
 }
 
 export function parseManifest(value: unknown): FrontronManifest {

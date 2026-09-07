@@ -181,6 +181,36 @@ test('mutation rejects an external edit and rollback preserves the unmutated edi
   expect(readFileSync(filePath, 'utf8')).toBe('external\n')
 })
 
+
+test('recovery rejects a journal snapshot mode outside the captured permission range', () => {
+  const root = createProject('invalid-mode')
+  const filePath = join(root, 'package.json')
+  writeFileSync(filePath, 'before\n')
+
+  const transaction = beginTransaction(root, 'clean', [
+    {
+      path: filePath,
+      safetyRoot: root,
+      expectedHash: createTransactionSourceHash('before\n'),
+    },
+  ])
+  writeTransactionFile(transaction, filePath, 'partial\n', root)
+  const journalPath = join(root, TRANSACTION_JOURNAL_PATH)
+  const lines = readFileSync(journalPath, 'utf8').split(/\r?\n/)
+  const header = JSON.parse(lines[0] ?? '') as {
+    processId: number
+    snapshots: Array<{ mode: number | null }>
+  }
+  header.processId = deadProcessId
+  header.snapshots[0]!.mode = 0o10000
+  lines[0] = JSON.stringify(header)
+  writeFileSync(journalPath, lines.join('\n'), 'utf8')
+
+  expect(() => recoverPendingTransaction(root)).toThrow('invalid snapshot')
+  expect(readFileSync(filePath, 'utf8')).toBe('partial\n')
+  expect(existsSync(journalPath)).toBe(true)
+})
+
 test('rollback recreates an empty directory removed by clean', () => {
   const root = createProject('directory')
   const directoryPath = join(root, 'electron')

@@ -5,7 +5,7 @@
     "correctness": "error"
   },
   "rules": {
-    "complexity": ["error", 30]
+    "complexity": ["error", 25]
   },
   "env": {
     "node": true,

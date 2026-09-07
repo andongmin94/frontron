@@ -178,20 +178,61 @@ function snapshotTarget(projectRoot: string, target: TransactionTarget): Transac
   }
 }
 
-function validateSnapshot(projectRoot: string, value: unknown): TransactionSnapshot {
-  if (
-    !isRecord(value) ||
-    typeof value.path !== 'string' ||
-    typeof value.safetyRoot !== 'string' ||
-    (value.kind !== 'file' && value.kind !== 'directory') ||
-    typeof value.existed !== 'boolean' ||
-    (value.contentBase64 !== null && typeof value.contentBase64 !== 'string') ||
-    (value.contentSha256 !== null && typeof value.contentSha256 !== 'string') ||
-    (value.mode !== null && (!Number.isInteger(value.mode) || Number(value.mode) < 0))
-  ) {
+// isSnapshotRecord 함수는 snapshot의 기본 필드 형식만 먼저 검증해 본문 분기를 줄인다.
+function isSnapshotRecord(value: unknown): value is Record<string, unknown> & {
+  path: string
+  safetyRoot: string
+  kind: TransactionTargetKind
+  existed: boolean
+  contentBase64: string | null
+  contentSha256: string | null
+  mode: number | null
+} {
+  return (
+    isRecord(value) &&
+    typeof value.path === 'string' &&
+    typeof value.safetyRoot === 'string' &&
+    (value.kind === 'file' || value.kind === 'directory') &&
+    typeof value.existed === 'boolean' &&
+    (value.contentBase64 === null || typeof value.contentBase64 === 'string') &&
+    (value.contentSha256 === null || typeof value.contentSha256 === 'string') &&
+    (value.mode === null ||
+      (Number.isInteger(value.mode) && Number(value.mode) >= 0 && Number(value.mode) <= 0o7777))
+  )
+}
+
+// validateSnapshotPayload 함수는 existed/kind 조합에 맞는 snapshot 데이터가 정확히 들어 있는지 확인한다.
+function validateSnapshotPayload(
+  value: ReturnType<typeof normalizeSnapshotRecord>,
+) {
+  const { existed, kind, contentBase64, contentSha256, mode } = value
+  if (existed && kind === 'file') {
+    if (contentBase64 === null || contentSha256 === null || mode === null) {
+      throw new Error('The transaction journal is missing file snapshot data.')
+    }
+    if (createTransactionSourceHash(Buffer.from(contentBase64, 'base64')) !== contentSha256) {
+      throw new Error('The transaction journal file snapshot is corrupted.')
+    }
+    return
+  }
+  if (contentBase64 !== null || contentSha256 !== null || mode !== null) {
+    throw new Error('The transaction journal contains unexpected snapshot data.')
+  }
+}
+
+function normalizeSnapshotRecord(value: ReturnType<typeof assertSnapshotRecord>) {
+  return { ...value, mode: value.mode === null ? null : Number(value.mode) }
+}
+
+function assertSnapshotRecord(value: unknown) {
+  if (!isSnapshotRecord(value)) {
     throw new Error('The transaction journal contains an invalid snapshot.')
   }
+  return value
+}
 
+function validateSnapshot(projectRoot: string, rawValue: unknown): TransactionSnapshot {
+  const value = normalizeSnapshotRecord(assertSnapshotRecord(rawValue))
   const safetyRoot = assertSafetyRoot(projectRoot, value.safetyRoot)
   const path = assertTransactionPath(
     projectRoot,
@@ -202,21 +243,8 @@ function validateSnapshot(projectRoot: string, value: unknown): TransactionSnaps
   if (path === resolve(projectRoot, TRANSACTION_JOURNAL_PATH)) {
     throw new Error('The transaction journal cannot be a recovery target.')
   }
-  const mode = value.mode === null ? null : Number(value.mode)
 
-  if (value.existed && value.kind === 'file') {
-    if (value.contentBase64 === null || value.contentSha256 === null || mode === null) {
-      throw new Error('The transaction journal is missing file snapshot data.')
-    }
-
-    const content = Buffer.from(value.contentBase64, 'base64')
-    if (createTransactionSourceHash(content) !== value.contentSha256) {
-      throw new Error('The transaction journal file snapshot is corrupted.')
-    }
-  } else if (value.contentBase64 !== null || value.contentSha256 !== null || mode !== null) {
-    throw new Error('The transaction journal contains unexpected snapshot data.')
-  }
-
+  validateSnapshotPayload(value)
   return {
     path,
     safetyRoot,
@@ -224,7 +252,7 @@ function validateSnapshot(projectRoot: string, value: unknown): TransactionSnaps
     existed: value.existed,
     contentBase64: value.contentBase64,
     contentSha256: value.contentSha256,
-    mode,
+    mode: value.mode,
   }
 }
 

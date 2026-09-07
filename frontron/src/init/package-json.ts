@@ -154,42 +154,66 @@ function addArrayValueChanges(
   }
 }
 
+function addPathScalarChange(
+  changes: PackageJsonPatchChange[],
+  before: PackageJson,
+  after: PackageJson,
+  path: string,
+) {
+  addScalarChange(
+    changes,
+    readPackageJsonPath(before, path).value,
+    readPackageJsonPath(after, path).value,
+    path,
+  )
+}
+
+function addPathArrayValueChanges(
+  changes: PackageJsonPatchChange[],
+  before: PackageJson,
+  after: PackageJson,
+  path: string,
+) {
+  addArrayValueChanges(
+    changes,
+    readPackageJsonPath(before, path).value,
+    readPackageJsonPath(after, path).value,
+    path,
+  )
+}
+
+// 변경 목록은 record, 배열 원소, scalar 경로별로 순회해 build 중첩 분기를 만들지 않는다.
 function createPackageJsonPatchChanges(before: PackageJson, after: PackageJson) {
   const changes: PackageJsonPatchChange[] = []
+  const recordSections: Array<[
+    string,
+    Record<string, string> | undefined,
+    Record<string, string> | undefined,
+  ]> = [
+    ['scripts', before.scripts, after.scripts],
+    ['dependencies', before.dependencies, after.dependencies],
+    ['devDependencies', before.devDependencies, after.devDependencies],
+  ]
 
-  addRecordChanges(changes, before.scripts, after.scripts, 'scripts')
-  addRecordChanges(changes, before.dependencies, after.dependencies, 'dependencies')
-  addRecordChanges(changes, before.devDependencies, after.devDependencies, 'devDependencies')
-  addArrayValueChanges(
-    changes,
-    before.trustedDependencies,
-    after.trustedDependencies,
-    'trustedDependencies',
-  )
-  addScalarChange(changes, before.version, after.version, 'version')
-  addScalarChange(changes, before.build?.icon, after.build?.icon, 'build.icon')
-  addScalarChange(changes, before.build?.appId, after.build?.appId, 'build.appId')
-  addScalarChange(changes, before.build?.productName, after.build?.productName, 'build.productName')
-  addScalarChange(changes, before.build?.npmRebuild, after.build?.npmRebuild, 'build.npmRebuild')
-  addArrayValueChanges(changes, before.build?.files, after.build?.files, 'build.files')
-  addArrayValueChanges(
-    changes,
-    before.build?.asarUnpack,
-    after.build?.asarUnpack,
-    'build.asarUnpack',
-  )
-  addScalarChange(
-    changes,
-    before.build?.directories?.output,
-    after.build?.directories?.output,
+  for (const [prefix, beforeRecord, afterRecord] of recordSections) {
+    addRecordChanges(changes, beforeRecord, afterRecord, prefix)
+  }
+
+  for (const path of ['trustedDependencies', 'build.files', 'build.asarUnpack']) {
+    addPathArrayValueChanges(changes, before, after, path)
+  }
+
+  for (const path of [
+    'version',
+    'build.icon',
+    'build.appId',
+    'build.productName',
+    'build.npmRebuild',
     'build.directories.output',
-  )
-  addScalarChange(
-    changes,
-    before.build?.extraMetadata?.main,
-    after.build?.extraMetadata?.main,
     'build.extraMetadata.main',
-  )
+  ]) {
+    addPathScalarChange(changes, before, after, path)
+  }
 
   return changes
 }
@@ -240,12 +264,12 @@ function addArrayValueOwnershipClaims(
       value,
       previous: beforeValue.exists
         ? {
-            state: 'value',
-            value: cloneJsonValue(beforeValue.value),
-          }
+          state: 'value',
+          value: cloneJsonValue(beforeValue.value),
+        }
         : {
-            state: 'missing',
-          },
+          state: 'missing',
+        },
     })
   }
 }

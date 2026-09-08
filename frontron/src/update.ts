@@ -161,6 +161,7 @@ function inspectYarnRcClaims(
   }
 }
 
+// 안전 차단은 --force로도 우회하지 않고, localChanges만 사용자의 명시적 승인으로 덮어쓸 수 있다.
 function inspectUpdateState(cwd: string, manifest: FrontronManifest): UpdateInspection {
   const localChanges: string[] = []
   const safetyBlockers: string[] = []
@@ -230,6 +231,7 @@ export async function runUpdate(options: UpdateOptions, context: InitContext) {
 
   const inspection = inspectUpdateState(context.cwd, manifest)
 
+  // 링크·파일형·파서 안전성 문제는 사용자 --force보다 우선하며 항상 중단한다.
   if (inspection.safetyBlockers.length > 0) {
     throw new Error(
       `Update aborted because managed paths are unsafe: ${inspection.safetyBlockers.join('; ')}`,
@@ -243,6 +245,7 @@ export async function runUpdate(options: UpdateOptions, context: InitContext) {
   }
 
   const shouldApply = options.yes && !options.dryRun
+  // 여기까지 오면 사용자 변경 충돌 검사가 끝났다. 아래 force는 검증된 managed 파일 재생성용 내부 권한이다.
   const exitCode = await runInit(
     {
       ...createUpdateInitOptions(manifest),

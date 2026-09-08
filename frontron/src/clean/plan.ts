@@ -463,17 +463,10 @@ function readCleanManifest(cwd: string) {
 export function createCleanPlan(
   cwd: string,
   packageJson: PackageJson,
-  packageJsonSourceOrOptions: string | CleanOptions,
-  maybeOptions?: CleanOptions,
+  packageJsonSource: string,
+  options: CleanOptions,
 ): CleanPlan {
-  const packageJsonSource =
-    typeof packageJsonSourceOrOptions === 'string'
-      ? packageJsonSourceOrOptions
-      : readFileSync(resolve(cwd, 'package.json'), 'utf8')
-  const options =
-    typeof packageJsonSourceOrOptions === 'string'
-      ? (maybeOptions as CleanOptions)
-      : packageJsonSourceOrOptions
+  // runClean이 계획 직전에 읽은 원문을 그대로 받아 적용 단계와 같은 해시 기준을 사용한다.
   const manifest = readCleanManifest(cwd)
   const state = createPlanningState(cwd, packageJsonSource)
 

@@ -26,7 +26,6 @@ export type CreateInitProjectPlanInput = {
   template: CreateFrontronTemplateSnapshot
   packageJsonSource: string
   existingManifest: FrontronManifest | null
-  force: boolean
   configurationWarnings: string[]
   packageMetadataBlockers: string[]
 }
@@ -144,10 +143,11 @@ export function createInitProjectPlan(input: CreateInitProjectPlanInput) {
   )
 
   const conflicts = [...filesToWrite.keys()].filter((filePath) => existsSync(filePath))
+  // 기존 manifest는 runInit의 강제 경로에서만 읽히므로, 존재 여부가 곧 덮어쓰기 허용 상태다.
   const conflictPlan = splitFileConflicts(
     input.config.cwd,
     conflicts,
-    input.force,
+    input.existingManifest !== null,
     input.existingManifest,
   )
 

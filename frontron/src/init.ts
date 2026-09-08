@@ -99,7 +99,6 @@ export async function runInit(options: InitOptions, context: InitContext) {
       template: project.template,
       packageJsonSource: project.packageJsonSource,
       existingManifest: project.existingManifest,
-      force: options.force,
       configurationWarnings: resolved.successWarnings,
       packageMetadataBlockers: resolved.packageMetadataBlockers,
     })

@@ -50,11 +50,11 @@ function addClaimInspection(
 }
 
 function inspectManifestFiles(cwd: string, manifest: FrontronManifest, findings: DoctorFindings) {
-  for (const filePath of new Set(manifest.createdFiles)) {
+  for (const filePath of manifest.createdFiles) {
     // manifest는 자신을 해시할 수 없으므로 관리 파일 검사에서 제외한다.
     if (filePath === MANIFEST_PATH) continue
 
-    const inspection = inspectManagedFile(cwd, filePath, manifest.fileHashes?.[filePath])
+    const inspection = inspectManagedFile(cwd, filePath, manifest.fileHashes[filePath])
     if (inspection.state === 'unsafe') {
       findings.blockers.push(inspection.blocker ?? `Manifest file entry is unsafe: ${filePath}`)
       continue
@@ -67,10 +67,8 @@ function inspectManifestFiles(cwd: string, manifest: FrontronManifest, findings:
     findings.checks.push(`${filePath} exists`)
     if (inspection.state === 'unchanged') {
       findings.checks.push(`${filePath} hash matches manifest`)
-    } else if (inspection.state === 'modified') {
-      findings.warnings.push(`Manifest-owned file has local edits: ${filePath}`)
     } else {
-      findings.warnings.push(`Manifest-owned file has no recorded hash: ${filePath}`)
+      findings.warnings.push(`Manifest-owned file has local edits: ${filePath}`)
     }
   }
 }
@@ -80,24 +78,18 @@ function inspectManifestScripts(
   manifest: FrontronManifest,
   findings: DoctorFindings,
 ) {
-  for (const scriptName of new Set(manifest.scripts)) {
+  for (const scriptName of manifest.scripts) {
     const state = inspectManagedScript(packageJson.scripts, manifest.scriptCommands, scriptName)
     if (state === 'missing') {
       findings.blockers.push(`Missing package.json script: ${scriptName}`)
-      continue
-    }
-    if (state === 'unsafe') {
-      findings.blockers.push(`Manifest-owned script could not be inspected safely: ${scriptName}`)
       continue
     }
 
     findings.checks.push(`scripts.${scriptName} exists`)
     if (state === 'unchanged') {
       findings.checks.push(`scripts.${scriptName} matches manifest`)
-    } else if (state === 'modified') {
-      findings.warnings.push(`Manifest-owned script has local edits: ${scriptName}`)
     } else {
-      findings.warnings.push(`Manifest-owned script has no recorded command: ${scriptName}`)
+      findings.warnings.push(`Manifest-owned script has local edits: ${scriptName}`)
     }
   }
 }
@@ -153,22 +145,14 @@ function inspectTemplateState(
     const template = loadCreateFrontronTemplate()
     templateDependencies = template.dependencies
 
-    if (
-      manifest.templateSource === 'create-frontron' &&
-      manifest.templatePackage === 'create-frontron'
-    ) {
-      if (manifest.templateVersion === template.info.packageVersion) {
-        findings.checks.push(
-          `create-frontron template version matches frontron (${template.info.packageVersion})`,
-        )
-      } else {
-        findings.warnings.push(
-          `${MANIFEST_PATH} uses create-frontron@${manifest.templateVersion ?? 'unknown'}, but this frontron release requires create-frontron@${template.info.packageVersion}. Run "frontron update --yes" to refresh it.`,
-        )
-      }
+    // schema 3은 create-frontron 출처와 버전을 필수로 검증하므로 버전 차이만 비교하면 된다.
+    if (manifest.templateVersion === template.info.packageVersion) {
+      findings.checks.push(
+        `create-frontron template version matches frontron (${template.info.packageVersion})`,
+      )
     } else {
       findings.warnings.push(
-        `${MANIFEST_PATH} does not include create-frontron template metadata. Run "frontron update --yes" to refresh it.`,
+        `${MANIFEST_PATH} uses create-frontron@${manifest.templateVersion}, but this frontron release requires create-frontron@${template.info.packageVersion}. Run "frontron update --yes" to refresh it.`,
       )
     }
   } catch (error) {
@@ -179,22 +163,6 @@ function inspectTemplateState(
 
   // 템플릿 로드 실패와 필수 의존성 누락은 서로 다른 문제이므로 독립적으로 검사한다.
   inspectToolDependencies(packageJson, templateDependencies, findings)
-}
-
-function inspectManifestMetadata(manifest: FrontronManifest, findings: DoctorFindings) {
-  const fields = [
-    [manifest.fileHashes, 'file hashes'],
-    [manifest.scriptCommands, 'script commands'],
-    [manifest.packageJsonClaims, 'package.json ownership'],
-  ] as const
-
-  for (const [value, label] of fields) {
-    if (!value) {
-      findings.warnings.push(
-        `${MANIFEST_PATH} does not include ${label}. Run "frontron update --yes" to refresh it.`,
-      )
-    }
-  }
 }
 
 function inspectTsconfigClaims(cwd: string, manifest: FrontronManifest, findings: DoctorFindings) {
@@ -360,7 +328,6 @@ export function inspectDoctorState(
   manifest: FrontronManifest,
   findings: DoctorFindings,
 ) {
-  inspectManifestMetadata(manifest, findings)
   inspectTsconfigClaims(cwd, manifest, findings)
   inspectPnpmWorkspaceClaims(cwd, manifest, findings)
   inspectYarnRcClaims(cwd, manifest, findings)

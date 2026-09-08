@@ -6,10 +6,10 @@ import { hasOwnString } from './init/package-json-path'
 import { formatProjectPathBlocker, inspectProjectPath, isInsideDirectory } from './project-paths'
 
 /**
- * manifest 소유 항목은 이 다섯 상태 중 하나로만 해석한다.
- * unverifiable은 이전 값이 기록되지 않은 레거시 상태이며 modified와 구분해 안내한다.
+ * 현재 schema 3 manifest는 파일 해시와 script command를 필수로 기록한다.
+ * 따라서 관리 항목 상태는 실제 파일/스크립트의 현재 상태와 안전성만 표현한다.
  */
-export type ManagedState = 'unchanged' | 'modified' | 'missing' | 'unverifiable' | 'unsafe'
+export type ManagedState = 'unchanged' | 'modified' | 'missing' | 'unsafe'
 
 export type ManagedFileInspection = {
   state: ManagedState
@@ -57,7 +57,7 @@ export function resolveManagedProjectFile(cwd: string, filePath: string, label: 
 export function inspectManagedFile(
   cwd: string,
   filePath: string,
-  expectedHash: string | undefined,
+  expectedHash: string,
   label = 'Manifest file entry',
 ): ManagedFileInspection {
   const resolved = resolveManagedProjectFile(cwd, filePath, label)
@@ -87,10 +87,6 @@ export function inspectManagedFile(
 
   const currentHash = createFileHash(readFileSync(resolved.absolutePath))
 
-  if (!expectedHash) {
-    return { state: 'unverifiable', absolutePath: resolved.absolutePath, currentHash }
-  }
-
   return {
     state: currentHash === expectedHash ? 'unchanged' : 'modified',
     absolutePath: resolved.absolutePath,
@@ -98,14 +94,13 @@ export function inspectManagedFile(
   }
 }
 
-// package.json script를 manifest에 기록된 원래 명령과 비교한다.
+// package.json script를 manifest에 기록된 명령과 비교한다.
 export function inspectManagedScript(
   scripts: Record<string, string> | undefined,
-  expectedCommands: Record<string, string> | undefined,
+  expectedCommands: Record<string, string>,
   scriptName: string,
 ): ManagedState {
   if (!hasOwnString(scripts, scriptName)) return 'missing'
-  if (!hasOwnString(expectedCommands, scriptName)) return 'unverifiable'
 
-  return scripts?.[scriptName] === expectedCommands?.[scriptName] ? 'unchanged' : 'modified'
+  return scripts?.[scriptName] === expectedCommands[scriptName] ? 'unchanged' : 'modified'
 }

@@ -37,11 +37,6 @@ type ManifestValueClaim = {
 
 type Manifest = NonNullable<ReturnType<typeof readManifest>>
 
-// uniqueStrings 함수는 문자열 배열에서 중복 값을 제거한다.
-function uniqueStrings(values: string[]) {
-  return [...new Set(values)]
-}
-
 // recordMissingSourceGuard 함수는 같은 부재 경로와 안전 경계를 계획에 한 번만 기록한다.
 function recordMissingSourceGuard(
   guards: CleanMissingSourceGuard[],
@@ -130,20 +125,18 @@ function planManagedFiles(
   blockers: string[],
 ) {
   const files: CleanFileChange[] = []
-  const manifestFiles = uniqueStrings([...manifest.createdFiles, MANIFEST_PATH]).sort(
-    (left, right) => {
-      if (left === MANIFEST_PATH) return 1
-      if (right === MANIFEST_PATH) return -1
-      return 0
-    },
-  )
+  const manifestFiles = [...manifest.createdFiles].sort((left, right) => {
+    if (left === MANIFEST_PATH) return 1
+    if (right === MANIFEST_PATH) return -1
+    return 0
+  })
 
   for (const manifestPath of manifestFiles) {
-    // manifest 자체는 파싱한 현재 원문을 계획 기준으로 삼고, 생성 파일은 기록된 해시를 사용한다.
+    // manifest 자체는 파싱한 현재 원문을 계획 기준으로 삼고, 생성 파일은 schema 3 해시를 사용한다.
     const manifestExpectedHash =
       manifestPath === MANIFEST_PATH && existsSync(resolve(cwd, manifestPath))
         ? createFileHash(readFileSync(resolve(cwd, manifestPath)))
-        : manifest.fileHashes?.[manifestPath]
+        : manifest.fileHashes[manifestPath]
     const inspection = inspectManagedFile(cwd, manifestPath, manifestExpectedHash)
 
     if (inspection.state === 'unsafe') {
@@ -181,25 +174,9 @@ function planManagedFiles(
       continue
     }
 
-    if (inspection.state === 'unverifiable' && !options.force) {
-      const blocker = `Manifest-owned file has no recorded hash and will not be removed without --force: ${manifestPath}`
-      blockers.push(blocker)
-      files.push({
-        manifestPath,
-        absolutePath: inspection.absolutePath,
-        action: 'blocked',
-        reason: blocker,
-      })
-      continue
-    }
-
     if (inspection.state === 'modified') {
       warnings.push(
         `Modified manifest-owned file will be removed because --force was used: ${manifestPath}`,
-      )
-    } else if (inspection.state === 'unverifiable') {
-      warnings.push(
-        `Unverifiable manifest-owned file will be removed because --force was used: ${manifestPath}`,
       )
     }
 
@@ -225,7 +202,7 @@ function planManagedScripts(
 ) {
   const scripts: CleanScriptChange[] = []
 
-  for (const scriptName of uniqueStrings(manifest.scripts)) {
+  for (const scriptName of manifest.scripts) {
     const state = inspectManagedScript(packageJson.scripts, manifest.scriptCommands, scriptName)
 
     if (state === 'missing') {
@@ -241,20 +218,9 @@ function planManagedScripts(
       continue
     }
 
-    if (state === 'unverifiable' && !options.force) {
-      const blocker = `Manifest-owned script has no recorded command and will not be removed without --force: ${scriptName}`
-      blockers.push(blocker)
-      scripts.push({ name: scriptName, action: 'blocked' })
-      continue
-    }
-
     if (state === 'modified') {
       warnings.push(
         `Modified manifest-owned script will be removed because --force was used: ${scriptName}`,
-      )
-    } else if (state === 'unverifiable') {
-      warnings.push(
-        `Unverifiable manifest-owned script will be removed because --force was used: ${scriptName}`,
       )
     }
 
@@ -288,29 +254,13 @@ function createPlanningState(cwd: string, packageJsonSource: string): CleanPlann
   }
 }
 
-// 오래된 manifest는 안전하게 읽을 수 있어도 소유권 정보가 부족할 수 있으므로 갱신을 안내한다.
-function addManifestRefreshWarnings(manifest: Manifest, warnings: string[]) {
-  const missing = [
-    [manifest.fileHashes, 'file hashes'],
-    [manifest.scriptCommands, 'script commands'],
-    [manifest.packageJsonClaims, 'package.json ownership'],
-  ] as const
-  for (const [value, label] of missing) {
-    if (!value) {
-      warnings.push(
-        `${MANIFEST_PATH} does not include ${label}. Run "frontron update --yes" to refresh it.`,
-      )
-    }
-  }
-}
-
 function planPackageJsonClaims(
   packageJson: PackageJson,
   manifest: Manifest,
   options: CleanOptions,
   state: CleanPlanningState,
 ) {
-  for (const claim of manifest.packageJsonClaims ?? []) {
+  for (const claim of manifest.packageJsonClaims) {
     const restore = resolveManifestClaimRestore(
       'Package.json',
       claim,
@@ -329,7 +279,7 @@ function planTsconfigClaims(
   options: CleanOptions,
   state: CleanPlanningState,
 ) {
-  if ((manifest.tsconfigJsonClaims ?? []).length === 0) return
+  if (manifest.tsconfigJsonClaims.length === 0) return
   const path = join(cwd, 'tsconfig.json')
   const inspection = inspectProjectPath(cwd, path)
   if (!inspection.safe) {
@@ -347,7 +297,7 @@ function planTsconfigClaims(
   try {
     state.sourceHashes[resolve(path)] = createFileHash(readFileSync(path))
     const tsconfigJson = readTsconfigJson(path)
-    for (const claim of manifest.tsconfigJsonClaims ?? []) {
+    for (const claim of manifest.tsconfigJsonClaims) {
       const restore = resolveManifestClaimRestore(
         'tsconfig.json',
         claim,
@@ -368,7 +318,7 @@ function planPnpmWorkspaceClaims(
   options: CleanOptions,
   state: CleanPlanningState,
 ) {
-  if ((manifest.pnpmWorkspaceClaims ?? []).length === 0) return
+  if (manifest.pnpmWorkspaceClaims.length === 0) return
   const path = findPnpmWorkspaceYamlPath(cwd)
   const safetyRoot = dirname(path)
   const inspection = inspectProjectPath(safetyRoot, path)
@@ -386,7 +336,7 @@ function planPnpmWorkspaceClaims(
 
   const source = readFileSync(path, 'utf8')
   state.sourceHashes[resolve(path)] = createFileHash(source)
-  for (const claim of manifest.pnpmWorkspaceClaims ?? []) {
+  for (const claim of manifest.pnpmWorkspaceClaims) {
     const current = readPnpmWorkspaceYamlClaimValue(source, claim.path)
     // 안전하게 판독할 수 없는 YAML은 --force로도 복구하지 않는다.
     if (!current.safeToEdit) {
@@ -405,7 +355,7 @@ function planYarnRcClaims(
   options: CleanOptions,
   state: CleanPlanningState,
 ) {
-  for (const claim of manifest.yarnRcClaims ?? []) {
+  for (const claim of manifest.yarnRcClaims) {
     if (!claim.changed) continue
     const resolution = resolveYarnRcClaimPath(cwd, claim.file)
     if (!resolution.safe) {
@@ -470,7 +420,6 @@ export function createCleanPlan(
   const manifest = readCleanManifest(cwd)
   const state = createPlanningState(cwd, packageJsonSource)
 
-  addManifestRefreshWarnings(manifest, state.warnings)
   const files = planManagedFiles(cwd, manifest, options, state.warnings, state.blockers)
   const scripts = planManagedScripts(packageJson, manifest, options, state.warnings, state.blockers)
   planPackageJsonClaims(packageJson, manifest, options, state)

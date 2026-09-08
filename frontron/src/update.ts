@@ -170,7 +170,7 @@ function inspectUpdateState(cwd: string, manifest: FrontronManifest): UpdateInsp
   assertProjectPathSafe(cwd, packageJsonPath, 'package.json')
   const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as PackageJson
 
-  for (const filePath of new Set(manifest.createdFiles)) {
+  for (const filePath of manifest.createdFiles) {
     if (filePath === MANIFEST_PATH) continue
 
     const inspection = inspectManagedFile(cwd, filePath, manifest.fileHashes[filePath])
@@ -182,7 +182,7 @@ function inspectUpdateState(cwd: string, manifest: FrontronManifest): UpdateInsp
     }
   }
 
-  for (const scriptName of new Set(manifest.scripts)) {
+  for (const scriptName of manifest.scripts) {
     const state = inspectManagedScript(packageJson.scripts, manifest.scriptCommands, scriptName)
 
     if (state === 'modified') {

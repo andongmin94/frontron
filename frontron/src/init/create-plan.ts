@@ -101,13 +101,13 @@ function createObsoleteFilePlan(
     [...filesToWrite.keys()].map((filePath) => normalizeManifestPath(input.config.cwd, filePath)),
   )
 
-  for (const manifestPath of new Set(manifest.createdFiles)) {
+  for (const manifestPath of manifest.createdFiles) {
     if (manifestPath === MANIFEST_PATH || nextManifestPaths.has(manifestPath)) continue
 
     const inspection = inspectManagedFile(
       input.config.cwd,
       manifestPath,
-      manifest.fileHashes?.[manifestPath],
+      manifest.fileHashes[manifestPath],
     )
 
     if (inspection.state === 'missing') continue

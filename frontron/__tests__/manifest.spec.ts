@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vitest'
 
 import { runCli } from '../src/cli'
 import { runInit } from '../src/init'
-import { createFileHash, parseManifest } from '../src/init/manifest'
+import { createFileHash, parseManifest, splitFileConflicts } from '../src/init/manifest'
 import * as fixtures from './helpers/frontron-cli-fixtures'
 
 type GeneratedManifest = Record<string, unknown> & {
@@ -34,6 +34,26 @@ describe('frontron manifest', () => {
     expect(manifest.fileHashes['electron/main.ts']).toMatch(/^[a-f0-9]{64}$/)
     expect(manifest.fileHashes['.frontron/manifest.json']).toBeUndefined()
     expect(() => parseManifest(manifest)).not.toThrow()
+  })
+
+  test('file conflicts trust only paths owned by a validated manifest', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const manifest = parseManifest(readGeneratedManifest(projectRoot))
+    const managedPath = join(projectRoot, 'electron', 'main.ts')
+    const unmanagedPath = join(projectRoot, 'electron', 'user-note.ts')
+
+    expect(splitFileConflicts(projectRoot, [managedPath, unmanagedPath], manifest)).toEqual({
+      safeToOverwrite: [managedPath],
+      blocked: [unmanagedPath],
+    })
+    expect(splitFileConflicts(projectRoot, [managedPath, unmanagedPath], null)).toEqual({
+      safeToOverwrite: [],
+      blocked: [managedPath, unmanagedPath],
+    })
   })
 
   test('older manifest schemas are rejected instead of migrated', async () => {

@@ -68,6 +68,35 @@ describe('frontron manifest', () => {
     expect(() => parseManifest(manifest)).toThrow('uses unsupported schema version 1')
   })
 
+  test('current schema rejects missing ownership and template metadata instead of falling back', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+
+    const manifest = readGeneratedManifest(projectRoot)
+    const requiredFields = [
+      'createdFiles',
+      'fileHashes',
+      'scripts',
+      'scriptCommands',
+      'packageJsonClaims',
+      'tsconfigJsonClaims',
+      'pnpmWorkspaceClaims',
+      'yarnRcClaims',
+      'templateSource',
+      'templatePackage',
+      'templateVersion',
+      'templateResolvedFrom',
+    ] as const
+
+    for (const field of requiredFields) {
+      const incomplete: Record<string, unknown> = structuredClone(manifest)
+      delete incomplete[field]
+      expect(() => parseManifest(incomplete)).toThrow('.frontron/manifest.json is invalid')
+    }
+  })
+
   test('parser rejects generated-file and ownership claims outside the managed surface', async () => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)

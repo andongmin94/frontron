@@ -125,6 +125,8 @@ function planManagedFiles(
   blockers: string[],
 ) {
   const files: CleanFileChange[] = []
+  // manifest는 자기 자신을 fileHashes에 넣지 않으므로 현재 원문 해시를 별도로 계획 기준으로 잡는다.
+  const manifestSourceHash = createFileHash(readFileSync(resolve(cwd, MANIFEST_PATH)))
   const manifestFiles = [...manifest.createdFiles].sort((left, right) => {
     if (left === MANIFEST_PATH) return 1
     if (right === MANIFEST_PATH) return -1
@@ -132,11 +134,8 @@ function planManagedFiles(
   })
 
   for (const manifestPath of manifestFiles) {
-    // manifest 자체는 파싱한 현재 원문을 계획 기준으로 삼고, 생성 파일은 schema 3 해시를 사용한다.
     const manifestExpectedHash =
-      manifestPath === MANIFEST_PATH && existsSync(resolve(cwd, manifestPath))
-        ? createFileHash(readFileSync(resolve(cwd, manifestPath)))
-        : manifest.fileHashes[manifestPath]
+      manifestPath === MANIFEST_PATH ? manifestSourceHash : manifest.fileHashes[manifestPath]
     const inspection = inspectManagedFile(cwd, manifestPath, manifestExpectedHash)
 
     if (inspection.state === 'unsafe') {

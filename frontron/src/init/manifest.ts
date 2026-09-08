@@ -401,11 +401,10 @@ export function readManifest(cwd: string) {
 export function splitFileConflicts(
   cwd: string,
   conflicts: string[],
-  force: boolean,
   existingManifest: FrontronManifest | null,
 ) {
-  // 강제 덮어쓰기도 검증된 manifest가 명시적으로 소유한 파일에만 허용한다.
-  const managedFiles = force && existingManifest ? new Set(existingManifest.createdFiles) : null
+  // 검증된 manifest가 소유한 파일만 overwrite 후보가 된다. 별도 force 상태는 두지 않는다.
+  const managedFiles = existingManifest ? new Set(existingManifest.createdFiles) : null
   const safeToOverwrite: string[] = []
   const blocked: string[] = []
 

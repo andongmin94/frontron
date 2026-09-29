@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { expect, test } from 'vitest'
 import { runCli } from '../src/cli'
-import { readCreateFrontronTemplateFile } from '../src/init/runtime/create-frontron-template'
+import { loadCreateFrontronTemplate } from '../src/init/runtime/create-frontron-template'
 import * as fixtures from './helpers/frontron-cli-fixtures'
 
 function project(build?: Record<string, unknown>) {
@@ -24,30 +24,38 @@ async function command(root: string, args: string[]) {
   return output
 }
 
-test('default icon is previewed, managed, updated and removed with its package claim', async () => {
+test('native icons keep their binary content and package claims through init, update and clean', async () => {
   const { root, file, original } = project()
   const before = readFileSync(file, 'utf8')
-  const icon = join(root, 'desktop', 'icon.svg')
+  const icons = ['icon.png', 'icon.ico']
   const output = await command(root, ['init', '--dry-run', '--desktop-dir', 'desktop'])
   expect(output.info.mock.calls.flat().join('\n')).toContain('build.icon')
   expect(readFileSync(file, 'utf8')).toBe(before)
-  expect(existsSync(icon)).toBe(false)
+  for (const name of icons) expect(existsSync(join(root, 'desktop', name))).toBe(false)
   await command(root, ['init', '--yes', '--desktop-dir', 'desktop'])
-  expect(readJson(file).build.icon).toBe('desktop/icon.svg')
-  const expected = readCreateFrontronTemplateFile('public/logo.svg')
-  expect(readFileSync(icon, 'utf8')).toBe(expected)
+  expect(readJson(file).build.icon).toBe('desktop/icon.png')
+  expect(readJson(file).build.win.icon).toBe('desktop/icon.ico')
+  const expected = loadCreateFrontronTemplate().electronFiles
   const manifest = readJson(join(root, '.frontron', 'manifest.json'))
-  expect(manifest.createdFiles).toContain('desktop/icon.svg')
-  expect(manifest.fileHashes['desktop/icon.svg']).toMatch(/^[a-f0-9]{64}$/)
+  for (const name of icons) {
+    expect(readFileSync(join(root, 'desktop', name))).toEqual(expected.get(name))
+    expect(manifest.createdFiles).toContain(`desktop/${name}`)
+    expect(manifest.fileHashes[`desktop/${name}`]).toMatch(/^[a-f0-9]{64}$/)
+  }
   expect(manifest.packageJsonClaims).toEqual(expect.arrayContaining([
-    expect.objectContaining({ path: 'build.icon', value: 'desktop/icon.svg', previous: { state: 'missing' } }),
+    expect.objectContaining({ path: 'build.icon', value: 'desktop/icon.png', previous: { state: 'missing' } }),
+    expect.objectContaining({ path: 'build.win.icon', value: 'desktop/icon.ico', previous: { state: 'missing' } }),
   ]))
   await command(root, ['update', '--yes'])
-  expect(readJson(file).build.icon).toBe('desktop/icon.svg')
-  expect(readFileSync(icon, 'utf8')).toBe(expected)
+  expect(readJson(file).build.icon).toBe('desktop/icon.png')
+  expect(readJson(file).build.win.icon).toBe('desktop/icon.ico')
+  for (const name of icons) {
+    expect(readFileSync(join(root, 'desktop', name))).toEqual(expected.get(name))
+  }
   await command(root, ['clean', '--yes'])
-  expect(existsSync(icon)).toBe(false)
+  for (const name of icons) expect(existsSync(join(root, 'desktop', name))).toBe(false)
   expect(readJson(file).build?.icon).toBeUndefined()
+  expect(readJson(file).build?.win?.icon).toBeUndefined()
   expect(readJson(file).scripts).toEqual(original.scripts)
 })
 
@@ -91,14 +99,17 @@ test.each([
   expect(readJson(file).build?.icon).toBeUndefined()
 })
 
-test('blocks an ordinary update rather than overwriting an edited generated icon', async () => {
+test.each(['icon.png', 'icon.ico'])('protects an edited managed binary %s', async (name) => {
   const { root } = project()
   await command(root, ['init', '--yes'])
-  const icon = join(root, 'electron', 'icon.svg')
-  const edited = readFileSync(icon, 'utf8') + '\n<!-- user branding -->\n'
+  const icon = join(root, 'electron', name)
+  const edited = Buffer.from(readFileSync(icon))
+  edited[edited.length - 1] ^= 0xff
   writeFileSync(icon, edited)
   const output = fixtures.createOutput()
   expect(await runCli(['update', '--yes'], output, { cwd: root })).toBe(1)
-  expect(output.error.mock.calls.flat().join('\n')).toContain('electron/icon.svg')
-  expect(readFileSync(icon, 'utf8')).toBe(edited)
+  expect(output.error.mock.calls.flat().join('\n')).toContain(`electron/${name}`)
+  expect(readFileSync(icon)).toEqual(edited)
+  expect(await runCli(['clean', '--yes'], output, { cwd: root })).toBe(1)
+  expect(readFileSync(icon)).toEqual(edited)
 })

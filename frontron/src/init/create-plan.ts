@@ -89,7 +89,7 @@ function collectPlanBlockers(
 // 새 템플릿에서 빠진 기존 소유 파일만 검증 가능한 삭제 계획으로 만든다.
 function createObsoleteFilePlan(
   input: CreateInitProjectPlanInput,
-  filesToWrite: Map<string, string>,
+  filesToWrite: Map<string, string | Buffer>,
 ) {
   const obsoleteFiles: ObsoleteFileChange[] = []
   const blockers: string[] = []

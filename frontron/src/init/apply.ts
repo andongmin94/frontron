@@ -27,7 +27,7 @@ function createPlannedSourceExpectedHash(source: string, created: boolean) {
 function writeTrackedFile(
   transaction: TransactionHandle,
   filePath: string,
-  content: string,
+  content: string | Buffer,
   safetyRoot: string,
 ) {
   assertProjectPathSafe(safetyRoot, filePath, 'Init target path')

@@ -81,6 +81,7 @@ const PACKAGE_JSON_CLAIM_PATH_ALLOWLIST = new Set([
   'devDependencies.@remix-run/serve',
   'devDependencies.esbuild',
   'build.icon',
+  'build.win.icon',
   'build.appId',
   'build.productName',
   'build.npmRebuild',
@@ -340,7 +341,7 @@ export function parseManifest(value: unknown): FrontronManifest {
 
 export function createManifest(
   config: InitConfig,
-  fileSources: Map<string, string>,
+  fileSources: Map<string, string | Buffer>,
   extraFilePaths: string[] = [],
   scriptCommands: Record<string, string> = {},
   packageJsonClaims: PackageJsonOwnershipClaim[] = [],

@@ -34,8 +34,9 @@
   "build": {
     "appId": "__CREATE_APP_ID__",
     "productName": "__CREATE_APP_NAME__",
-    "icon": "public/logo.svg",
+    "icon": "public/icon.png",
     "win": {
+      "icon": "public/icon.ico",
       "target": [
         "msi",
         "portable"

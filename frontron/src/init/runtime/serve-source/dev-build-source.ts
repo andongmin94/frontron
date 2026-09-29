@@ -26,7 +26,7 @@ function spawnWebDevServer() {
 
 // runDevApp 함수는 개발 서버와 Electron 앱을 함께 실행한다.
 async function runDevApp() {
-  ensureRuntimePackage()
+  ensureRuntimeFiles()
 
   const webDevProcess = spawnWebDevServer()
   let electronProcess: ChildProcess | null = null
@@ -358,7 +358,7 @@ ${
 
 // prepareBuild 함수는 패키징 전에 렌더러 런타임을 준비한다.
 async function prepareBuild() {
-  ensureRuntimePackage()
+  ensureRuntimeFiles()
   ${usesNodeServer ? 'await prepareNodeServerBuild()' : 'prepareStaticBuild()'}
 }
 

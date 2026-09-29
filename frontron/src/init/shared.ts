@@ -17,6 +17,7 @@ export type PackageJson = {
       output?: string
     }
     extraMetadata?: Record<string, unknown>
+    win?: Record<string, unknown>
     [key: string]: unknown
   }
   devDependencies?: Record<string, string>

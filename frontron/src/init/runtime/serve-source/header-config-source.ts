@@ -10,6 +10,7 @@ export function renderServeHeaderAndConfigSource(config: InitConfig, devUrl: str
   const usesNodeServer = config.runtimeStrategy === 'node-server'
   const usesRemixRuntime = usesNodeServer && config.adapter === 'remix-node-server'
   const fileSystemImports = [
+    'copyFileSync',
     'existsSync',
     'realpathSync',
     'writeFileSync',
@@ -91,6 +92,7 @@ import { fileURLToPath } from 'node:url'
 
 const PACKAGE_MANAGER = readEmbeddedJson<'npm' | 'pnpm' | 'yarn' | 'bun'>(${embedJson(config.packageManager)})
 const WEB_DEV_SCRIPT = readEmbeddedJson<string>(${embedJson(config.webDevScript)})
+const DESKTOP_DIR = readEmbeddedJson<string>(${embedJson(config.desktopDir)})
 const WEB_OUT_DIR = readEmbeddedJson<string>(${embedJson(config.outDir)})
 const DEV_URL = readEmbeddedJson<string>(${embedJson(devUrl)})
 ${nodeServerConstants}
@@ -145,9 +147,10 @@ function getElectronExecutablePath() {
   return require('electron') as unknown as string
 }
 
-// ensureRuntimePackage 함수는 dist-electron 런타임 폴더에 ESM package.json을 보장한다.
-function ensureRuntimePackage() {
+// ensureRuntimeFiles 함수는 컴파일된 Electron 옆에 ESM 설정과 네이티브 아이콘을 준비한다.
+function ensureRuntimeFiles() {
   writeFileSync(RUNTIME_PACKAGE_PATH, JSON.stringify({ type: 'module' }, null, 2))
+  copyFileSync(path.join(ROOT_DIR, DESKTOP_DIR, 'icon.png'), path.join(DIST_DIR, 'icon.png'))
 }
 
 ${runtimeRootHelpers}

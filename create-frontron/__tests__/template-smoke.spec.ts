@@ -35,7 +35,7 @@ test('starter template exposes the supported Electron and React contract', async
     devDependencies: Record<string, string>
     trustedDependencies?: string[]
     main: string
-    build: { appId: string; files: string[]; npmRebuild: boolean; productName: string }
+    build: { appId: string; files: string[]; npmRebuild: boolean; productName: string; icon: string; win: { icon: string } }
   }
   const electronMain = readFileSync(join(projectRoot, 'src/electron/main.ts'), 'utf8')
   const electronWindow = readFileSync(join(projectRoot, 'src/electron/window.ts'), 'utf8')
@@ -71,6 +71,12 @@ test('starter template exposes the supported Electron and React contract', async
   expect(packageJson.build.appId).toBe(`com.example.${projectName}`)
   expect(packageJson.build.npmRebuild).toBe(false)
   expect(packageJson.build.files).toContain('!node_modules{,/**/*}')
+  expect(packageJson.build.icon).toBe('public/icon.png')
+  expect(packageJson.build.win.icon).toBe('public/icon.ico')
+  expect(readFileSync(join(projectRoot, packageJson.build.icon)).subarray(0, 8).toString('hex'))
+    .toBe('89504e470d0a1a0a')
+  expect(readFileSync(join(projectRoot, packageJson.build.win.icon)).subarray(0, 4).toString('hex'))
+    .toBe('00000100')
 
   expect(taskRunner).toContain('runBin("tsc", ["-p", "tsconfig.electron.json"])')
   expect(taskRunner).toContain('"dist/electron/serve.js"')

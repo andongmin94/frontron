@@ -29,7 +29,7 @@ function openExternalHttpUrl(urlString: string) {
 
 export function createWindow(rendererUrl: string, beforeLoad?: () => void) {
   const preloadPath = path.join(__dirname, "preload.js")
-  const windowIconPath = path.join(__dirname, "../../public/icon.ico")
+  const windowIconPath = path.join(__dirname, "../../public/icon.png")
   if (!existsSync(preloadPath)) {
     console.error(`Preload script not found at ${preloadPath}.`)
   }

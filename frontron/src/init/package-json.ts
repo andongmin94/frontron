@@ -168,6 +168,7 @@ function addBuildPatchChanges(
   const afterExtraMetadata = after.extraMetadata ?? {}
 
   addScalarChange(changes, before.icon, after.icon, 'build.icon')
+  addScalarChange(changes, before.win?.icon, after.win?.icon, 'build.win.icon')
   addScalarChange(changes, before.appId, after.appId, 'build.appId')
   addScalarChange(changes, before.productName, after.productName, 'build.productName')
   addScalarChange(changes, before.npmRebuild, after.npmRebuild, 'build.npmRebuild')
@@ -275,6 +276,7 @@ function createPackageJsonOwnershipClaims(before: PackageJson, after: PackageJso
   for (const path of [
     'version',
     'build.icon',
+    'build.win.icon',
     'build.appId',
     'build.productName',
     'build.npmRebuild',
@@ -383,7 +385,12 @@ function applyDefaultAppIcon(
   const hasExistingIcon = [buildResources, '.'].some((directory) =>
     iconNames.some((name) => existsSync(join(config.cwd, directory, name))),
   )
-  if (!hasExistingIcon) build.icon = `${config.desktopDir}/icon.svg`
+  if (hasExistingIcon) return
+
+  build.icon = `${config.desktopDir}/icon.png`
+  const win = ensureObject<Record<string, unknown>>(build.win, 'build.win', {})
+  if (typeof win.icon === 'undefined') win.icon = `${config.desktopDir}/icon.ico`
+  build.win = win
 }
 
 // 패키지 버전은 electron-builder가 읽을 수 있는 SemVer로 정규화한다.

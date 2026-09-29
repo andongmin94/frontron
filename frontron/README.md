@@ -109,16 +109,19 @@ electron/
   dev.ts
   serve.ts
   static-server.ts
-  icon.svg
+  icon.png
+  icon.ico
   package.json
 src/types/electron.d.ts
 tsconfig.electron.json
 .frontron/manifest.json
 ```
 
-Common Electron files and the managed default SVG come from the exact matching
+Common Electron files and the managed PNG/ICO icons come from the exact matching
 `create-frontron` version. Existing icon settings/resources remain user-owned;
 the default is selected only when no explicit or discoverable icon exists.
+PNG is used for the window and cross-platform package icon, with ICO for Windows packaging.
+Development and build preparation copy the PNG beside the compiled Electron files.
 `serve.ts` is generated for the selected static or Node-server runtime. Existing
 web scripts and unrelated package fields remain intact. The main window stays
 hidden until the renderer finishes loading; no separate splash is added.

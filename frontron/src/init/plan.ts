@@ -15,7 +15,7 @@ export type FileChange = {
   path: string
   action: FileChangeAction
   reason: string
-  content: string
+  content: string | Buffer
   expectedHash: string | null
 }
 
@@ -40,7 +40,7 @@ export type InitPlan = {
 
 export function createInitPlan(input: {
   config: InitConfig
-  filesToWrite: Map<string, string>
+  filesToWrite: Map<string, string | Buffer>
   obsoleteFiles?: ObsoleteFileChange[]
   packageJsonPlan: PackageJsonPatchPlan
   packageJsonExpectedHash: string

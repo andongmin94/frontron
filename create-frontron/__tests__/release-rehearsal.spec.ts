@@ -268,7 +268,8 @@ test('packed create-frontron builds and runs its real Electron starter', async (
   expect(pkg.main).toBe('dist/electron/main.js')
   expect(pkg.build?.productName).toBe(appName)
   expect(pkg.build?.appId).toContain(appName)
-  expect(pkg.build?.icon).toBe('public/logo.svg')
+  expect(pkg.build?.icon).toBe('public/icon.png')
+  expect(pkg.build?.win?.icon).toBe('public/icon.ico')
   expect(pkg).not.toHaveProperty('author')
   for (const file of ['src/electron/main.ts', 'src/electron/preload.ts', 'src/types/electron.d.ts', 'tsconfig.electron.json']) {
     expect(existsSync(join(appRoot, file))).toBe(true)

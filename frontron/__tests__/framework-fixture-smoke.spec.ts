@@ -469,6 +469,10 @@ describe('framework fixture smoke', () => {
 
       runPrepareBuild(projectRoot)
 
+      expect(readFileSync(join(projectRoot, 'dist-electron', 'icon.png'))).toEqual(
+        readFileSync(join(projectRoot, 'electron', 'icon.png')),
+      )
+
       for (const expectedPath of fixture.expectedPreparedPaths) {
         expect(existsSync(join(projectRoot, expectedPath))).toBe(true)
       }

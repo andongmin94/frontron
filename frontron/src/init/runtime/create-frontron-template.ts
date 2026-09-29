@@ -11,7 +11,8 @@ import type {
 
 const REQUIRED_TEMPLATE_FILES = [
   'package.json',
-  'public/logo.svg',
+  'public/icon.png',
+  'public/icon.ico',
   'src/electron/main.ts',
   'src/electron/window.ts',
   'src/electron/preload.ts',
@@ -34,7 +35,7 @@ type ResolvedTemplate = TemplateCandidate & {
 export type CreateFrontronTemplateSnapshot = {
   info: InitTemplateInfo
   dependencies: InitTemplateDependencies
-  electronFiles: ReadonlyMap<string, string>
+  electronFiles: ReadonlyMap<string, string | Buffer>
   electronTypeSource: string
 }
 
@@ -291,7 +292,7 @@ function info(template: ResolvedTemplate): InitTemplateInfo {
 }
 
 function adaptElectronSource(source: string) {
-  return source.split('../../public/').join('../public/')
+  return source.split('../../public/').join('./')
 }
 
 export function getInitTemplateInfo(): InitTemplateInfo {
@@ -313,7 +314,7 @@ export function listCreateFrontronElectronFiles() {
 export function loadCreateFrontronTemplate(): CreateFrontronTemplateSnapshot {
   const template = resolveTemplate()
   const electronDir = path.join(template.templateDir, 'src', 'electron')
-  const electronFiles = new Map<string, string>()
+  const electronFiles = new Map<string, string | Buffer>()
 
   for (const relativePath of listTypeScriptFiles(electronDir)) {
     if (relativePath === 'serve.ts') continue
@@ -324,12 +325,11 @@ export function loadCreateFrontronTemplate(): CreateFrontronTemplateSnapshot {
     )
   }
 
-  // Keep the icon in the managed file set so update/clean use the same
+  // Keep native icons in the managed file set so update/clean use the same
   // ownership hashes and conflict protection as the generated source files.
-  electronFiles.set(
-    'icon.svg',
-    readFileSync(assertTemplateFile(template.templateDir, 'public/logo.svg'), 'utf8'),
-  )
+  for (const name of ['icon.png', 'icon.ico']) {
+    electronFiles.set(name, readFileSync(assertTemplateFile(template.templateDir, `public/${name}`)))
+  }
 
   return {
     info: info(template),

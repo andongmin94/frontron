@@ -20,7 +20,7 @@ export function createInitFileSources(
   config: InitConfig,
   template: CreateFrontronTemplateSnapshot = loadCreateFrontronTemplate(),
 ) {
-  const filesToWrite = new Map<string, string>([
+  const filesToWrite = new Map<string, string | Buffer>([
     [join(config.cwd, config.desktopDir, 'serve.ts'), renderServeSource(config)],
     [join(config.cwd, config.desktopDir, 'package.json'), renderElectronPackageSource()],
     [join(config.cwd, 'tsconfig.electron.json'), renderTsconfigSource(config.desktopDir)],
@@ -38,7 +38,7 @@ export function createInitFileSources(
 // addManifestSource 함수는 생성 파일 목록 끝에 Frontron manifest 파일 내용을 추가한다.
 export function addManifestSource(
   config: InitConfig,
-  filesToWrite: Map<string, string>,
+  filesToWrite: Map<string, string | Buffer>,
   packageJsonClaims: PackageJsonOwnershipClaim[],
   tsconfigJsonClaims: PackageJsonOwnershipClaim[],
   pnpmWorkspaceClaims: PackageJsonOwnershipClaim[],

@@ -78,6 +78,7 @@ export type InitTemplateInfo = {
 export type InitTemplateDependencies = {
   electron: string
   electronBuilder: string
+  electronBuilderMinimatch?: string
   typescript: string
   nodeTypes: string
 }

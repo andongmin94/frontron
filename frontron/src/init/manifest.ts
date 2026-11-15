@@ -74,6 +74,7 @@ const FORBIDDEN_CLAIM_PATH_SEGMENTS = new Set(['__proto__', 'prototype', 'constr
 const PACKAGE_JSON_CLAIM_PATH_ALLOWLIST = new Set([
   'version',
   'trustedDependencies',
+  'overrides.electron-builder.minimatch',
   'devDependencies.electron',
   'devDependencies.electron-builder',
   'devDependencies.@types/node',

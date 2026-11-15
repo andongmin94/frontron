@@ -1,5 +1,13 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  copyFileSync,
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { request as httpRequest, type IncomingHttpHeaders } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -220,6 +228,11 @@ describe('generated renderer runtime source selection', () => {
     tempDirs.push(projectRoot)
     mkdirSync(distElectronDir, { recursive: true })
     mkdirSync(join(projectRoot, 'build', 'server'), { recursive: true })
+    mkdirSync(join(projectRoot, 'electron'))
+    copyFileSync(
+      new URL('../../create-frontron/template/public/icon.png', import.meta.url),
+      join(projectRoot, 'electron', 'icon.png'),
+    )
     writeFileSync(join(projectRoot, 'package.json'), '{"type":"module"}\n', 'utf8')
     writeFileSync(sourceEntryPath, 'console.log("source runtime")\n', 'utf8')
     config.outDir = 'build'

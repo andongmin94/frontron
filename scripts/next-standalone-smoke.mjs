@@ -12,7 +12,7 @@ const template = readJson(join(repoRoot, 'create-frontron/template/package.json'
 const pkg = {
   name: 'next-standalone-consumer', version: '0.1.0', private: true, type: 'module',
   scripts: { dev: 'next dev --hostname 127.0.0.1', build: 'next build' },
-  dependencies: { next: '16.3.4', react: template.dependencies.react, 'react-dom': template.dependencies['react-dom'] },
+  dependencies: { next: '16.4.6', react: template.dependencies.react, 'react-dom': template.dependencies['react-dom'] },
 }
 writeJson(join(appRoot, 'package.json'), pkg)
 

@@ -3,6 +3,8 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { readPackageJsonPath } from '../package-json-path'
+
 import type {
   InitTemplateDependencies,
   InitTemplateInfo,
@@ -274,9 +276,12 @@ function readTemplateDependencies(templateDir: string): InitTemplateDependencies
     return value
   }
 
+  const minimatch = readPackageJsonPath(packageJson, 'overrides.electron-builder.minimatch').value
+
   return {
     electron: version('electron'),
     electronBuilder: version('electron-builder'),
+    electronBuilderMinimatch: typeof minimatch === 'string' ? minimatch : undefined,
     typescript: version('typescript'),
     nodeTypes: version('@types/node'),
   }

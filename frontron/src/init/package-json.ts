@@ -201,6 +201,12 @@ function createPackageJsonPatchChanges(before: PackageJson, after: PackageJson) 
     'trustedDependencies',
   )
   addScalarChange(changes, before.version, after.version, 'version')
+  addScalarChange(
+    changes,
+    readPackageJsonPath(before, 'overrides.electron-builder.minimatch').value,
+    readPackageJsonPath(after, 'overrides.electron-builder.minimatch').value,
+    'overrides.electron-builder.minimatch',
+  )
   addBuildPatchChanges(changes, before.build, after.build)
 
   return changes
@@ -275,6 +281,7 @@ function createPackageJsonOwnershipClaims(before: PackageJson, after: PackageJso
 
   for (const path of [
     'version',
+    'overrides.electron-builder.minimatch',
     'build.icon',
     'build.win.icon',
     'build.appId',
@@ -429,6 +436,32 @@ function applyToolDependencies(
   }
 }
 
+// npm 패키징 도구의 취약한 하위 의존성만 교체하고 사용자 override는 보존한다.
+function applyNpmBuilderOverride(config: InitConfig) {
+  if (config.packageManager !== 'npm') return
+  const template = config.templateDependencies ?? loadCreateFrontronTemplate().dependencies
+  if (!template.electronBuilderMinimatch) return
+
+  const overrides = ensureObject<Record<string, unknown>>(
+    config.packageJson.overrides,
+    'overrides',
+    {},
+  )
+  if (typeof overrides.minimatch !== 'undefined') return
+  const builderOverride = overrides['electron-builder']
+  if (
+    typeof builderOverride !== 'undefined' &&
+    (typeof builderOverride !== 'object' ||
+      builderOverride === null ||
+      Array.isArray(builderOverride))
+  )
+    return
+  const builder = (builderOverride ?? {}) as Record<string, unknown>
+  builder.minimatch ??= template.electronBuilderMinimatch
+  overrides['electron-builder'] = builder
+  config.packageJson.overrides = overrides
+}
+
 // Bun은 네이티브 설치 스크립트를 실행할 패키지를 명시적으로 신뢰 목록에 넣어야 한다.
 function applyBunTrustedDependencies(packageJson: PackageJson) {
   const trustedDependencies = ensureArray(packageJson.trustedDependencies, 'trustedDependencies')
@@ -521,6 +554,7 @@ export function patchPackageJson(config: InitConfig) {
   normalizePackageVersion(packageJson)
   Object.assign(scripts, createDesktopScriptCommands(config))
   applyToolDependencies(packageJson, devDependencies, config.templateDependencies)
+  applyNpmBuilderOverride(config)
 
   if (config.packageManager === 'bun') applyBunTrustedDependencies(packageJson)
   if (config.adapter === 'remix-node-server') {

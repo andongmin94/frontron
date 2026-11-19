@@ -377,7 +377,7 @@ describe('create-frontron runtime security', () => {
       expect(hits).toEqual(['/redirect', '/external'])
     } finally {
       await new Promise<void>((resolve, reject) => {
-        server.close((error) => error ? reject(error) : resolve())
+        server.close((error) => (error ? reject(error) : resolve()))
         server.closeAllConnections()
       })
     }

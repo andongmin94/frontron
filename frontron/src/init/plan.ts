@@ -122,7 +122,10 @@ function formatPlannedFileChanges(plan: InitPlan) {
     remove: plan.obsoleteFiles.map((file) => `  - ${file.manifestPath}`),
     blocked: plan.files
       .filter((file) => file.action === 'blocked')
-      .map((file) => `  - Existing file will not be overwritten automatically: ${formatPath(file.path)}`),
+      .map(
+        (file) =>
+          `  - Existing file will not be overwritten automatically: ${formatPath(file.path)}`,
+      ),
   }
 }
 
@@ -176,7 +179,11 @@ export function createDryRunReport(plan: InitPlan) {
   appendSection(lines, '.yarnrc.yml changes:', configChanges.yarn)
 
   if (plan.warnings.length > 0) {
-    appendSection(lines, 'Warnings:', plan.warnings.map((warning) => `  - ${warning}`))
+    appendSection(
+      lines,
+      'Warnings:',
+      plan.warnings.map((warning) => `  - ${warning}`),
+    )
   }
 
   const blockers = [...plan.blockers.map((blocker) => `  - ${blocker}`), ...files.blocked]

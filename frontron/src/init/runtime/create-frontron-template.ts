@@ -205,14 +205,15 @@ function explicitCandidate(): TemplateCandidate | null {
   }
 }
 
-function validateCandidate(candidate: TemplateCandidate, frontronVersion: string): ResolvedTemplate {
+function validateCandidate(
+  candidate: TemplateCandidate,
+  frontronVersion: string,
+): ResolvedTemplate {
   assertRealDirectory(candidate.templateDir, 'create-frontron template')
   const packageVersion = readPackageVersion(candidate.packageJsonPath, 'create-frontron')
 
   if (packageVersion !== frontronVersion) {
-    throw new Error(
-      `create-frontron@${packageVersion} does not match frontron@${frontronVersion}.`,
-    )
+    throw new Error(`create-frontron@${packageVersion} does not match frontron@${frontronVersion}.`)
   }
 
   for (const relativePath of REQUIRED_TEMPLATE_FILES) {
@@ -334,7 +335,10 @@ export function loadCreateFrontronTemplate(): CreateFrontronTemplateSnapshot {
   // Keep native icons in the managed file set so update/clean use the same
   // ownership hashes and conflict protection as the generated source files.
   for (const name of ['icon.png', 'icon.ico']) {
-    electronFiles.set(name, readFileSync(assertTemplateFile(template.templateDir, `public/${name}`)))
+    electronFiles.set(
+      name,
+      readFileSync(assertTemplateFile(template.templateDir, `public/${name}`)),
+    )
   }
 
   return {

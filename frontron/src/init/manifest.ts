@@ -270,8 +270,15 @@ function isYarnRcOwnershipClaim(value: unknown): value is YarnRcOwnershipClaim {
 
 function hasValidManifestIdentity(value: Record<string, unknown>) {
   const requiredStrings = [
-    'desktopDir', 'appScript', 'buildScript', 'webDevScript', 'webBuildScript',
-    'outDir', 'productName', 'appId', 'templateVersion',
+    'desktopDir',
+    'appScript',
+    'buildScript',
+    'webDevScript',
+    'webBuildScript',
+    'outDir',
+    'productName',
+    'appId',
+    'templateVersion',
   ]
   return (
     value.schemaVersion === CURRENT_MANIFEST_SCHEMA_VERSION &&

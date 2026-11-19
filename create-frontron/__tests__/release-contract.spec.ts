@@ -14,9 +14,13 @@ function runNode(args: string[], cwd = repositoryRoot, env = process.env) {
 function localEnvironment() {
   const env = { ...process.env }
   for (const key of [
-    'FRONTRON_TRUSTED_PUBLISHING', 'FRONTRON_RELEASE', 'GITHUB_ACTIONS',
-    'ACTIONS_ID_TOKEN_REQUEST_URL', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN',
-  ]) delete env[key]
+    'FRONTRON_TRUSTED_PUBLISHING',
+    'FRONTRON_RELEASE',
+    'GITHUB_ACTIONS',
+    'ACTIONS_ID_TOKEN_REQUEST_URL',
+    'ACTIONS_ID_TOKEN_REQUEST_TOKEN',
+  ])
+    delete env[key]
   return env
 }
 
@@ -36,9 +40,17 @@ test('release metadata check accepts the aligned package pair', () => {
   expect(result.status, result.stderr || result.stdout).toBe(0)
 })
 
-test('prepublish hooks build locally without requiring a removed Actions workflow', { timeout: 130_000 }, () => {
-  for (const packageRoot of [createPackageRoot, join(repositoryRoot, 'frontron')]) {
-    const result = runNode([join(packageRoot, 'scripts', 'tasks.mjs'), 'prepublishOnly'], packageRoot, localEnvironment())
-    expect(result.status, result.stderr || result.stdout).toBe(0)
-  }
-})
+test(
+  'prepublish hooks build locally without requiring a removed Actions workflow',
+  { timeout: 130_000 },
+  () => {
+    for (const packageRoot of [createPackageRoot, join(repositoryRoot, 'frontron')]) {
+      const result = runNode(
+        [join(packageRoot, 'scripts', 'tasks.mjs'), 'prepublishOnly'],
+        packageRoot,
+        localEnvironment(),
+      )
+      expect(result.status, result.stderr || result.stdout).toBe(0)
+    }
+  },
+)

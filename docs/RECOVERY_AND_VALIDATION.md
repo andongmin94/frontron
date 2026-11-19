@@ -26,7 +26,7 @@ A write command explicitly supplied with `--yes` and without `--dry-run` may rec
 
 ## Release
 
-`node release.mjs verify` is verification, not publishing. It first installs both locked dependency trees, then checks dependencies, audits, lint, types, coverage, builds and packed consumers. Package prepublish hooks build locally; they do not require a removed GitHub Actions publishing workflow. No publish or version bump is performed by CI. The [release guide](RELEASING.md) defines the source gates, tarball review and separate explicit npm publication, in order: `create-frontron`, then the matching `frontron` version.
+`node release.mjs verify` is verification, not publishing. It first installs both locked dependency trees, then checks dependencies, audits, lint and formatting, types, coverage, builds and packed consumers. Package prepublish hooks build locally; they do not require a removed GitHub Actions publishing workflow. No publish or version bump is performed by CI. The [release guide](RELEASING.md) defines the source gates, tarball review and separate explicit npm publication, in order: `create-frontron`, then the matching `frontron` version.
 
 ## Validation layers
 

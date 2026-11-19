@@ -96,9 +96,7 @@ function normalizePath(fileName: string) {
 
 function diagnosticsFor(source: string, includeStaticServer: boolean) {
   const virtualRoot = join(process.cwd(), '.frontron-contract', 'electron')
-  const virtualFiles = new Map<string, string>([
-    [join(virtualRoot, 'serve.ts'), source],
-  ])
+  const virtualFiles = new Map<string, string>([[join(virtualRoot, 'serve.ts'), source]])
   if (includeStaticServer) {
     virtualFiles.set(
       join(virtualRoot, 'static-server.ts'),
@@ -144,13 +142,10 @@ function diagnosticsFor(source: string, includeStaticServer: boolean) {
         }
       }
 
-      return ts.resolveModuleName(moduleName, containingFile, compilerOptions, host)
-        .resolvedModule
+      return ts.resolveModuleName(moduleName, containingFile, compilerOptions, host).resolvedModule
     })
 
-  return ts.getPreEmitDiagnostics(
-    ts.createProgram([...virtualFiles.keys()], compilerOptions, host),
-  )
+  return ts.getPreEmitDiagnostics(ts.createProgram([...virtualFiles.keys()], compilerOptions, host))
 }
 
 function formatDiagnostics(diagnostics: readonly ts.Diagnostic[]) {

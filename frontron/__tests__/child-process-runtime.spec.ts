@@ -11,11 +11,15 @@ function loadTermination(spawnProcess: unknown = spawn, hostProcess: unknown = p
   const source = ts.transpileModule(renderChildProcessRuntimeSource(), {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
   }).outputText
-  return new Function('spawn', 'process', `
+  return new Function(
+    'spawn',
+    'process',
+    `
     function isFileSystemError(error) { return error instanceof Error && 'code' in error }
     ${source}
     return terminateChildProcessTree
-  `)(spawnProcess, hostProcess) as Terminate
+  `,
+  )(spawnProcess, hostProcess) as Terminate
 }
 
 function fakeChild() {
@@ -40,10 +44,11 @@ test('Windows terminates the owned tree with /f in the first taskkill invocation
   })
   await loadTermination(spawnProcess, { platform: 'win32' })(child as unknown as ChildProcess)
   expect(spawnProcess).toHaveBeenCalledTimes(1)
-  expect(spawnProcess).toHaveBeenCalledWith(
-    'taskkill', ['/pid', '12345', '/t', '/f'],
-    { stdio: 'ignore', windowsHide: true, timeout: 5_000 },
-  )
+  expect(spawnProcess).toHaveBeenCalledWith('taskkill', ['/pid', '12345', '/t', '/f'], {
+    stdio: 'ignore',
+    windowsHide: true,
+    timeout: 5_000,
+  })
   expect(child.kill).not.toHaveBeenCalled()
 })
 
@@ -54,9 +59,9 @@ test('failed Windows tree termination is not hidden by killing only its parent',
     queueMicrotask(() => taskkill.emit('exit', 1))
     return taskkill
   }
-  await expect(loadTermination(spawnProcess, { platform: 'win32' })(
-    child as unknown as ChildProcess,
-  )).rejects.toThrow('Failed to terminate the Windows process tree')
+  await expect(
+    loadTermination(spawnProcess, { platform: 'win32' })(child as unknown as ChildProcess),
+  ).rejects.toThrow('Failed to terminate the Windows process tree')
   expect(child.kill).not.toHaveBeenCalled()
 })
 
@@ -80,8 +85,10 @@ test('real child and grandchild release inherited pipes without stopping an unre
   const unrelatedClosed = once(unrelated, 'close')
   let grandchildPid: number | undefined
   let pipesClosed = false
-  const closed = once(child, 'close', { signal: AbortSignal.timeout(10_000) })
-    .then(() => true, () => false)
+  const closed = once(child, 'close', { signal: AbortSignal.timeout(10_000) }).then(
+    () => true,
+    () => false,
+  )
   try {
     const [message] = await once(child, 'message', { signal: AbortSignal.timeout(5_000) })
     grandchildPid = (message as { pid: number }).pid
@@ -98,14 +105,23 @@ test('real child and grandchild release inherited pipes without stopping an unre
     if (child.exitCode === null && child.signalCode === null) {
       if (process.platform === 'win32') {
         spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], {
-          stdio: 'ignore', timeout: 5_000,
+          stdio: 'ignore',
+          timeout: 5_000,
         })
       } else {
-        try { process.kill(-child.pid!, 'SIGKILL') } catch { /* already exited */ }
+        try {
+          process.kill(-child.pid!, 'SIGKILL')
+        } catch {
+          /* already exited */
+        }
       }
     }
     if (!pipesClosed && grandchildPid) {
-      try { process.kill(grandchildPid, 'SIGKILL') } catch { /* already exited */ }
+      try {
+        process.kill(grandchildPid, 'SIGKILL')
+      } catch {
+        /* already exited */
+      }
     }
     unrelated.kill('SIGKILL')
     await unrelatedClosed

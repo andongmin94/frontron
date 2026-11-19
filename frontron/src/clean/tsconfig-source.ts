@@ -63,14 +63,17 @@ function containsComment(source: string, start: number, end: number) {
 
   for (let token = scanner.scan(); token !== SyntaxKind.EOF; token = scanner.scan()) {
     if (scanner.getTokenOffset() >= end) break
-    if (token === SyntaxKind.LineCommentTrivia || token === SyntaxKind.BlockCommentTrivia) return true
+    if (token === SyntaxKind.LineCommentTrivia || token === SyntaxKind.BlockCommentTrivia)
+      return true
   }
 
   return false
 }
 
 function lineStart(source: string, position: number) {
-  return Math.max(source.lastIndexOf('\n', position - 1), source.lastIndexOf('\r', position - 1)) + 1
+  return (
+    Math.max(source.lastIndexOf('\n', position - 1), source.lastIndexOf('\r', position - 1)) + 1
+  )
 }
 
 function lineEnd(source: string, position: number) {
@@ -97,7 +100,9 @@ function assertPropertyInsertionSafe(source: string, root: Node) {
     /[\r\n]/.test(source.slice(root.offset, close)) &&
     !/^[\t ]*$/.test(source.slice(lineStart(source, close), close))
   ) {
-    throw new Error('tsconfig.json closing brace must start on its own line to preserve formatting.')
+    throw new Error(
+      'tsconfig.json closing brace must start on its own line to preserve formatting.',
+    )
   }
 }
 
@@ -126,12 +131,7 @@ function removeElement(source: string, array: Node, index: number) {
     SyntaxKind.CommaToken,
   )
   const commaBefore = previous
-    ? tokenOffset(
-        source,
-        previous.offset + previous.length,
-        element.offset,
-        SyntaxKind.CommaToken,
-      )
+    ? tokenOffset(source, previous.offset + previous.length, element.offset, SyntaxKind.CommaToken)
     : undefined
   const structuralEnd = typeof commaAfter === 'number' ? commaAfter + 1 : elementEnd
   const start = lineStart(source, element.offset)
@@ -181,7 +181,11 @@ function removeEmptyOwnedProperty(source: string) {
   const end = lineEnd(source, excludeProperty.offset + excludeProperty.length)
 
   if (
-    containsComment(source, excludeArray.offset + 1, excludeArray.offset + excludeArray.length - 1) ||
+    containsComment(
+      source,
+      excludeArray.offset + 1,
+      excludeArray.offset + excludeArray.length - 1,
+    ) ||
     containsComment(source, start, end)
   ) {
     return source
@@ -225,7 +229,8 @@ export function restoreTsconfigJsonClaims(source: string, claims: PackageJsonOwn
       claim.path !== 'exclude' || claim.action !== 'array-value' || typeof claim.value !== 'string',
   )
 
-  if (unsupported) throw new Error(`Cannot restore unsupported tsconfig.json claim: ${unsupported.path}`)
+  if (unsupported)
+    throw new Error(`Cannot restore unsupported tsconfig.json claim: ${unsupported.path}`)
 
   const initial = parseTsconfigDocument(source)
   const owned = new Set(claims.map((claim) => claim.value as string))
@@ -240,7 +245,8 @@ export function restoreTsconfigJsonClaims(source: string, claims: PackageJsonOwn
 
   for (const value of owned) {
     const document = parseTsconfigDocument(next)
-    const index = document.excludeArray?.children?.findIndex((element) => element.value === value) ?? -1
+    const index =
+      document.excludeArray?.children?.findIndex((element) => element.value === value) ?? -1
 
     if (document.excludeArray && index >= 0) {
       next = removeElement(next, document.excludeArray, index)

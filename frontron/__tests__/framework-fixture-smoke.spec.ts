@@ -175,11 +175,7 @@ function transpileGeneratedRuntime(projectRoot: string) {
       },
       fileName,
     })
-    writeFileSync(
-      join(distDir, fileName.replace(/\.ts$/, '.js')),
-      transpiled.outputText,
-      'utf8',
-    )
+    writeFileSync(join(distDir, fileName.replace(/\.ts$/, '.js')), transpiled.outputText, 'utf8')
   }
 }
 

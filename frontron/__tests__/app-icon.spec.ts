@@ -42,10 +42,20 @@ test('native icons keep their binary content and package claims through init, up
     expect(manifest.createdFiles).toContain(`desktop/${name}`)
     expect(manifest.fileHashes[`desktop/${name}`]).toMatch(/^[a-f0-9]{64}$/)
   }
-  expect(manifest.packageJsonClaims).toEqual(expect.arrayContaining([
-    expect.objectContaining({ path: 'build.icon', value: 'desktop/icon.png', previous: { state: 'missing' } }),
-    expect.objectContaining({ path: 'build.win.icon', value: 'desktop/icon.ico', previous: { state: 'missing' } }),
-  ]))
+  expect(manifest.packageJsonClaims).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        path: 'build.icon',
+        value: 'desktop/icon.png',
+        previous: { state: 'missing' },
+      }),
+      expect.objectContaining({
+        path: 'build.win.icon',
+        value: 'desktop/icon.ico',
+        previous: { state: 'missing' },
+      }),
+    ]),
+  )
   await command(root, ['update', '--yes'])
   expect(readJson(file).build.icon).toBe('desktop/icon.png')
   expect(readJson(file).build.win.icon).toBe('desktop/icon.ico')
@@ -65,7 +75,9 @@ test.each(['branding/custom.svg', null])('preserves the explicit icon setting %s
   await command(root, ['update', '--yes'])
   expect(readJson(file).build.icon).toBe(icon)
   const manifest = readJson(join(root, '.frontron', 'manifest.json'))
-  expect(manifest.packageJsonClaims.some((claim: { path: string }) => claim.path === 'build.icon')).toBe(false)
+  expect(
+    manifest.packageJsonClaims.some((claim: { path: string }) => claim.path === 'build.icon'),
+  ).toBe(false)
   await command(root, ['clean', '--yes'])
   expect(readJson(file).build.icon).toBe(icon)
 })
@@ -86,7 +98,8 @@ test.each([
   ['.', 'icon.png'],
   ['branding', 'icon.svg'],
 ])('keeps auto-discovered %s/%s under user ownership', async (resources, name) => {
-  const build = resources === 'branding' ? { directories: { buildResources: resources } } : undefined
+  const build =
+    resources === 'branding' ? { directories: { buildResources: resources } } : undefined
   const { root, file } = project(build)
   const customIcon = join(root, resources, name)
   mkdirSync(dirname(customIcon), { recursive: true })

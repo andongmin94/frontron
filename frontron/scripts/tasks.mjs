@@ -7,7 +7,8 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const command = process.argv[2]
 const extraArgs = process.argv.slice(3)
 const lintPaths = ['src', '__tests__', 'scripts', 'build.config.ts', 'vitest.config.ts', 'index.js']
-const formatPaths = [...lintPaths, 'package.json']
+// package.json은 콜론 정렬을 손으로 유지하므로 포매터 대상에서 뺀다.
+const formatPaths = [...lintPaths]
 
 function run(executable, args) {
   const result = spawnSync(executable, args, {
@@ -87,6 +88,7 @@ switch (command) {
     break
   case 'check':
     runBin('oxlint', lintPaths)
+    runBin('oxfmt', ['--check', ...formatPaths])
     break
   case 'lint':
     runBin('oxlint', ['--fix', ...lintPaths])

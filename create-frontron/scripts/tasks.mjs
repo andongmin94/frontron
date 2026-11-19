@@ -18,7 +18,8 @@ const lintPaths = [
   'index.js',
 ]
 const releaseScript = join(root, '..', 'release.mjs')
-const formatPaths = [...lintPaths, 'package.json', 'template/package.json']
+// package.json은 콜론 정렬을 손으로 유지하므로 포매터 대상에서 뺀다.
+const formatPaths = [...lintPaths]
 
 if (existsSync(releaseScript)) {
   lintPaths.push(releaseScript)
@@ -117,6 +118,7 @@ switch (command) {
     break
   case 'check':
     runBin('oxlint', lintPaths)
+    runBin('oxfmt', ['--check', ...formatPaths])
     break
   case 'lint':
     runBin('oxlint', ['--fix', ...lintPaths])

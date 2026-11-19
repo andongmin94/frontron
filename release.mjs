@@ -74,7 +74,10 @@ function assertMetadata() {
     const packageJson = readPackage(spec)
     const lock = readJson(join(spec.root, 'package-lock.json'))
 
-    if (lock.version !== packageJson.version || lock.packages?.['']?.version !== packageJson.version) {
+    if (
+      lock.version !== packageJson.version ||
+      lock.packages?.['']?.version !== packageJson.version
+    ) {
       throw new Error(`${spec.name} package-lock.json version does not match package.json.`)
     }
   }

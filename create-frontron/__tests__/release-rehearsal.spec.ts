@@ -18,7 +18,10 @@ function getNpmInvocation(args: string[]) {
 function runNpm(args: string[], cwd: string) {
   const invocation = getNpmInvocation(args)
   const result = spawnSync(invocation.command, invocation.args, {
-    cwd, encoding: 'utf8', timeout: 240_000, maxBuffer: 16 * 1024 * 1024,
+    cwd,
+    encoding: 'utf8',
+    timeout: 240_000,
+    maxBuffer: 16 * 1024 * 1024,
   })
   if (result.error || result.status !== 0) {
     throw new Error(`${args.join(' ')}: ${result.error ?? ''}\n${result.stderr}\n${result.stdout}`)
@@ -30,9 +33,9 @@ function packPackageForReal(packageRoot: string, prefix: string) {
   runNpm(['run', 'build'], packageRoot)
   const outputDir = mkdtempSync(join(tmpdir(), prefix))
   tempDirs.push(outputDir)
-  const packed = JSON.parse(runNpm(
-    ['pack', '--json', '--ignore-scripts', '--pack-destination', outputDir], packageRoot,
-  )) as Array<{ filename?: string }>
+  const packed = JSON.parse(
+    runNpm(['pack', '--json', '--ignore-scripts', '--pack-destination', outputDir], packageRoot),
+  ) as Array<{ filename?: string }>
   if (!packed[0]?.filename) throw new Error('npm pack did not report an output filename')
   return join(outputDir, packed[0].filename)
 }
@@ -79,9 +82,11 @@ function installRendererProbe(appRoot: string, electronDir = 'src/electron') {
   if (!original.includes(pathImport) || !original.includes(openWindowSource)) {
     throw new Error('Generated Electron main source no longer matches the renderer probe contract.')
   }
-  const instrumented = original.replace(pathImport, `import fs from "node:fs"\n${pathImport}`).replace(
-    openWindowSource,
-    `function traceRendererProbe(stage: string) {
+  const instrumented = original
+    .replace(pathImport, `import fs from "node:fs"\n${pathImport}`)
+    .replace(
+      openWindowSource,
+      `function traceRendererProbe(stage: string) {
   const outputPath = process.env.FRONTRON_RENDERER_PROBE_PATH?.trim()
   if (outputPath) fs.appendFileSync(outputPath + ".trace", new Date().toISOString() + " " + stage + "\\n")
 }
@@ -125,7 +130,7 @@ function openMainWindow() {
   runRendererProbe()
 }
 `,
-  )
+    )
   writeFileSync(mainPath, instrumented, 'utf8')
   return () => writeFileSync(mainPath, original, 'utf8')
 }
@@ -133,21 +138,30 @@ function openMainWindow() {
 function expectHealthyRendererProbe(probePath: string, packaged: boolean, counter = false) {
   const probe = JSON.parse(readFileSync(probePath, 'utf8'))
   expect(probe).toMatchObject({
-    ok: true, isPackaged: packaged,
+    ok: true,
+    isPackaged: packaged,
     protocol: packaged ? 'frontron:' : 'http:',
-    heading: 'Desktop app ready', bridgeType: 'object',
-    requireType: 'undefined', processType: 'undefined',
+    heading: 'Desktop app ready',
+    bridgeType: 'object',
+    requireType: 'undefined',
+    processType: 'undefined',
   })
   expect(probe.appInfo?.name).toBeTruthy()
   if (counter) expect(probe.counterWorked).toBe(true)
   console.log(`[desktop-probe] ${JSON.stringify(probe)}`)
 }
 
-async function runDevelopmentAppProbe(appRoot: string, probePath: string, script = 'app', counter = false) {
+async function runDevelopmentAppProbe(
+  appRoot: string,
+  probePath: string,
+  script = 'app',
+  counter = false,
+) {
   const npm = getNpmInvocation(['run', script])
-  const invocation = process.platform === 'linux'
-    ? { command: 'xvfb-run', args: ['-a', npm.command, ...npm.args] }
-    : npm
+  const invocation =
+    process.platform === 'linux'
+      ? { command: 'xvfb-run', args: ['-a', npm.command, ...npm.args] }
+      : npm
   let output = ''
   let failure: Error | undefined
   const code = await new Promise<number | null>((resolve) => {
@@ -156,7 +170,9 @@ async function runDevelopmentAppProbe(appRoot: string, probePath: string, script
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: process.platform !== 'win32',
       env: {
-        ...process.env, CI: '1', FRONTRON_RENDERER_PROBE_PATH: probePath,
+        ...process.env,
+        CI: '1',
+        FRONTRON_RENDERER_PROBE_PATH: probePath,
         ...(process.platform === 'linux' ? { ELECTRON_DISABLE_SANDBOX: '1' } : {}),
       },
     })
@@ -181,11 +197,14 @@ async function runDevelopmentAppProbe(appRoot: string, probePath: string, script
       if (child.pid) {
         if (process.platform === 'win32') {
           const killed = spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
-            encoding: 'utf8', timeout: 10_000,
+            encoding: 'utf8',
+            timeout: 10_000,
           })
           output += `\n[process-cleanup] ${killed.stderr ?? ''}${killed.stdout ?? ''}`
         } else {
-          try { process.kill(-child.pid, 'SIGKILL') } catch (error) {
+          try {
+            process.kill(-child.pid, 'SIGKILL')
+          } catch (error) {
             if ((error as NodeJS.ErrnoException).code !== 'ESRCH') output += `\n${error}`
           }
         }
@@ -196,16 +215,24 @@ async function runDevelopmentAppProbe(appRoot: string, probePath: string, script
         finish(null)
       }, 5_000)
     }, 120_000)
-    child.once('error', (error) => { failure = error; finish(null) })
+    child.once('error', (error) => {
+      failure = error
+      finish(null)
+    })
     child.once('close', finish)
   })
   if (failure || code !== 0) {
     // Preserve enough context to distinguish startup, renderer and shutdown
     // failures. These are only source files from the test's generated app.
-    for (const file of [probePath, `${probePath}.trace`,
-      join(appRoot, 'scripts/tasks.mjs'), join(appRoot, 'src/electron/serve.ts'),
-      join(appRoot, 'electron/serve.ts')]) {
-      if (existsSync(file)) output += `\n=== ${file} ===\n${readFileSync(file, 'utf8').slice(0, 20000)}`
+    for (const file of [
+      probePath,
+      `${probePath}.trace`,
+      join(appRoot, 'scripts/tasks.mjs'),
+      join(appRoot, 'src/electron/serve.ts'),
+      join(appRoot, 'electron/serve.ts'),
+    ]) {
+      if (existsSync(file))
+        output += `\n=== ${file} ===\n${readFileSync(file, 'utf8').slice(0, 20000)}`
     }
   }
   expect(failure, output).toBeUndefined()
@@ -228,15 +255,19 @@ function runPackagedAppProbe(appRoot: string, appName: string, probePath: string
   expect(packageJson.build?.executableName).toBeUndefined()
   expect(packageJson.build?.win?.executableName).toBeUndefined()
   expect(packageJson.build?.linux?.executableName).toBeUndefined()
-  const executable = process.platform === 'win32'
-    ? join(appRoot, outputDir, 'win-unpacked', `${productName}.exe`)
-    : join(appRoot, outputDir, 'linux-unpacked', appName)
+  const executable =
+    process.platform === 'win32'
+      ? join(appRoot, outputDir, 'win-unpacked', `${productName}.exe`)
+      : join(appRoot, outputDir, 'linux-unpacked', appName)
   expect(existsSync(executable), `Packaged executable not found: ${executable}`).toBe(true)
-  const invocation = process.platform === 'linux'
-    ? { command: 'xvfb-run', args: ['-a', executable, '--no-sandbox'] }
-    : { command: executable, args: [] }
+  const invocation =
+    process.platform === 'linux'
+      ? { command: 'xvfb-run', args: ['-a', executable, '--no-sandbox'] }
+      : { command: executable, args: [] }
   const result = spawnSync(invocation.command, invocation.args, {
-    cwd: appRoot, encoding: 'utf8', timeout: 60_000,
+    cwd: appRoot,
+    encoding: 'utf8',
+    timeout: 60_000,
     env: { ...process.env, FRONTRON_RENDERER_PROBE_PATH: probePath },
   })
   expect(result.status, `${result.error ?? ''}\n${result.stdout}\n${result.stderr}`).toBe(0)
@@ -271,7 +302,12 @@ test('packed create-frontron builds and runs its real Electron starter', async (
   expect(pkg.build?.icon).toBe('public/icon.png')
   expect(pkg.build?.win?.icon).toBe('public/icon.ico')
   expect(pkg).not.toHaveProperty('author')
-  for (const file of ['src/electron/main.ts', 'src/electron/preload.ts', 'src/types/electron.d.ts', 'tsconfig.electron.json']) {
+  for (const file of [
+    'src/electron/main.ts',
+    'src/electron/preload.ts',
+    'src/types/electron.d.ts',
+    'tsconfig.electron.json',
+  ]) {
     expect(existsSync(join(appRoot, file))).toBe(true)
   }
   for (const file of ['frontron.config.ts', 'dist', '.npmignore']) {
@@ -283,28 +319,41 @@ test('packed create-frontron builds and runs its real Electron starter', async (
   runNpm(['run', 'typecheck'], appRoot)
   if (testElectronRuntime) await runDevelopmentAppProbe(appRoot, join(rehearsalRoot, 'dev.json'))
   runNpm(['run', 'build', '--', '--dir'], appRoot)
-  if (testElectronRuntime) runPackagedAppProbe(appRoot, appName, join(rehearsalRoot, 'packaged.json'))
+  if (testElectronRuntime)
+    runPackagedAppProbe(appRoot, appName, join(rehearsalRoot, 'packaged.json'))
 }, 600_000)
 
 test('packed frontron retrofits, updates, runs and removes a real Vite app without altering its source', async () => {
   const createTarball = packPackageForReal(createPackageRoot, 'create-frontron-retrofit-')
-  const frontronTarball = packPackageForReal(join(dirname(createPackageRoot), 'frontron'), 'frontron-retrofit-')
+  const frontronTarball = packPackageForReal(
+    join(dirname(createPackageRoot), 'frontron'),
+    'frontron-retrofit-',
+  )
   const root = mkdtempSync(join(tmpdir(), 'frontron-real-vite-'))
   tempDirs.push(root)
   const appName = 'retrofit-smoke-app'
   const appRoot = join(root, appName)
   mkdirSync(join(appRoot, 'src'), { recursive: true })
-  const template = JSON.parse(readFileSync(join(createPackageRoot, 'template/package.json'), 'utf8'))
+  const template = JSON.parse(
+    readFileSync(join(createPackageRoot, 'template/package.json'), 'utf8'),
+  )
   const pkg = {
-    name: appName, version: '0.0.1', private: true, type: 'module',
+    name: appName,
+    version: '0.0.1',
+    private: true,
+    type: 'module',
     scripts: { dev: 'vite --host 127.0.0.1', build: 'vite build' },
-    dependencies: { react: template.dependencies.react, 'react-dom': template.dependencies['react-dom'] },
+    dependencies: {
+      react: template.dependencies.react,
+      'react-dom': template.dependencies['react-dom'],
+    },
     devDependencies: { vite: template.devDependencies.vite },
   }
   writeFileSync(join(appRoot, 'package.json'), JSON.stringify(pkg, null, 2) + '\n')
   const sourceFiles = {
     'vite.config.js': 'export default {}\n',
-    'index.html': '<!doctype html><html><head><title>Real Vite consumer</title></head><body><div id="root"></div><script type="module" src="/src/main.js"></script></body></html>\n',
+    'index.html':
+      '<!doctype html><html><head><title>Real Vite consumer</title></head><body><div id="root"></div><script type="module" src="/src/main.js"></script></body></html>\n',
     'src/main.js': `import { createElement as h, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 function App() {
@@ -315,7 +364,8 @@ function App() {
 createRoot(document.getElementById('root')).render(h(App));
 `,
   }
-  for (const [name, content] of Object.entries(sourceFiles)) writeFileSync(join(appRoot, name), content)
+  for (const [name, content] of Object.entries(sourceFiles))
+    writeFileSync(join(appRoot, name), content)
   runNpm(['install', '-D', createTarball, frontronTarball, '--fund=false'], appRoot)
   runNpm(['run', 'build'], appRoot)
   runNpm(['exec', '--', 'frontron', 'init', '--yes'], appRoot)
@@ -331,9 +381,11 @@ createRoot(document.getElementById('root')).render(h(App));
   expect(updated.build?.productName).toBe('Retrofit Smoke App')
   const restoreProbe = installRendererProbe(appRoot, 'electron')
   try {
-    if (testElectronRuntime) await runDevelopmentAppProbe(appRoot, join(root, 'dev.json'), 'frontron:dev', true)
+    if (testElectronRuntime)
+      await runDevelopmentAppProbe(appRoot, join(root, 'dev.json'), 'frontron:dev', true)
     runNpm(['run', 'frontron:build', '--', '--dir'], appRoot)
-    if (testElectronRuntime) runPackagedAppProbe(appRoot, appName, join(root, 'packaged.json'), true)
+    if (testElectronRuntime)
+      runPackagedAppProbe(appRoot, appName, join(root, 'packaged.json'), true)
   } finally {
     restoreProbe()
   }

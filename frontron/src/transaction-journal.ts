@@ -202,9 +202,7 @@ function isSnapshotRecord(value: unknown): value is Record<string, unknown> & {
 }
 
 // validateSnapshotPayload 함수는 existed/kind 조합에 맞는 snapshot 데이터가 정확히 들어 있는지 확인한다.
-function validateSnapshotPayload(
-  value: ReturnType<typeof normalizeSnapshotRecord>,
-) {
+function validateSnapshotPayload(value: ReturnType<typeof normalizeSnapshotRecord>) {
   const { existed, kind, contentBase64, contentSha256, mode } = value
   if (existed && kind === 'file') {
     if (contentBase64 === null || contentSha256 === null || mode === null) {
@@ -268,7 +266,9 @@ function parseJournalHeader(projectRoot: string, line: string): TransactionJourn
     (value.operation !== 'init' && value.operation !== 'clean') ||
     !Array.isArray(value.snapshots)
   ) {
-    throw new Error('The transaction journal is invalid or unsupported. Preserve it and recover manually; no migration is performed.')
+    throw new Error(
+      'The transaction journal is invalid or unsupported. Preserve it and recover manually; no migration is performed.',
+    )
   }
 
   const snapshots = value.snapshots.map((snapshot) => validateSnapshot(projectRoot, snapshot))
@@ -353,9 +353,7 @@ export function hasPendingTransaction(projectRoot: string) {
 }
 
 function snapshotFileState(snapshot: TransactionSnapshot): FileState {
-  return snapshot.existed
-    ? { contentSha256: snapshot.contentSha256!, mode: snapshot.mode! }
-    : null
+  return snapshot.existed ? { contentSha256: snapshot.contentSha256!, mode: snapshot.mode! } : null
 }
 
 function validateFileState(value: unknown): FileState {
@@ -364,7 +362,9 @@ function validateFileState(value: unknown): FileState {
     !isRecord(value) ||
     typeof value.contentSha256 !== 'string' ||
     !/^[a-f0-9]{64}$/.test(value.contentSha256) ||
-    !Number.isInteger(value.mode) || Number(value.mode) < 0 || Number(value.mode) > 0o7777
+    !Number.isInteger(value.mode) ||
+    Number(value.mode) < 0 ||
+    Number(value.mode) > 0o7777
   ) {
     throw new Error('The transaction journal contains an invalid file state.')
   }
@@ -405,7 +405,7 @@ function assertRecoverable(snapshot: TransactionSnapshot, mutation: MutationReco
   ) {
     throw new Error(
       `Recovery conflict: ${snapshot.path} changed after Frontron's write. ` +
-      'No automatic overwrite or deletion is allowed. Preserve the file and journal for manual recovery.',
+        'No automatic overwrite or deletion is allowed. Preserve the file and journal for manual recovery.',
     )
   }
 }
@@ -551,8 +551,13 @@ function restoreJournal(projectRoot: string, journal: TransactionJournal) {
     assertTransactionPath(projectRoot, snapshot.safetyRoot, snapshot.path, 'Recovery directory')
     if (!existsSync(snapshot.path)) continue
     assertRegularDirectory(snapshot.path, 'Recovery directory')
-    if (!snapshot.existed && readdirSync(snapshot.path).some((name) => !removals.has(resolve(snapshot.path, name)))) {
-      throw new Error(`Recovery conflict: new user content exists in ${snapshot.path}. Preserve the directory and journal.`)
+    if (
+      !snapshot.existed &&
+      readdirSync(snapshot.path).some((name) => !removals.has(resolve(snapshot.path, name)))
+    ) {
+      throw new Error(
+        `Recovery conflict: new user content exists in ${snapshot.path}. Preserve the directory and journal.`,
+      )
     }
   }
   for (const snapshot of files) {
@@ -584,12 +589,17 @@ function markMutation(handle: TransactionHandle, snapshot: TransactionSnapshot, 
   const previous = handle.mutations.get(snapshot.path)
   const before = previous ? previous.after : snapshotFileState(snapshot)
   if (!sameFileState(currentFileState(snapshot), before)) {
-    throw new Error(`Transaction write target changed after the transaction started: ${snapshot.path}`)
+    throw new Error(
+      `Transaction write target changed after the transaction started: ${snapshot.path}`,
+    )
   }
   const mutation: MutationRecord = { mutatedPath: snapshot.path, before, after }
   // Persist the intended post-image BEFORE touching the target. A torn write is a
   // conflict, not evidence that arbitrary current content belongs to Frontron.
-  appendFileSync(handle.journalPath, `${JSON.stringify(mutation)}\n`, { encoding: 'utf8', flush: true })
+  appendFileSync(handle.journalPath, `${JSON.stringify(mutation)}\n`, {
+    encoding: 'utf8',
+    flush: true,
+  })
   handle.mutations.set(snapshot.path, mutation)
 }
 
@@ -690,7 +700,7 @@ export function writeTransactionFile(
 
   markMutation(handle, snapshot, {
     contentSha256: createTransactionSourceHash(content),
-    mode: snapshot.mode ?? (0o666 & ~process.umask()),
+    mode: snapshot.mode ?? 0o666 & ~process.umask(),
   })
 
   mkdirSync(dirname(snapshot.path), { recursive: true })

@@ -299,7 +299,10 @@ function deleteManagedFiles(
       if (!stats.isFile()) {
         throw new Error(`Manifest file entry is no longer a regular file: ${file.manifestPath}`)
       }
-      if (file.expectedHash && createFileHash(readFileSync(file.absolutePath)) !== file.expectedHash) {
+      if (
+        file.expectedHash &&
+        createFileHash(readFileSync(file.absolutePath)) !== file.expectedHash
+      ) {
         throw new Error(`Manifest-owned file changed after planning: ${file.manifestPath}`)
       }
     }
@@ -311,7 +314,11 @@ function deleteManagedFiles(
 }
 
 // assertMissingTargets 함수는 계획 당시 없던 파일이 중간에 생기지 않았는지 transaction snapshot으로 확인한다.
-function assertMissingTargets(transaction: TransactionHandle, plan: CleanPlan, projectRoot: string) {
+function assertMissingTargets(
+  transaction: TransactionHandle,
+  plan: CleanPlan,
+  projectRoot: string,
+) {
   for (const file of plan.files.filter((entry) => entry.action === 'missing')) {
     assertTransactionTargetUnchanged(transaction, file.absolutePath, projectRoot)
   }

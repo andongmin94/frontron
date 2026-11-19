@@ -58,9 +58,7 @@ describe('frontron init guardrails', () => {
     renameSync(typesDir, linkedTarget)
     symlinkSync(linkedTarget, typesDir, process.platform === 'win32' ? 'junction' : 'dir')
 
-    expect(() => withTemplate(templateDir, () => loadCreateFrontronTemplate())).toThrow(
-      'symbolic',
-    )
+    expect(() => withTemplate(templateDir, () => loadCreateFrontronTemplate())).toThrow('symbolic')
   })
 
   test.each([
@@ -72,7 +70,9 @@ describe('frontron init guardrails', () => {
     const output = fixtures.createOutput()
 
     expect(await runCli(['init', '--dry-run', ...args], output, { cwd: projectRoot })).toBe(1)
-    expect(output.error.mock.calls.flat().join('\n')).toContain('must not contain ".." path segments')
+    expect(output.error.mock.calls.flat().join('\n')).toContain(
+      'must not contain ".." path segments',
+    )
     expect(existsSync(join(projectRoot, MANIFEST_PATH))).toBe(false)
     expect(existsSync(join(projectRoot, 'electron'))).toBe(false)
   })
@@ -90,11 +90,9 @@ describe('frontron init guardrails', () => {
 
     const output = fixtures.createOutput()
     expect(
-      await runCli(
-        ['init', '--dry-run', '--desktop-dir', 'linked-electron'],
-        output,
-        { cwd: projectRoot },
-      ),
+      await runCli(['init', '--dry-run', '--desktop-dir', 'linked-electron'], output, {
+        cwd: projectRoot,
+      }),
     ).toBe(1)
     expect(output.error.mock.calls.flat().join('\n')).toContain('symbolic link or junction')
     expect(existsSync(join(outsideRoot, 'main.ts'))).toBe(false)

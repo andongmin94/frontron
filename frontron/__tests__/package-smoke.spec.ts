@@ -56,32 +56,36 @@ afterEach(() => {
   }
 })
 
-test('frontron package exposes only its CLI and exact template dependency', { timeout: 60_000 }, () => {
-  runNpm(['run', 'build'], packageRoot)
-  const result = JSON.parse(
-    runNpm(['pack', '--json', '--dry-run', '--ignore-scripts'], packageRoot),
-  ) as Array<{ files?: Array<{ path: string }> }>
-  const files = new Set((result[0]?.files ?? []).map((entry) => entry.path))
-  const packageJson = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as {
-    version: string
-    main?: string
-    types?: string
-    exports?: Record<string, unknown>
-    dependencies?: Record<string, string>
-  }
+test(
+  'frontron package exposes only its CLI and exact template dependency',
+  { timeout: 60_000 },
+  () => {
+    runNpm(['run', 'build'], packageRoot)
+    const result = JSON.parse(
+      runNpm(['pack', '--json', '--dry-run', '--ignore-scripts'], packageRoot),
+    ) as Array<{ files?: Array<{ path: string }> }>
+    const files = new Set((result[0]?.files ?? []).map((entry) => entry.path))
+    const packageJson = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as {
+      version: string
+      main?: string
+      types?: string
+      exports?: Record<string, unknown>
+      dependencies?: Record<string, string>
+    }
 
-  expect(files.has('index.js')).toBe(true)
-  expect(files.has('dist/cli.mjs')).toBe(true)
-  expect(files.has('dist/cli.d.ts')).toBe(true)
-  expect(files.has('package.json')).toBe(true)
-  expect(files.has('README.md')).toBe(true)
-  expect(files.has('LICENSE')).toBe(true)
-  expect(files.has('scripts/tasks.mjs')).toBe(false)
-  expect(packageJson.main).toBeUndefined()
-  expect(packageJson.types).toBeUndefined()
-  expect(packageJson.exports).toEqual({ './package.json': './package.json' })
-  expect(packageJson.dependencies?.['create-frontron']).toBe(packageJson.version)
-})
+    expect(files.has('index.js')).toBe(true)
+    expect(files.has('dist/cli.mjs')).toBe(true)
+    expect(files.has('dist/cli.d.ts')).toBe(true)
+    expect(files.has('package.json')).toBe(true)
+    expect(files.has('README.md')).toBe(true)
+    expect(files.has('LICENSE')).toBe(true)
+    expect(files.has('scripts/tasks.mjs')).toBe(false)
+    expect(packageJson.main).toBeUndefined()
+    expect(packageJson.types).toBeUndefined()
+    expect(packageJson.exports).toEqual({ './package.json': './package.json' })
+    expect(packageJson.dependencies?.['create-frontron']).toBe(packageJson.version)
+  },
+)
 
 test(
   'installed package runs the public retrofit lifecycle with its packed template',
@@ -138,9 +142,7 @@ test(
     expect(existsSync(join(appRoot, 'electron', 'tray.ts'))).toBe(false)
     expect(existsSync(join(appRoot, '.frontron', 'manifest.json'))).toBe(true)
 
-    expect(runNpm(['exec', '--', 'frontron', 'doctor'], appRoot)).toContain(
-      'No blockers found.',
-    )
+    expect(runNpm(['exec', '--', 'frontron', 'doctor'], appRoot)).toContain('No blockers found.')
     expect(runNpm(['exec', '--', 'frontron', 'update', '--dry-run'], appRoot)).toContain(
       'Run "frontron update --yes" to apply this plan.',
     )

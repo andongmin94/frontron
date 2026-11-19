@@ -181,7 +181,6 @@ test('mutation rejects an external edit and rollback preserves the unmutated edi
   expect(readFileSync(filePath, 'utf8')).toBe('external\n')
 })
 
-
 test('recovery rejects a journal snapshot mode outside the captured permission range', () => {
   const root = createProject('invalid-mode')
   const filePath = join(root, 'package.json')

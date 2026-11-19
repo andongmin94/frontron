@@ -3,6 +3,7 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { NPM_BUILDER_MINIMATCH_OVERRIDE_PATH } from '../npm-builder-override'
 import { readPackageJsonPath } from '../package-json-path'
 
 import type {
@@ -276,7 +277,7 @@ function readTemplateDependencies(templateDir: string): InitTemplateDependencies
     return value
   }
 
-  const minimatch = readPackageJsonPath(packageJson, 'overrides.electron-builder.minimatch').value
+  const minimatch = readPackageJsonPath(packageJson, NPM_BUILDER_MINIMATCH_OVERRIDE_PATH).value
 
   return {
     electron: version('electron'),

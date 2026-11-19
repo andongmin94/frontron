@@ -9,6 +9,7 @@ import type {
   InitTemplateResolvedFrom,
   RuntimeStrategy,
 } from './shared'
+import { NPM_BUILDER_MINIMATCH_OVERRIDE_PATH } from './npm-builder-override'
 import { normalizePathValue, VALID_ADAPTERS } from './shared'
 import type { YarnRcOwnershipClaim } from './yarnrc-yaml'
 
@@ -74,7 +75,7 @@ const FORBIDDEN_CLAIM_PATH_SEGMENTS = new Set(['__proto__', 'prototype', 'constr
 const PACKAGE_JSON_CLAIM_PATH_ALLOWLIST = new Set([
   'version',
   'trustedDependencies',
-  'overrides.electron-builder.minimatch',
+  NPM_BUILDER_MINIMATCH_OVERRIDE_PATH,
   'devDependencies.electron',
   'devDependencies.electron-builder',
   'devDependencies.@types/node',

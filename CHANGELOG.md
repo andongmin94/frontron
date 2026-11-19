@@ -22,6 +22,11 @@ version and complete [release preparation](docs/RELEASING.md) before publication
 - The private renderer proxy streams request bodies using Node fetch with
   manual redirects. Only localhost/127.0.0.1 aliases of the exact runtime HTTP
   port are rewritten to the stable application origin.
+- npm starters and retrofits override only the electron-builder `minimatch`
+  majors affected by GHSA-g3hv-75wg-m249 (`minimatch@>=9 <12` → `^11.0.8`).
+  An unscoped override forced minimatch 11 onto glob 7, `@electron/asar`,
+  dir-compare and filelist, whose minimatch 3/5 default-export calls then
+  failed. Existing user `minimatch` overrides, scoped or not, are left alone.
 - Iconless retrofits receive the managed canonical SVG packaging default.
   Custom icons/settings and edits to managed icons remain subject to ownership
   checks during update and clean.

@@ -32,7 +32,7 @@
   },
   "overrides": {
     "electron-builder": {
-      "minimatch": "^11.0.8"
+      "minimatch@>=9 <12": "^11.0.8"
     }
   },
   "main": "dist/electron/main.js",

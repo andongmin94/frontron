@@ -6,6 +6,11 @@ import { loadCreateFrontronTemplate } from './runtime/create-frontron-template'
 import { inspectToolDependencyDeclarations } from './dependency-compatibility'
 import type { PackageJsonOwnershipClaim } from './manifest'
 import {
+  isMinimatchOverrideKey,
+  NPM_BUILDER_MINIMATCH_OVERRIDE_KEY,
+  NPM_BUILDER_MINIMATCH_OVERRIDE_PATH,
+} from './npm-builder-override'
+import {
   cloneJsonValue,
   deletePackageJsonPath,
   readPackageJsonPath,
@@ -203,9 +208,9 @@ function createPackageJsonPatchChanges(before: PackageJson, after: PackageJson) 
   addScalarChange(changes, before.version, after.version, 'version')
   addScalarChange(
     changes,
-    readPackageJsonPath(before, 'overrides.electron-builder.minimatch').value,
-    readPackageJsonPath(after, 'overrides.electron-builder.minimatch').value,
-    'overrides.electron-builder.minimatch',
+    readPackageJsonPath(before, NPM_BUILDER_MINIMATCH_OVERRIDE_PATH).value,
+    readPackageJsonPath(after, NPM_BUILDER_MINIMATCH_OVERRIDE_PATH).value,
+    NPM_BUILDER_MINIMATCH_OVERRIDE_PATH,
   )
   addBuildPatchChanges(changes, before.build, after.build)
 
@@ -281,7 +286,7 @@ function createPackageJsonOwnershipClaims(before: PackageJson, after: PackageJso
 
   for (const path of [
     'version',
-    'overrides.electron-builder.minimatch',
+    NPM_BUILDER_MINIMATCH_OVERRIDE_PATH,
     'build.icon',
     'build.win.icon',
     'build.appId',
@@ -437,6 +442,7 @@ function applyToolDependencies(
 }
 
 // npm 패키징 도구의 취약한 하위 의존성만 교체하고 사용자 override는 보존한다.
+// 사용자가 minimatch를 어떤 형태로든 이미 override했다면 그 판단을 존중하고 아무것도 추가하지 않는다.
 function applyNpmBuilderOverride(config: InitConfig) {
   if (config.packageManager !== 'npm') return
   const template = config.templateDependencies ?? loadCreateFrontronTemplate().dependencies
@@ -447,7 +453,7 @@ function applyNpmBuilderOverride(config: InitConfig) {
     'overrides',
     {},
   )
-  if (typeof overrides.minimatch !== 'undefined') return
+  if (Object.keys(overrides).some(isMinimatchOverrideKey)) return
   const builderOverride = overrides['electron-builder']
   if (
     typeof builderOverride !== 'undefined' &&
@@ -457,7 +463,8 @@ function applyNpmBuilderOverride(config: InitConfig) {
   )
     return
   const builder = (builderOverride ?? {}) as Record<string, unknown>
-  builder.minimatch ??= template.electronBuilderMinimatch
+  if (Object.keys(builder).some(isMinimatchOverrideKey)) return
+  builder[NPM_BUILDER_MINIMATCH_OVERRIDE_KEY] = template.electronBuilderMinimatch
   overrides['electron-builder'] = builder
   config.packageJson.overrides = overrides
 }

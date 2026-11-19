@@ -4,6 +4,10 @@ import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
 import { runCli } from '../src/cli'
+import {
+  NPM_BUILDER_MINIMATCH_OVERRIDE_KEY,
+  NPM_BUILDER_MINIMATCH_OVERRIDE_PATH,
+} from '../src/init/npm-builder-override'
 import { loadCreateFrontronTemplate } from '../src/init/runtime/create-frontron-template'
 import * as fixtures from './helpers/frontron-cli-fixtures'
 
@@ -88,8 +92,13 @@ describe('frontron clean', () => {
     { overrides: { unrelated: '1.0.0' }, addsOverride: true },
     { overrides: { 'electron-builder': { unrelated: '1.0.0' } }, addsOverride: true },
     { overrides: { 'electron-builder': { minimatch: '^11.0.7' } }, addsOverride: false },
+    {
+      overrides: { 'electron-builder': { 'minimatch@>=10 <12': '^11.0.7' } },
+      addsOverride: false,
+    },
     { overrides: { 'electron-builder': '^26.0.12' }, addsOverride: false },
     { overrides: { minimatch: '^11.0.7' }, addsOverride: false },
+    { overrides: { 'minimatch@^10': '^11.0.7' }, addsOverride: false },
   ])('init and clean preserve npm overrides: $overrides', async ({ overrides, addsOverride }) => {
     const projectRoot = fixtures.createTempProject()
     fixtures.tempDirs.push(projectRoot)
@@ -102,15 +111,17 @@ describe('frontron clean', () => {
     expect(await runCli(['init', '--yes'], output, { cwd: projectRoot })).toBe(0)
     const initialized = JSON.parse(readFileSync(packageJsonPath, 'utf8'))
     if (addsOverride) {
-      expect(initialized.overrides['electron-builder'].minimatch).toBe(
-        loadCreateFrontronTemplate().dependencies.electronBuilderMinimatch,
-      )
+      expect(initialized.overrides['electron-builder']).toMatchObject({
+        [NPM_BUILDER_MINIMATCH_OVERRIDE_KEY]:
+          loadCreateFrontronTemplate().dependencies.electronBuilderMinimatch,
+      })
+      expect(initialized.overrides['electron-builder']).not.toHaveProperty('minimatch')
       const manifest = JSON.parse(
         readFileSync(join(projectRoot, '.frontron/manifest.json'), 'utf8'),
       )
       expect(manifest.packageJsonClaims).toContainEqual(
         expect.objectContaining({
-          path: 'overrides.electron-builder.minimatch',
+          path: NPM_BUILDER_MINIMATCH_OVERRIDE_PATH,
           previous: { state: 'missing' },
         }),
       )
@@ -128,12 +139,12 @@ describe('frontron clean', () => {
     expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
     const packageJsonPath = join(projectRoot, 'package.json')
     const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'))
-    packageJson.overrides['electron-builder'].minimatch = '^11.0.7'
+    packageJson.overrides['electron-builder'][NPM_BUILDER_MINIMATCH_OVERRIDE_KEY] = '^11.0.7'
     writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
 
     expect(await runCli(['clean', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
     expect(JSON.parse(readFileSync(packageJsonPath, 'utf8')).overrides).toEqual({
-      'electron-builder': { minimatch: '^11.0.7' },
+      'electron-builder': { [NPM_BUILDER_MINIMATCH_OVERRIDE_KEY]: '^11.0.7' },
     })
   })
 

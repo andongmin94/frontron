@@ -50,4 +50,6 @@ The renderer ships every [shadcn/ui](https://ui.shadcn.com) component (Base UI p
 
 Light and dark themes follow the operating system color scheme through the `.dark` class set in `src/main.tsx`.
 
+Content Security Policy is applied twice. `index.html` carries a `<meta>` policy for the Vite dev server and browser preview. Inside Electron, `src/electron/main.ts` sends the same policy as a response header, which also sets `frame-ancestors 'none'`; browsers ignore that directive in `<meta>`, so it lives only in the header. Keep both policies in sync when you change one. The shadcn/ui code block highlights with Shiki's JavaScript regex engine, so it needs no WebAssembly permission, but it colors tokens through inline `style` attributes; removing `'unsafe-inline'` from `style-src` leaves code blocks uncolored.
+
 The static renderer server supports SPA fallback, byte ranges, common web media types, and confinement against traversal or escaping symlinks.

@@ -7,6 +7,15 @@ The package manifests remain at `0.13.4` during stabilization; that number does
 not identify this unpublished source on the registry. Select a fresh matching
 version and complete [release preparation](docs/RELEASING.md) before publication.
 
+### Changed
+
+- The create-frontron starter ships every current shadcn/ui component
+  (shadcn 4.23.0, `base-nova`, Base UI, Tailwind CSS 4, 63 components) instead
+  of the plain-CSS screen. `shadcn/tailwind.css` is ejected into
+  `src/index.css` so the shadcn CLI and its ts-morph → minimatch chain are not
+  installed; a fresh npm install audits clean. The starter screen uses Card,
+  Badge and Button, and the `.dark` class follows the OS color scheme.
+
 ### Fixed
 
 - Recovery checks recorded before/after states and refuses to overwrite or

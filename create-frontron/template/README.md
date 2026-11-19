@@ -46,6 +46,8 @@ src/electron/ipc.ts
 src/types/electron.d.ts
 ```
 
-The renderer intentionally starts as a small React screen with plain CSS. Add a component library or styling system only when the application needs one.
+The renderer ships every [shadcn/ui](https://ui.shadcn.com) component (Base UI primitives, `base-nova` style, Tailwind CSS 4) in `src/components/ui`. Import them with the `@/components/ui/*` alias. Add or update components with `npx shadcn@latest add <name>`. `shadcn/tailwind.css` is ejected into `src/index.css`, so the shadcn CLI is not an app dependency; shadcn's own updates to that file are not applied automatically.
+
+Light and dark themes follow the operating system color scheme through the `.dark` class set in `src/main.tsx`.
 
 The static renderer server supports SPA fallback, byte ranges, common web media types, and confinement against traversal or escaping symlinks.

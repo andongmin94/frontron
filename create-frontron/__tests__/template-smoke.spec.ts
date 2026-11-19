@@ -57,14 +57,23 @@ test('starter template exposes the supported Electron and React contract', async
     'format:check': 'node scripts/tasks.mjs format:check',
     typecheck: 'node scripts/tasks.mjs typecheck',
   })
-  expect(packageJson.dependencies).toEqual({
-    react: '^19.2.4',
-    'react-dom': '^19.2.4',
-  })
+  // 스타터는 shadcn/ui 전체 컴포넌트를 Base UI·Tailwind CSS 4 위에서 제공한다.
+  for (const dependency of [
+    'react',
+    'react-dom',
+    '@base-ui/react',
+    'tailwindcss',
+    '@tailwindcss/vite',
+    'cn',
+    'lucide-react',
+  ]) {
+    expect(packageJson.dependencies).toHaveProperty(dependency)
+  }
+  // shadcn CLI는 ts-morph를 통해 취약한 minimatch를 끌어오므로 tailwind.css를 eject해 의존성에서 뺀다.
+  expect(packageJson.dependencies).not.toHaveProperty('shadcn')
+  expect(packageJson.devDependencies).not.toHaveProperty('shadcn')
   expect(packageJson.devDependencies).toHaveProperty('electron')
   expect(packageJson.devDependencies).toHaveProperty('electron-builder')
-  expect(packageJson.devDependencies).not.toHaveProperty('tailwindcss')
-  expect(packageJson.devDependencies).not.toHaveProperty('@tailwindcss/vite')
   expect(packageJson.trustedDependencies).toBeUndefined()
   expect(packageJson.main).toBe('dist/electron/main.js')
   expect(packageJson.build.productName).toBe(projectName)
@@ -122,10 +131,22 @@ test('starter template exposes the supported Electron and React contract', async
   expect(rendererMain).not.toContain('ThemeProvider')
   expect(rendererApp).toContain('window.electron')
 
-  expect(existsSync(join(projectRoot, 'src/components'))).toBe(false)
+  const components = JSON.parse(readFileSync(join(projectRoot, 'components.json'), 'utf8')) as {
+    style: string
+    tailwind: { css: string }
+    aliases: { ui: string; utils: string }
+  }
+  expect(components.style).toBe('base-nova')
+  expect(components.tailwind.css).toBe('src/index.css')
+  expect(components.aliases).toMatchObject({ ui: '@/components/ui', utils: '@/lib/utils' })
+  for (const component of ['button', 'card', 'dialog', 'sidebar', 'tooltip']) {
+    expect(existsSync(join(projectRoot, `src/components/ui/${component}.tsx`))).toBe(true)
+  }
+  expect(readFileSync(join(projectRoot, 'src/index.css'), 'utf8')).not.toContain(
+    '@import "shadcn/tailwind.css"',
+  )
+  expect(rendererApp).toContain('@/components/ui/button')
   expect(existsSync(join(projectRoot, 'src/assets'))).toBe(false)
-  expect(existsSync(join(projectRoot, 'src/lib'))).toBe(false)
-  expect(existsSync(join(projectRoot, 'components.json'))).toBe(false)
   expect(existsSync(join(projectRoot, 'public/vite.svg'))).toBe(false)
   expect(existsSync(join(projectRoot, 'src/electron/static-server.ts'))).toBe(true)
   expect(existsSync(join(projectRoot, 'src/electron/tray.ts'))).toBe(false)

@@ -1,6 +1,9 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "react"],
+  "plugins": [
+    "typescript",
+    "react"
+  ],
   "categories": {
     "correctness": "error"
   },
@@ -10,5 +13,13 @@
     "node": true,
     "es2022": true
   },
-  "ignorePatterns": ["dist", "node_modules", "output", ".frontron"]
+  "ignorePatterns": [
+    "dist",
+    "node_modules",
+    "output",
+    ".frontron",
+    "src/components/ui",
+    "src/hooks",
+    "src/lib/highlighter.tsx"
+  ]
 }

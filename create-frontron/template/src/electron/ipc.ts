@@ -114,10 +114,7 @@ function readTextExtensions(value: unknown) {
   return [...new Set(extensions)]
 }
 
-function assertTrustedSender(
-  event: IpcMainInvokeEvent,
-  window: BrowserWindow
-) {
+function assertTrustedSender(event: IpcMainInvokeEvent, window: BrowserWindow) {
   if (
     event.sender !== window.webContents ||
     event.senderFrame !== window.webContents.mainFrame
@@ -220,11 +217,7 @@ export function setupIpcHandlers() {
   ipcMain.handle(showNotificationChannel, (event, value: unknown) => {
     assertTrustedSender(event, window)
     const options = readRecord(value)
-    const title = readRequiredString(
-      options.title,
-      "notification title",
-      200
-    )
+    const title = readRequiredString(options.title, "notification title", 200)
     const body = readOptionalString(
       options.body,
       "notification body",

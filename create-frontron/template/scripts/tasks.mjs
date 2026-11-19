@@ -3,7 +3,9 @@ import { existsSync, readFileSync, realpathSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
-const root = realpathSync.native(dirname(dirname(fileURLToPath(import.meta.url))))
+const root = realpathSync.native(
+  dirname(dirname(fileURLToPath(import.meta.url)))
+)
 const command = process.argv[2]
 const extraArgs = process.argv.slice(3)
 const formatTargets = ["src", "scripts", "vite.config.ts", "package.json"]
@@ -24,9 +26,16 @@ const binPackages = { tsc: "typescript" }
 
 function resolveBin(name) {
   const packageName = binPackages[name] ?? name
-  const packageJsonPath = join(root, "node_modules", packageName, "package.json")
+  const packageJsonPath = join(
+    root,
+    "node_modules",
+    packageName,
+    "package.json"
+  )
   if (!existsSync(packageJsonPath)) {
-    console.error(`[tasks] Missing dependency for "${name}". Run install first.`)
+    console.error(
+      `[tasks] Missing dependency for "${name}". Run install first.`
+    )
     process.exit(1)
   }
 
@@ -36,7 +45,9 @@ function resolveBin(name) {
       ? packageJson.bin
       : (packageJson.bin?.[name] ?? packageJson.bin?.[packageName])
   if (!bin) {
-    console.error(`[tasks] Package "${packageName}" does not expose a "${name}" binary.`)
+    console.error(
+      `[tasks] Package "${packageName}" does not expose a "${name}" binary.`
+    )
     process.exit(1)
   }
   return join(root, "node_modules", packageName, bin)

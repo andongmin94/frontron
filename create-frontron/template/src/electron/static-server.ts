@@ -58,7 +58,10 @@ function sendResponse(
 }
 
 function getContentType(filePath: string) {
-  return mimeTypes.get(path.extname(filePath).toLowerCase()) ?? "application/octet-stream"
+  return (
+    mimeTypes.get(path.extname(filePath).toLowerCase()) ??
+    "application/octet-stream"
+  )
 }
 
 function isPathInside(rootPath: string, candidatePath: string) {
@@ -73,7 +76,8 @@ function isPathInside(rootPath: string, candidatePath: string) {
 
 function decodeRequestPath(requestUrl: string) {
   const queryIndex = requestUrl.indexOf("?")
-  const rawPath = queryIndex === -1 ? requestUrl : requestUrl.slice(0, queryIndex)
+  const rawPath =
+    queryIndex === -1 ? requestUrl : requestUrl.slice(0, queryIndex)
 
   if (!rawPath.startsWith("/")) {
     throw new Error("Static requests must use an origin-form path.")
@@ -219,7 +223,8 @@ async function serveFile(
       "Content-Type": getContentType(filePath),
     }
     if (byteRange) {
-      headers["Content-Range"] = `bytes ${byteRange.start}-${byteRange.end}/${fileStats.size}`
+      headers["Content-Range"] =
+        `bytes ${byteRange.start}-${byteRange.end}/${fileStats.size}`
     }
 
     if (request.method === "HEAD") {
@@ -292,7 +297,8 @@ async function handleRendererRequest(
 export async function startStaticRendererServer(configuredDistPath: string) {
   if (rendererServer) {
     const address = rendererServer.address()
-    const port = typeof address === "object" && address !== null ? address.port : null
+    const port =
+      typeof address === "object" && address !== null ? address.port : null
     if (typeof port === "number" && port > 0) {
       return `http://${loopbackHost}:${port}`
     }
@@ -302,13 +308,17 @@ export async function startStaticRendererServer(configuredDistPath: string) {
   const distPath = await realpath(configuredDistPath)
   const indexPath = await resolveRequestPath(distPath, "/")
   if (typeof indexPath !== "string") {
-    throw new Error(`Renderer entry at ${configuredIndexPath} is not a safe regular file.`)
+    throw new Error(
+      `Renderer entry at ${configuredIndexPath} is not a safe regular file.`
+    )
   }
 
   rendererServer = createServer((request, response) => {
-    void handleRendererRequest(request, response, distPath, indexPath).catch((error) => {
-      sendFileError(request, response, error)
-    })
+    void handleRendererRequest(request, response, distPath, indexPath).catch(
+      (error) => {
+        sendFileError(request, response, error)
+      }
+    )
   })
 
   return new Promise<string>((resolve, reject) => {
@@ -326,7 +336,8 @@ export async function startStaticRendererServer(configuredDistPath: string) {
     server.listen(0, loopbackHost, () => {
       server.off("error", handleError)
       const address = server.address()
-      const port = typeof address === "object" && address !== null ? address.port : null
+      const port =
+        typeof address === "object" && address !== null ? address.port : null
       if (typeof port !== "number" || port <= 0) {
         rendererServer = null
         reject(new Error("Renderer server failed to bind to a valid port."))

@@ -192,7 +192,9 @@ async function watchElectronSources(rendererUrl: string) {
 
 export async function runDevApp() {
   if (!fs.existsSync(electronExecutablePath)) {
-    throw new Error(`Electron executable not found at ${electronExecutablePath}.`)
+    throw new Error(
+      `Electron executable not found at ${electronExecutablePath}.`
+    )
   }
 
   const { createServer } = await import("vite")

@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -166,4 +167,26 @@ test('starter template exposes the supported Electron and React contract', async
   expect(existsSync(join(projectRoot, 'frontron.config.ts'))).toBe(false)
   expect(existsSync(join(projectRoot, 'dist'))).toBe(false)
   expect(existsSync(join(projectRoot, '.npmignore'))).toBe(false)
+})
+
+// 새 프로젝트의 `npm run format:check`가 생성 직후부터 통과해야 한다.
+// 템플릿은 create-frontron 저장소 포매터 설정에서 제외되므로 생성된 프로젝트의 설정으로 확인한다.
+test('a generated starter passes its own format check', async () => {
+  const workspace = realpathSync.native(mkdtempSync(join(tmpdir(), 'create-frontron-format-')))
+  const projectRoot = join(workspace, 'format-smoke-app')
+  tempDirs.push(workspace)
+  process.chdir(workspace)
+  vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+  await runCreateFrontron(['format-smoke-app'])
+
+  const oxfmt = join(import.meta.dirname, '..', 'node_modules', 'oxfmt', 'bin', 'oxfmt')
+  const result = spawnSync(
+    process.execPath,
+    [oxfmt, '--check', 'src', 'scripts', 'vite.config.ts', 'package.json'],
+    { cwd: projectRoot, encoding: 'utf8' },
+  )
+
+  expect(result.stdout + result.stderr).toContain('All matched files use the correct format')
+  expect(result.status).toBe(0)
 })

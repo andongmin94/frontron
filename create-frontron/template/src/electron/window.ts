@@ -9,7 +9,9 @@ export let mainWindow: BrowserWindow | null = null
 function isRendererUrl(urlString: string, rendererUrl: URL) {
   try {
     const url = new URL(urlString)
-    return url.protocol === rendererUrl.protocol && url.host === rendererUrl.host
+    return (
+      url.protocol === rendererUrl.protocol && url.host === rendererUrl.host
+    )
   } catch {
     return false
   }
@@ -82,7 +84,9 @@ export function createWindow(rendererUrl: string, beforeLoad?: () => void) {
         )
         .then((hasBridge) => {
           if (!hasBridge) {
-            console.warn("[template] Preload bridge is unavailable in the renderer.")
+            console.warn(
+              "[template] Preload bridge is unavailable in the renderer."
+            )
           }
         })
         .catch(() => {})

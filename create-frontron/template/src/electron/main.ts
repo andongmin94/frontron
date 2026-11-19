@@ -86,7 +86,8 @@ function ensureRendererCsp(headers: Headers) {
 
 function rewriteRendererRequestHeaders(request: Request, targetOrigin: string) {
   const headers = new Headers(request.headers)
-  if (headers.get("origin") === rendererOrigin) headers.set("origin", targetOrigin)
+  if (headers.get("origin") === rendererOrigin)
+    headers.set("origin", targetOrigin)
 
   const referer = headers.get("referer")
   if (referer) {
@@ -130,7 +131,10 @@ export async function registerRendererProtocol(rendererTargetUrl: string) {
         redirect: "manual",
         signal: request.signal,
       }
-      const upstreamResponse = await globalThis.fetch(proxyUrl.toString(), requestOptions)
+      const upstreamResponse = await globalThis.fetch(
+        proxyUrl.toString(),
+        requestOptions
+      )
       const responseHeaders = new Headers(upstreamResponse.headers)
       rewriteRendererLocation(responseHeaders, proxyUrl, targetOrigin)
       ensureRendererCsp(responseHeaders)

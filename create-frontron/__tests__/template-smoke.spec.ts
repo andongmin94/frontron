@@ -156,6 +156,9 @@ test('starter template exposes the supported Electron and React contract', async
     '@import "shadcn/tailwind.css"',
   )
   expect(rendererApp).toContain('@/components/ui/button')
+  // release-rehearsal의 실제 Electron 프로브가 이 제목과 상태 요소로 마운트·IPC를 확인한다.
+  expect(rendererApp).toMatch(/<h1[^>]*>Desktop app ready<\/h1>/)
+  expect(rendererApp).toMatch(/className="status[ "]/)
   expect(existsSync(join(projectRoot, 'src/assets'))).toBe(false)
   expect(existsSync(join(projectRoot, 'public/vite.svg'))).toBe(false)
   expect(existsSync(join(projectRoot, 'src/electron/static-server.ts'))).toBe(true)

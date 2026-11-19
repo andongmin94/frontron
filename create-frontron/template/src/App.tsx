@@ -82,7 +82,9 @@ export function App() {
       <Card className="w-full max-w-xl">
         <CardHeader>
           <Badge variant="secondary">Electron + React + Vite + shadcn/ui</Badge>
-          <CardTitle className="text-2xl">Desktop app ready</CardTitle>
+          <CardTitle>
+            <h1 className="text-2xl font-semibold">Desktop app ready</h1>
+          </CardTitle>
           <CardDescription>
             Edit <code>src/App.tsx</code> for the interface and{" "}
             <code>src/electron/ipc.ts</code> for native features. Every
@@ -111,7 +113,10 @@ export function App() {
           </Button>
         </CardContent>
         <CardFooter>
-          <p className="text-sm text-muted-foreground" aria-live="polite">
+          <p
+            className="status text-sm text-muted-foreground"
+            aria-live="polite"
+          >
             {status}
           </p>
         </CardFooter>

@@ -209,9 +209,10 @@ test('writes Bun trust metadata only for Bun consumers', async () => {
     resolutions?: unknown
   }
   expect(packageJson.trustedDependencies).toEqual(['electron', 'electron-winstaller'])
-  // Bun은 중첩·범위 override를 무시하므로 minimatch 교체를 넣지 않는다.
+  // Bun은 중첩·범위 override를 무시하므로 minimatch 교체를 넣지 않고 그 사실을 알린다.
   expect(packageJson.overrides).toBeUndefined()
   expect(packageJson.resolutions).toBeUndefined()
+  expect(vi.mocked(console.log).mock.calls.flat().join('\n')).toContain('GHSA-g3hv-75wg-m249')
   expect(existsSync(join(workspace, 'app', 'pnpm-workspace.yaml'))).toBe(false)
   expect(existsSync(join(workspace, 'app', '.yarnrc.yml'))).toBe(false)
 })

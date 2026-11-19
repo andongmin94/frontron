@@ -24,6 +24,7 @@ import {
 } from '../init/yarnrc-yaml'
 import { inspectManagedFile, inspectManagedScript } from '../managed-state'
 import { formatProjectPathBlocker, inspectProjectPath } from '../project-paths'
+import { inspectMinimatchAdvisory } from './minimatch-advisory'
 import type { DoctorFindings } from './report'
 
 // doctor는 읽기 전용이므로 소유권 상태를 update/clean과 같은 판정기로 해석만 한다.
@@ -336,4 +337,5 @@ export function inspectDoctorState(
   inspectManifestScripts(packageJson, manifest, findings)
   inspectPackageJsonClaims(packageJson, manifest, findings)
   inspectRuntimeRequirements(cwd, packageJson, manifest, findings)
+  inspectMinimatchAdvisory(cwd, packageJson, manifest, findings)
 }

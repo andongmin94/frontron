@@ -6,6 +6,7 @@ import { loadCreateFrontronTemplate } from './runtime/create-frontron-template'
 import { inspectToolDependencyDeclarations } from './dependency-compatibility'
 import type { PackageJsonOwnershipClaim } from './manifest'
 import {
+  BUN_MINIMATCH_ADVISORY_WARNING,
   isMinimatchOverrideKey,
   NPM_BUILDER_MINIMATCH_OVERRIDE_KEY,
   NPM_BUILDER_MINIMATCH_OVERRIDE_PATH,
@@ -368,7 +369,10 @@ export function previewPackageJsonPatch(
     changes: createPackageJsonPatchChanges(config.packageJson, packageJson),
     ownershipClaims:
       blockers.length > 0 ? [] : createPackageJsonOwnershipClaims(ownershipBaseline, packageJson),
-    warnings: compatibility.warnings,
+    warnings:
+      config.packageManager === 'bun'
+        ? [...compatibility.warnings, BUN_MINIMATCH_ADVISORY_WARNING]
+        : compatibility.warnings,
     blockers,
   }
 }

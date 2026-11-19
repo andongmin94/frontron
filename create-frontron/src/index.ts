@@ -242,4 +242,12 @@ export async function runCreateFrontron(args = process.argv.slice(2)) {
     createPackageManagerFiles(packageManager, minimatchOverride),
   )
   printNextSteps(cwd, root, packageManager)
+
+  if (packageManager === 'bun' && minimatchOverride) {
+    console.log(
+      'Note: Bun cannot scope dependency overrides, so electron-builder keeps a minimatch\n' +
+        'version affected by GHSA-g3hv-75wg-m249 (moderate). npm, pnpm and Yarn starters\n' +
+        'replace it automatically. See docs/SUPPORT.md in the Frontron repository.\n',
+    )
+  }
 }

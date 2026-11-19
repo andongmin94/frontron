@@ -73,11 +73,13 @@ narrowest syntax. It adds nothing when the project already overrides
 | npm 12.2.1 | `package.json` `overrides.electron-builder["minimatch@>=9 <12"]` | audit 6 moderate → 0; 3.x/5.x kept |
 | pnpm 12.21.0 | `pnpm-workspace.yaml` `overrides["app-builder-lib>minimatch@>=9 <12"]` and `["@electron/universal>minimatch@>=9 <12"]` | audit 1 moderate → 0; 3.x/5.x kept |
 | Yarn 4.9.2 | `package.json` `resolutions["app-builder-lib/minimatch"]` and `["@electron/universal/minimatch"]` | `yarn npm audit` 1 → 0; 3.x/5.x kept |
-| Bun 1.3.14 | Nothing | Not mitigated: Bun ignores nested and version-scoped overrides, and a top-level `minimatch` override breaks the 3.x/5.x callers |
+| Bun 1.3.14 | Nothing | Not mitigated: Bun ignores nested and version-scoped overrides, and a top-level `minimatch` override breaks the 3.x/5.x callers. `frontron init`, `frontron doctor` and Bun starters say so |
 
 These are lockfile resolutions checked on Windows x64 with Node 26, not native
 packaging runs. pnpm 11.11.0 did not run under Node 26, so pnpm 12.21.0 was used
-for the resolution check. A pnpm `electron-builder>minimatch` override has no
+for the resolution check. `frontron doctor` reads the minimatch ranges that the
+installed `app-builder-lib` and `@electron/universal` request and reports whether
+the managed override still applies or has become redundant. A pnpm `electron-builder>minimatch` override has no
 effect because pnpm only matches direct dependencies.
 
 ## Evidence

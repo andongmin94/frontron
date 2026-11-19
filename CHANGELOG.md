@@ -18,6 +18,12 @@ version and complete [release preparation](docs/RELEASING.md) before publication
 
 ### Fixed
 
+- `frontron doctor` reports whether the managed electron-builder minimatch
+  override still applies, from the ranges the installed packages request.
+  `frontron init`, `doctor` and Bun starters warn that Bun cannot mitigate it.
+- The starter `<meta>` CSP drops `frame-ancestors`, which browsers ignore in
+  meta; the Electron response header keeps it.
+
 - Recovery checks recorded before/after states and refuses to overwrite or
   delete conflicting user edits. Unsafe links and unrecognized partial writes
   preserve both files and the journal instead of forcing restoration.
@@ -56,6 +62,16 @@ version and complete [release preparation](docs/RELEASING.md) before publication
   `frontron` and `create-frontron` now enforce the same 20-point ceiling.
 
 ### Validation and release process
+
+- `npm run check` also runs `oxfmt --check`, so `node release.mjs verify` and CI
+  catch formatting drift. Hand-aligned package.json files are excluded from the
+  formatter, which had been undoing their alignment.
+- npm 12 prints `npm pack --json` as an object keyed by package name; package,
+  release and consumer smoke tests accept both shapes. Verify adds an Ubuntu
+  Node 26 (npm 12) quality job. The full verify passes on Windows with Node 26.
+- A generated starter passes its own `format:check` immediately; template
+  Electron files and the task runner were reformatted with the template config.
+- `actions/upload-artifact` moves from v4 to v7.0.2 (Node 24 runtime).
 
 - Real React/Vite starter and retrofit development and distribution checks on
   Windows x64, Linux x64 and macOS 15 ARM64; Windows MSI/portable and macOS

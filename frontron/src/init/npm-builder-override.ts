@@ -27,7 +27,16 @@ export const YARN_BUILDER_MINIMATCH_RESOLUTION_PATHS = YARN_BUILDER_MINIMATCH_RE
 )
 
 // Bun 1.3은 중첩·범위 override를 무시하고 최상위 `minimatch`만 지원한다. 최상위 교체는
-// minimatch 3.x·5.x 소비자를 깨뜨리므로 Bun에는 override를 추가하지 않는다.
+// minimatch 3.x·5.x 소비자를 깨뜨리므로 Bun에는 override를 추가하지 않고 이유를 알린다.
+export const BUN_MINIMATCH_ADVISORY_WARNING =
+  'Bun cannot scope dependency overrides, so electron-builder keeps minimatch 9.x/10.x ' +
+  'affected by GHSA-g3hv-75wg-m249 (moderate glob-pattern DoS). Frontron adds no override ' +
+  'for Bun because a top-level minimatch override breaks glob 7 and @electron/asar. See ' +
+  'https://github.com/andongmin94/frontron/blob/main/docs/SUPPORT.md#electron-builder-minimatch-advisory'
+
+// electron-builder 하위에서 minimatch를 직접 요청하는 부모와 취약 범위의 상한(미포함)이다.
+export const BUILDER_MINIMATCH_PARENTS = ['app-builder-lib', '@electron/universal'] as const
+export const MINIMATCH_FIRST_PATCHED_VERSION = [11, 0, 1] as const
 
 // isMinimatchOverrideKey 함수는 사용자가 이미 지정한 minimatch override 키인지 확인한다.
 // npm(`minimatch`, `minimatch@범위`), pnpm(`부모>minimatch`), Yarn(`부모/minimatch`) 형식을 모두 본다.

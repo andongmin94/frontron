@@ -5,6 +5,10 @@ import { isAlias, isMap, isScalar, parseDocument, stringify } from 'yaml'
 
 import { formatProjectPathBlocker, inspectProjectPath, isInsideDirectory } from '../project-paths'
 import type { PackageJsonOwnershipClaim } from './manifest'
+import {
+  isMinimatchOverrideKey,
+  PNPM_BUILDER_MINIMATCH_OVERRIDE_KEYS,
+} from './npm-builder-override'
 import { cloneJsonValue } from './package-json-path'
 
 export const PNPM_WORKSPACE_YAML_PATH = 'pnpm-workspace.yaml'
@@ -32,7 +36,7 @@ type Inspection =
 export type PnpmWorkspaceYamlPatchChange = {
   action: 'set'
   path: string
-  value: true
+  value: JsonScalar
 }
 
 export type PnpmWorkspaceYamlPatchPlan = {
@@ -95,10 +99,28 @@ function formatYamlBlocker(reason: string) {
   return `Cannot safely edit ${PNPM_WORKSPACE_YAML_PATH}: ${reason}. The file was left unchanged.`
 }
 
-function inspectPnpmWorkspaceYaml(
-  source: string,
-  targetKeys: readonly string[] = REQUIRED_ALLOW_BUILDS,
-): Inspection {
+// Frontron이 편집할 수 있는 pnpm-workspace.yaml 최상위 섹션과 그 안의 키를 claim 경로로 표현한다.
+const EDITABLE_SECTIONS = ['allowBuilds', 'overrides'] as const
+type EditableSection = (typeof EDITABLE_SECTIONS)[number]
+
+type ClaimTarget = { section: EditableSection; key: string }
+type DesiredTarget = ClaimTarget & { value: JsonScalar }
+
+function toClaimPath(target: ClaimTarget) {
+  return `${target.section}.${target.key}`
+}
+
+function inspectSectionNode(document: ReturnType<typeof parseDocument>, section: EditableSection) {
+  const sectionNode = document.get(section, true)
+  if (typeof sectionNode === 'undefined') return null
+  if (isAlias(sectionNode)) return formatYamlBlocker('YAML aliases are not supported safely')
+  if (!isMap(sectionNode)) return formatYamlBlocker(`${section} must be a mapping`)
+  if (sectionNode.flow) return formatYamlBlocker(`${section} must use a block mapping`)
+  if (sectionNode.anchor) return formatYamlBlocker('YAML anchors are not supported safely')
+  return null
+}
+
+function inspectPnpmWorkspaceYaml(source: string, targets: readonly ClaimTarget[]): Inspection {
   const document = parseDocument(source, { uniqueKeys: true })
   const error = document.errors[0]
 
@@ -121,41 +143,20 @@ function inspectPnpmWorkspaceYaml(
     }
   }
 
-  const sectionNode = document.get('allowBuilds', true)
-  if (typeof sectionNode !== 'undefined') {
-    if (isAlias(sectionNode)) {
-      return {
-        safe: false,
-        blocker: formatYamlBlocker('YAML aliases are not supported safely'),
-      }
-    }
-    if (!isMap(sectionNode)) {
-      return {
-        safe: false,
-        blocker: formatYamlBlocker('allowBuilds must be a mapping'),
-      }
-    }
-    if (sectionNode.flow) {
-      return {
-        safe: false,
-        blocker: formatYamlBlocker('allowBuilds must use a block mapping'),
-      }
-    }
-    if (sectionNode.anchor) {
-      return {
-        safe: false,
-        blocker: formatYamlBlocker('YAML anchors are not supported safely'),
-      }
-    }
+  for (const section of new Set(targets.map((target) => target.section))) {
+    const blocker = inspectSectionNode(document, section)
+    if (blocker) return { safe: false, blocker }
   }
 
   const values = new Map<string, TargetValue>()
 
-  for (const key of new Set(targetKeys)) {
-    const node = document.getIn(['allowBuilds', key], true)
+  for (const target of targets) {
+    const claimPath = toClaimPath(target)
+    if (values.has(claimPath)) continue
+    const node = document.getIn([target.section, target.key], true)
 
     if (typeof node === 'undefined') {
-      values.set(key, { exists: false })
+      values.set(claimPath, { exists: false })
       continue
     }
 
@@ -168,11 +169,11 @@ function inspectPnpmWorkspaceYaml(
     if (!isScalar(node) || node.anchor || node.tag || !isJsonScalar(node.value)) {
       return {
         safe: false,
-        blocker: formatYamlBlocker(`allowBuilds.${key} must be a simple scalar`),
+        blocker: formatYamlBlocker(`${claimPath} must be a simple scalar`),
       }
     }
 
-    values.set(key, { exists: true, value: node.value })
+    values.set(claimPath, { exists: true, value: node.value })
   }
 
   return { safe: true, root: rootValue, values }
@@ -182,7 +183,7 @@ function renderYaml(root: Record<string, unknown>, source: string) {
   if (Object.keys(root).length === 0) return ''
 
   const rendered = stringify(root, { lineWidth: 0 })
-  const withBom = source.startsWith('\uFEFF') ? `\uFEFF${rendered}` : rendered
+  const withBom = source.startsWith('﻿') ? `﻿${rendered}` : rendered
   return source.includes('\r\n') ? withBom.replace(/\n/g, '\r\n') : withBom
 }
 
@@ -199,19 +200,24 @@ function createBlockedPatchPlan(path: string, source: string, blocker: string) {
   } satisfies PnpmWorkspaceYamlPatchPlan
 }
 
-function parseClaimPath(path: string) {
-  const prefix = 'allowBuilds.'
-  return path.startsWith(prefix) && path.length > prefix.length ? path.slice(prefix.length) : null
+function parseClaimPath(path: string): ClaimTarget | null {
+  for (const section of EDITABLE_SECTIONS) {
+    const prefix = `${section}.`
+    if (path.startsWith(prefix) && path.length > prefix.length) {
+      return { section, key: path.slice(prefix.length) }
+    }
+  }
+  return null
 }
 
 export function readPnpmWorkspaceYamlClaimValue(
   source: string,
   path: string,
 ): PnpmWorkspaceYamlClaimReadResult {
-  const key = parseClaimPath(path)
-  if (!key) return { exists: false, value: undefined, safeToEdit: true }
+  const target = parseClaimPath(path)
+  if (!target) return { exists: false, value: undefined, safeToEdit: true }
 
-  const inspection = inspectPnpmWorkspaceYaml(source, [key])
+  const inspection = inspectPnpmWorkspaceYaml(source, [target])
   if (!inspection.safe) {
     return {
       exists: false,
@@ -221,97 +227,134 @@ export function readPnpmWorkspaceYamlClaimValue(
     }
   }
 
-  const current = inspection.values.get(key)
+  const current = inspection.values.get(path)
   return current?.exists
     ? { exists: true, value: current.value, safeToEdit: true }
     : { exists: false, value: undefined, safeToEdit: true }
 }
 
 export function restorePnpmWorkspaceYamlClaim(source: string, claim: PackageJsonOwnershipClaim) {
-  const key = parseClaimPath(claim.path)
-  if (!key) return source
+  const target = parseClaimPath(claim.path)
+  if (!target) return source
 
-  const inspection = inspectPnpmWorkspaceYaml(source, [key])
+  const inspection = inspectPnpmWorkspaceYaml(source, [target])
   if (!inspection.safe) return source
 
   const root = structuredClone(inspection.root)
-  const allowBuilds = isRecord(root.allowBuilds) ? { ...root.allowBuilds } : {}
+  const sectionValue = root[target.section]
+  const section = isRecord(sectionValue) ? { ...sectionValue } : {}
 
   if (claim.previous.state === 'missing') {
-    delete allowBuilds[key]
+    delete section[target.key]
   } else if (isJsonScalar(claim.previous.value)) {
-    allowBuilds[key] = claim.previous.value
+    section[target.key] = claim.previous.value
   } else {
     return source
   }
 
-  if (Object.keys(allowBuilds).length === 0) {
-    delete root.allowBuilds
+  if (Object.keys(section).length === 0) {
+    delete root[target.section]
   } else {
-    root.allowBuilds = allowBuilds
+    root[target.section] = section
   }
 
   return renderYaml(root, source)
 }
 
-export function previewPnpmWorkspaceYamlPatch(cwd: string, packageManager: string) {
-  if (packageManager !== 'pnpm') return null
+// allowBuilds는 항상 필요한 값으로 맞추고, minimatch override는 사용자가 어떤 형태로든
+// minimatch를 직접 override했다면 추가하지 않는다.
+function createDesiredTargets(root: Record<string, unknown>, minimatchOverride?: string) {
+  const targets: DesiredTarget[] = REQUIRED_ALLOW_BUILDS.map((key) => ({
+    section: 'allowBuilds',
+    key,
+    value: true,
+  }))
+  const overrides = isRecord(root.overrides) ? root.overrides : {}
 
-  const path = findPnpmWorkspaceYamlPath(cwd)
-  const exists = pathEntryExists(path)
-  const projectRoot = resolve(cwd)
+  if (minimatchOverride && !Object.keys(overrides).some(isMinimatchOverrideKey)) {
+    for (const key of PNPM_BUILDER_MINIMATCH_OVERRIDE_KEYS) {
+      targets.push({ section: 'overrides', key, value: minimatchOverride })
+    }
+  }
+
+  return targets
+}
+
+function inspectWorkspacePath(path: string, projectRoot: string) {
   const safetyRoot = isInsideDirectory(projectRoot, path) ? projectRoot : dirname(path)
   const pathInspection = inspectProjectPath(safetyRoot, path)
 
   if (!pathInspection.safe) {
-    return createBlockedPatchPlan(
-      path,
-      '',
-      formatProjectPathBlocker(safetyRoot, PNPM_WORKSPACE_YAML_PATH, pathInspection),
-    )
+    return formatProjectPathBlocker(safetyRoot, PNPM_WORKSPACE_YAML_PATH, pathInspection)
   }
+  if (!pathEntryExists(path)) return null
 
-  if (exists) {
-    const stats = lstatSync(path)
-    if (!stats.isFile()) {
-      return createBlockedPatchPlan(path, '', formatYamlBlocker('the target is not a regular file'))
-    }
-    if (stats.nlink !== 1) {
-      return createBlockedPatchPlan(
-        path,
-        '',
-        formatYamlBlocker('the target must have exactly one hard link'),
-      )
-    }
-  }
+  const stats = lstatSync(path)
+  if (!stats.isFile()) return formatYamlBlocker('the target is not a regular file')
+  if (stats.nlink !== 1) return formatYamlBlocker('the target must have exactly one hard link')
+  return null
+}
+
+export function previewPnpmWorkspaceYamlPatch(
+  cwd: string,
+  packageManager: string,
+  minimatchOverride?: string,
+) {
+  if (packageManager !== 'pnpm') return null
+
+  const path = findPnpmWorkspaceYamlPath(cwd)
+  const exists = pathEntryExists(path)
+  const pathBlocker = inspectWorkspacePath(path, resolve(cwd))
+  if (pathBlocker) return createBlockedPatchPlan(path, '', pathBlocker)
 
   const source = exists ? readFileSync(path, 'utf8') : ''
-  const inspection = inspectPnpmWorkspaceYaml(source)
+  const sectionInspection = inspectPnpmWorkspaceYaml(source, [])
+  if (!sectionInspection.safe)
+    return createBlockedPatchPlan(path, source, sectionInspection.blocker)
+
+  const warnings: string[] = []
+  let targets = createDesiredTargets(sectionInspection.root, minimatchOverride)
+  let inspection = inspectPnpmWorkspaceYaml(source, targets)
+
+  // 보안 override는 선택 사항이므로, 사용자 overrides 형식을 안전하게 편집할 수 없으면
+  // init 전체를 막지 않고 해당 항목만 건너뛴 뒤 경고한다.
+  if (!inspection.safe && targets.some((target) => target.section === 'overrides')) {
+    const allowBuildsOnly = targets.filter((target) => target.section !== 'overrides')
+    const fallback = inspectPnpmWorkspaceYaml(source, allowBuildsOnly)
+    if (fallback.safe) {
+      warnings.push(
+        `${inspection.blocker} Add the electron-builder minimatch overrides manually: ${PNPM_BUILDER_MINIMATCH_OVERRIDE_KEYS.join(', ')}.`,
+      )
+      targets = allowBuildsOnly
+      inspection = fallback
+    }
+  }
   if (!inspection.safe) return createBlockedPatchPlan(path, source, inspection.blocker)
 
   const root = structuredClone(inspection.root)
-  const allowBuilds = isRecord(root.allowBuilds) ? { ...root.allowBuilds } : {}
   const changes: PnpmWorkspaceYamlPatchChange[] = []
   const ownershipClaims: PackageJsonOwnershipClaim[] = []
 
-  for (const key of REQUIRED_ALLOW_BUILDS) {
-    const current = inspection.values.get(key) ?? { exists: false as const }
-    if (current.exists && current.value === true) continue
+  for (const target of targets) {
+    const claimPath = toClaimPath(target)
+    const current = inspection.values.get(claimPath) ?? { exists: false as const }
+    if (current.exists && current.value === target.value) continue
 
-    const claimPath = `allowBuilds.${key}`
-    changes.push({ action: 'set', path: claimPath, value: true })
+    changes.push({ action: 'set', path: claimPath, value: target.value })
     ownershipClaims.push({
       path: claimPath,
       action: 'set',
-      value: true,
+      value: target.value,
       previous: current.exists
         ? { state: 'value', value: cloneJsonValue(current.value) }
         : { state: 'missing' },
     })
-    allowBuilds[key] = true
+    const sectionValue = root[target.section]
+    root[target.section] = {
+      ...(isRecord(sectionValue) ? sectionValue : {}),
+      [target.key]: target.value,
+    }
   }
-
-  root.allowBuilds = allowBuilds
 
   return {
     path,
@@ -320,7 +363,7 @@ export function previewPnpmWorkspaceYamlPatch(cwd: string, packageManager: strin
     created: !exists,
     changes,
     ownershipClaims,
-    warnings: [],
+    warnings,
     blockers: [],
   } satisfies PnpmWorkspaceYamlPatchPlan
 }

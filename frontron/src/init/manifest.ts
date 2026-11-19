@@ -9,7 +9,11 @@ import type {
   InitTemplateResolvedFrom,
   RuntimeStrategy,
 } from './shared'
-import { NPM_BUILDER_MINIMATCH_OVERRIDE_PATH } from './npm-builder-override'
+import {
+  NPM_BUILDER_MINIMATCH_OVERRIDE_PATH,
+  PNPM_BUILDER_MINIMATCH_OVERRIDE_KEYS,
+  YARN_BUILDER_MINIMATCH_RESOLUTION_PATHS,
+} from './npm-builder-override'
 import { normalizePathValue, VALID_ADAPTERS } from './shared'
 import type { YarnRcOwnershipClaim } from './yarnrc-yaml'
 
@@ -76,6 +80,7 @@ const PACKAGE_JSON_CLAIM_PATH_ALLOWLIST = new Set([
   'version',
   'trustedDependencies',
   NPM_BUILDER_MINIMATCH_OVERRIDE_PATH,
+  ...YARN_BUILDER_MINIMATCH_RESOLUTION_PATHS,
   'devDependencies.electron',
   'devDependencies.electron-builder',
   'devDependencies.@types/node',
@@ -96,6 +101,7 @@ const TSCONFIG_JSON_CLAIM_PATH_ALLOWLIST = new Set(['exclude'])
 const PNPM_WORKSPACE_CLAIM_PATH_ALLOWLIST = new Set([
   'allowBuilds.electron',
   'allowBuilds.electron-winstaller',
+  ...PNPM_BUILDER_MINIMATCH_OVERRIDE_KEYS.map((key) => `overrides.${key}`),
 ])
 const FIXED_CREATED_FILE_PATH_ALLOWLIST = new Set([
   'tsconfig.electron.json',

@@ -129,7 +129,7 @@ test('rejects filesystem roots and symlinked ancestors', async () => {
   expect(existsSync(join(externalRoot, 'app'))).toBe(false)
 })
 
-test('writes only the Yarn linker setting for Yarn consumers', async () => {
+test('writes the Yarn linker setting and scoped minimatch resolutions for Yarn', async () => {
   const workspace = createWorkspace('yarn-config')
   process.chdir(workspace)
   process.env.npm_config_user_agent = 'yarn/4.9.2 npm/? node/v24.0.0 win32 x64'
@@ -145,8 +145,32 @@ test('writes only the Yarn linker setting for Yarn consumers', async () => {
 
   const packageJson = JSON.parse(readFileSync(join(workspace, 'app', 'package.json'), 'utf8')) as {
     trustedDependencies?: string[]
+    overrides?: unknown
+    resolutions?: Record<string, string>
   }
   expect(packageJson.trustedDependencies).toBeUndefined()
+  expect(packageJson.overrides).toBeUndefined()
+  expect(packageJson.resolutions).toEqual({
+    'app-builder-lib/minimatch': '^11.0.8',
+    '@electron/universal/minimatch': '^11.0.8',
+  })
+})
+
+test('keeps the scoped npm minimatch override only for npm consumers', async () => {
+  const workspace = createWorkspace('npm-config')
+  process.chdir(workspace)
+  process.env.npm_config_user_agent = 'npm/12.2.1 node/v24.0.0 linux x64'
+
+  await runCreateFrontron(['app'])
+
+  const packageJson = JSON.parse(readFileSync(join(workspace, 'app', 'package.json'), 'utf8')) as {
+    overrides?: unknown
+    resolutions?: unknown
+  }
+  expect(packageJson.overrides).toEqual({
+    'electron-builder': { 'minimatch@>=9 <12': '^11.0.8' },
+  })
+  expect(packageJson.resolutions).toBeUndefined()
 })
 
 test('writes pnpm Electron build approvals only for pnpm consumers', async () => {
@@ -157,14 +181,19 @@ test('writes pnpm Electron build approvals only for pnpm consumers', async () =>
   await runCreateFrontron(['app'])
 
   expect(readFileSync(join(workspace, 'app', 'pnpm-workspace.yaml'), 'utf8')).toBe(
-    'allowBuilds:\n  electron: true\n  electron-winstaller: true\n',
+    'allowBuilds:\n  electron: true\n  electron-winstaller: true\n' +
+      'overrides:\n' +
+      '  "app-builder-lib>minimatch@>=9 <12": "^11.0.8"\n' +
+      '  "@electron/universal>minimatch@>=9 <12": "^11.0.8"\n',
   )
   expect(existsSync(join(workspace, 'app', '.yarnrc.yml'))).toBe(false)
 
   const packageJson = JSON.parse(readFileSync(join(workspace, 'app', 'package.json'), 'utf8')) as {
     trustedDependencies?: string[]
+    overrides?: unknown
   }
   expect(packageJson.trustedDependencies).toBeUndefined()
+  expect(packageJson.overrides).toBeUndefined()
 })
 
 test('writes Bun trust metadata only for Bun consumers', async () => {
@@ -176,8 +205,13 @@ test('writes Bun trust metadata only for Bun consumers', async () => {
 
   const packageJson = JSON.parse(readFileSync(join(workspace, 'app', 'package.json'), 'utf8')) as {
     trustedDependencies?: string[]
+    overrides?: unknown
+    resolutions?: unknown
   }
   expect(packageJson.trustedDependencies).toEqual(['electron', 'electron-winstaller'])
+  // Bun은 중첩·범위 override를 무시하므로 minimatch 교체를 넣지 않는다.
+  expect(packageJson.overrides).toBeUndefined()
+  expect(packageJson.resolutions).toBeUndefined()
   expect(existsSync(join(workspace, 'app', 'pnpm-workspace.yaml'))).toBe(false)
   expect(existsSync(join(workspace, 'app', '.yarnrc.yml'))).toBe(false)
 })

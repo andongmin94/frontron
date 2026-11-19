@@ -13,6 +13,8 @@ type TemplatePackage = {
   name: string
   productName?: string
   trustedDependencies?: string[]
+  overrides?: Record<string, unknown>
+  resolutions?: Record<string, string>
   build?: {
     appId?: string
     productName?: string
@@ -105,10 +107,56 @@ function packageManagerFromUserAgent(userAgent: string | undefined): PackageMana
   return name === 'pnpm' || name === 'yarn' || name === 'bun' ? name : 'npm'
 }
 
-function createPackageManagerFiles(packageManager: PackageManager) {
+// 템플릿 package.json의 npm override가 electron-builder 하위 취약 minimatch를 교체한다.
+// pnpm·Yarn은 같은 범위를 각자의 문법으로 표현하고, 중첩·범위 override를 지원하지 않는
+// Bun에는 minimatch 3.x·5.x 소비자를 깨뜨리지 않도록 아무 override도 넣지 않는다.
+// frontron/src/init/npm-builder-override.ts의 키와 같은 값을 유지해야 한다.
+const NPM_MINIMATCH_OVERRIDE_KEY = 'minimatch@>=9 <12'
+const PNPM_MINIMATCH_OVERRIDE_KEYS = [
+  'app-builder-lib>minimatch@>=9 <12',
+  '@electron/universal>minimatch@>=9 <12',
+]
+const YARN_MINIMATCH_RESOLUTION_KEYS = [
+  'app-builder-lib/minimatch',
+  '@electron/universal/minimatch',
+]
+
+function readTemplateMinimatchOverride(packageJson: TemplatePackage) {
+  const builder = packageJson.overrides?.['electron-builder']
+  const value =
+    builder && typeof builder === 'object'
+      ? (builder as Record<string, unknown>)[NPM_MINIMATCH_OVERRIDE_KEY]
+      : undefined
+  return typeof value === 'string' ? value : undefined
+}
+
+// applyPackageManagerOverrides 함수는 npm 전용 overrides를 패키지 매니저별 형식으로 바꾼다.
+function applyPackageManagerOverrides(
+  packageJson: TemplatePackage,
+  packageManager: PackageManager,
+) {
+  const minimatch = readTemplateMinimatchOverride(packageJson)
+  if (packageManager === 'npm') return minimatch
+
+  delete packageJson.overrides
+  if (packageManager === 'yarn' && minimatch) {
+    packageJson.resolutions = Object.fromEntries(
+      YARN_MINIMATCH_RESOLUTION_KEYS.map((key) => [key, minimatch]),
+    )
+  }
+  return minimatch
+}
+
+function createPackageManagerFiles(packageManager: PackageManager, minimatch: string | undefined) {
   if (packageManager === 'pnpm') {
+    const overrides = minimatch
+      ? `overrides:\n${PNPM_MINIMATCH_OVERRIDE_KEYS.map((key) => `  "${key}": "${minimatch}"\n`).join('')}`
+      : ''
     return new Map([
-      ['pnpm-workspace.yaml', 'allowBuilds:\n  electron: true\n  electron-winstaller: true\n'],
+      [
+        'pnpm-workspace.yaml',
+        `allowBuilds:\n  electron: true\n  electron-winstaller: true\n${overrides}`,
+      ],
     ])
   }
 
@@ -184,7 +232,14 @@ export async function runCreateFrontron(args = process.argv.slice(2)) {
     delete packageJson.trustedDependencies
   }
 
+  const minimatchOverride = applyPackageManagerOverrides(packageJson, packageManager)
+
   console.log(`\nScaffolding project in ${root}...`)
-  scaffoldProject(templateDir, root, packageJson, createPackageManagerFiles(packageManager))
+  scaffoldProject(
+    templateDir,
+    root,
+    packageJson,
+    createPackageManagerFiles(packageManager, minimatchOverride),
+  )
   printNextSteps(cwd, root, packageManager)
 }

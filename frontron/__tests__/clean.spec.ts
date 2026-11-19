@@ -7,6 +7,8 @@ import { runCli } from '../src/cli'
 import {
   NPM_BUILDER_MINIMATCH_OVERRIDE_KEY,
   NPM_BUILDER_MINIMATCH_OVERRIDE_PATH,
+  PNPM_BUILDER_MINIMATCH_OVERRIDE_KEYS,
+  YARN_BUILDER_MINIMATCH_RESOLUTION_KEYS,
 } from '../src/init/npm-builder-override'
 import { loadCreateFrontronTemplate } from '../src/init/runtime/create-frontron-template'
 import * as fixtures from './helpers/frontron-cli-fixtures'
@@ -216,12 +218,56 @@ allowBuilds:
     )
 
     expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+    const initialized = readFileSync(join(projectRoot, 'pnpm-workspace.yaml'), 'utf8')
+    for (const key of PNPM_BUILDER_MINIMATCH_OVERRIDE_KEYS) expect(initialized).toContain(key)
+    expect(JSON.parse(readFileSync(packageJsonPath, 'utf8')).overrides).toBeUndefined()
+
     expect(await runCli(['clean', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
 
     const source = readFileSync(join(projectRoot, 'pnpm-workspace.yaml'), 'utf8')
     expect(source).toContain('esbuild: false')
     expect(source).toContain('electron: set this to true or false')
     expect(source).not.toContain('electron-winstaller')
+    expect(source).not.toContain('overrides')
+  })
+
+  test('init and clean manage scoped Yarn minimatch resolutions', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const original = JSON.parse(readFileSync(packageJsonPath, 'utf8'))
+    original.packageManager = 'yarn@4.9.2'
+    original.resolutions = { lodash: '^4.17.21' }
+    writeFileSync(packageJsonPath, `${JSON.stringify(original, null, 2)}\n`)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+    const initialized = JSON.parse(readFileSync(packageJsonPath, 'utf8'))
+    const minimatch = loadCreateFrontronTemplate().dependencies.electronBuilderMinimatch
+    expect(initialized.overrides).toBeUndefined()
+    expect(initialized.resolutions).toEqual({
+      lodash: '^4.17.21',
+      ...Object.fromEntries(YARN_BUILDER_MINIMATCH_RESOLUTION_KEYS.map((key) => [key, minimatch])),
+    })
+
+    expect(await runCli(['clean', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+    expect(JSON.parse(readFileSync(packageJsonPath, 'utf8')).resolutions).toEqual({
+      lodash: '^4.17.21',
+    })
+  })
+
+  test('init leaves an existing Yarn minimatch resolution alone', async () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const packageJsonPath = join(projectRoot, 'package.json')
+    const original = JSON.parse(readFileSync(packageJsonPath, 'utf8'))
+    original.packageManager = 'yarn@4.9.2'
+    original.resolutions = { '**/minimatch': '^11.0.7' }
+    writeFileSync(packageJsonPath, `${JSON.stringify(original, null, 2)}\n`)
+
+    expect(await runCli(['init', '--yes'], fixtures.createOutput(), { cwd: projectRoot })).toBe(0)
+    expect(JSON.parse(readFileSync(packageJsonPath, 'utf8')).resolutions).toEqual({
+      '**/minimatch': '^11.0.7',
+    })
   })
 
   test('clean refuses to run without a manifest', async () => {

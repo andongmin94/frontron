@@ -27,6 +27,11 @@ version and complete [release preparation](docs/RELEASING.md) before publication
   An unscoped override forced minimatch 11 onto glob 7, `@electron/asar`,
   dir-compare and filelist, whose minimatch 3/5 default-export calls then
   failed. Existing user `minimatch` overrides, scoped or not, are left alone.
+- pnpm and Yarn projects get the same scoped mitigation in their own syntax:
+  parent-scoped `pnpm-workspace.yaml` overrides and Yarn `resolutions`, both
+  recorded as ownership claims and restored by clean. Starters keep the npm
+  `overrides` field only for npm. Bun has no safe equivalent and gets none;
+  see the [support matrix](docs/SUPPORT.md#electron-builder-minimatch-advisory).
 - Iconless retrofits receive the managed canonical SVG packaging default.
   Custom icons/settings and edits to managed icons remain subject to ownership
   checks during update and clean.

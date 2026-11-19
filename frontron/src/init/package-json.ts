@@ -9,6 +9,8 @@ import {
   isMinimatchOverrideKey,
   NPM_BUILDER_MINIMATCH_OVERRIDE_KEY,
   NPM_BUILDER_MINIMATCH_OVERRIDE_PATH,
+  YARN_BUILDER_MINIMATCH_RESOLUTION_KEYS,
+  YARN_BUILDER_MINIMATCH_RESOLUTION_PATHS,
 } from './npm-builder-override'
 import {
   cloneJsonValue,
@@ -17,6 +19,12 @@ import {
   valuesEqual,
   writePackageJsonPath,
 } from './package-json-path'
+
+// 패키지 매니저별로 Frontron이 package.json에 추가할 수 있는 minimatch 교체 경로다.
+const BUILDER_MINIMATCH_OVERRIDE_PATHS = [
+  NPM_BUILDER_MINIMATCH_OVERRIDE_PATH,
+  ...YARN_BUILDER_MINIMATCH_RESOLUTION_PATHS,
+]
 
 const SEMVER_PATTERN =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
@@ -206,12 +214,14 @@ function createPackageJsonPatchChanges(before: PackageJson, after: PackageJson) 
     'trustedDependencies',
   )
   addScalarChange(changes, before.version, after.version, 'version')
-  addScalarChange(
-    changes,
-    readPackageJsonPath(before, NPM_BUILDER_MINIMATCH_OVERRIDE_PATH).value,
-    readPackageJsonPath(after, NPM_BUILDER_MINIMATCH_OVERRIDE_PATH).value,
-    NPM_BUILDER_MINIMATCH_OVERRIDE_PATH,
-  )
+  for (const path of BUILDER_MINIMATCH_OVERRIDE_PATHS) {
+    addScalarChange(
+      changes,
+      readPackageJsonPath(before, path).value,
+      readPackageJsonPath(after, path).value,
+      path,
+    )
+  }
   addBuildPatchChanges(changes, before.build, after.build)
 
   return changes
@@ -286,7 +296,7 @@ function createPackageJsonOwnershipClaims(before: PackageJson, after: PackageJso
 
   for (const path of [
     'version',
-    NPM_BUILDER_MINIMATCH_OVERRIDE_PATH,
+    ...BUILDER_MINIMATCH_OVERRIDE_PATHS,
     'build.icon',
     'build.win.icon',
     'build.appId',
@@ -469,6 +479,25 @@ function applyNpmBuilderOverride(config: InitConfig) {
   config.packageJson.overrides = overrides
 }
 
+// Yarn Berry는 package.json resolutions로 취약 minimatch를 요청하는 부모만 교체한다.
+// 사용자가 minimatch resolution을 이미 지정했다면 그 판단을 존중하고 추가하지 않는다.
+function applyYarnBuilderResolutions(config: InitConfig) {
+  if (config.packageManager !== 'yarn') return
+  const template = config.templateDependencies ?? loadCreateFrontronTemplate().dependencies
+  if (!template.electronBuilderMinimatch) return
+
+  const resolutions = ensureObject<Record<string, unknown>>(
+    config.packageJson.resolutions,
+    'resolutions',
+    {},
+  )
+  if (Object.keys(resolutions).some(isMinimatchOverrideKey)) return
+  for (const key of YARN_BUILDER_MINIMATCH_RESOLUTION_KEYS) {
+    resolutions[key] = template.electronBuilderMinimatch
+  }
+  config.packageJson.resolutions = resolutions
+}
+
 // Bun은 네이티브 설치 스크립트를 실행할 패키지를 명시적으로 신뢰 목록에 넣어야 한다.
 function applyBunTrustedDependencies(packageJson: PackageJson) {
   const trustedDependencies = ensureArray(packageJson.trustedDependencies, 'trustedDependencies')
@@ -562,6 +591,7 @@ export function patchPackageJson(config: InitConfig) {
   Object.assign(scripts, createDesktopScriptCommands(config))
   applyToolDependencies(packageJson, devDependencies, config.templateDependencies)
   applyNpmBuilderOverride(config)
+  applyYarnBuilderResolutions(config)
 
   if (config.packageManager === 'bun') applyBunTrustedDependencies(packageJson)
   if (config.adapter === 'remix-node-server') {

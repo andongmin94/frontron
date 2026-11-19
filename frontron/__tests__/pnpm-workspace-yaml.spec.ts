@@ -120,6 +120,72 @@ describe('pnpm workspace config', () => {
     expect(plan.ownershipClaims).toEqual([])
   })
 
+  test('adds parent-scoped minimatch overrides and restores them through claims', () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    const source = 'overrides:\n  lodash: ^4.17.21\n'
+    writeFileSync(join(projectRoot, 'pnpm-workspace.yaml'), source)
+
+    const plan = previewPnpmWorkspaceYamlPatch(projectRoot, 'pnpm', '^11.0.8')!
+    const value = parse(plan.nextSource) as { overrides: Record<string, string> }
+
+    expect(plan.blockers).toEqual([])
+    expect(value.overrides).toEqual({
+      lodash: '^4.17.21',
+      'app-builder-lib>minimatch@>=9 <12': '^11.0.8',
+      '@electron/universal>minimatch@>=9 <12': '^11.0.8',
+    })
+    expect(plan.ownershipClaims.map((claim) => claim.path)).toEqual(
+      expect.arrayContaining([
+        'overrides.app-builder-lib>minimatch@>=9 <12',
+        'overrides.@electron/universal>minimatch@>=9 <12',
+      ]),
+    )
+    expect(
+      readPnpmWorkspaceYamlClaimValue(
+        plan.nextSource,
+        'overrides.app-builder-lib>minimatch@>=9 <12',
+      ),
+    ).toEqual({ exists: true, value: '^11.0.8', safeToEdit: true })
+
+    const restored = plan.ownershipClaims.reduce(
+      (current, claim) => restorePnpmWorkspaceYamlClaim(current, claim),
+      plan.nextSource,
+    )
+    expect(parse(restored)).toEqual(parse(source))
+  })
+
+  test.each([
+    ['unscoped', 'minimatch'],
+    ['version-scoped', 'minimatch@^10'],
+    ['parent-scoped', 'app-builder-lib>minimatch'],
+  ])('keeps a user %s minimatch override as the only decision', (_label, key) => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    writeFileSync(join(projectRoot, 'pnpm-workspace.yaml'), `overrides:\n  "${key}": ^11.0.7\n`)
+
+    const plan = previewPnpmWorkspaceYamlPatch(projectRoot, 'pnpm', '^11.0.8')!
+    expect((parse(plan.nextSource) as { overrides: unknown }).overrides).toEqual({
+      [key]: '^11.0.7',
+    })
+    expect(plan.ownershipClaims.every((claim) => claim.path.startsWith('allowBuilds.'))).toBe(true)
+  })
+
+  test('skips minimatch overrides with a warning when overrides cannot be edited safely', () => {
+    const projectRoot = fixtures.createTempProject()
+    fixtures.tempDirs.push(projectRoot)
+    writeFileSync(join(projectRoot, 'pnpm-workspace.yaml'), 'overrides: { lodash: ^4.17.21 }\n')
+
+    const plan = previewPnpmWorkspaceYamlPatch(projectRoot, 'pnpm', '^11.0.8')!
+    expect(plan.blockers).toEqual([])
+    expect(plan.warnings.join('\n')).toContain('overrides must use a block mapping')
+    expect((parse(plan.nextSource) as { allowBuilds: unknown }).allowBuilds).toEqual({
+      electron: true,
+      'electron-winstaller': true,
+    })
+    expect(plan.ownershipClaims.every((claim) => claim.path.startsWith('allowBuilds.'))).toBe(true)
+  })
+
   test('reports claim values and ignores non-pnpm projects', () => {
     expect(previewPnpmWorkspaceYamlPatch('/tmp', 'npm')).toBeNull()
     expect(

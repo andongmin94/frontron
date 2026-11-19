@@ -14,7 +14,10 @@ import { mergePackageJsonClaims, replacePackageJsonClaims } from './ownership-cl
 import { previewPackageJsonPatch } from './package-json'
 import { createInitPlan, type ObsoleteFileChange } from './plan'
 import { previewPnpmWorkspaceYamlPatch } from './pnpm-workspace-yaml'
-import type { CreateFrontronTemplateSnapshot } from './runtime/create-frontron-template'
+import {
+  loadCreateFrontronTemplate,
+  type CreateFrontronTemplateSnapshot,
+} from './runtime/create-frontron-template'
 import type { InitConfig } from './shared'
 import { previewTsconfigJsonPatch } from './tsconfig-json'
 import { mergeYarnRcClaims, previewYarnRcYamlPatch } from './yarnrc-yaml'
@@ -35,7 +38,14 @@ function createPatchPlans(config: InitConfig, manifest: FrontronManifest | null)
   return {
     packageJson: previewPackageJsonPatch(config, manifest?.packageJsonClaims),
     tsconfigJson: previewTsconfigJsonPatch(config.cwd, config.desktopDir),
-    pnpmWorkspace: previewPnpmWorkspaceYamlPatch(config.cwd, config.packageManager),
+    pnpmWorkspace: previewPnpmWorkspaceYamlPatch(
+      config.cwd,
+      config.packageManager,
+      config.packageManager === 'pnpm'
+        ? (config.templateDependencies ?? loadCreateFrontronTemplate().dependencies)
+            .electronBuilderMinimatch
+        : undefined,
+    ),
     yarnRc: previewYarnRcYamlPatch(config.cwd, config.packageManager),
   }
 }

@@ -58,6 +58,28 @@ to those managers or every version. Any additional package-manager run must be
 reported with its own command, resolved version and platform before expanding
 this table.
 
+### electron-builder minimatch advisory
+
+electron-builder 26 resolves `minimatch` 9.x/10.x through `app-builder-lib` and
+`@electron/universal`, which falls in GHSA-g3hv-75wg-m249 (`>=7.0.0 <11.0.1`).
+The same tree also uses minimatch 3.x/5.x through glob 7, `@electron/asar`,
+dir-compare and filelist; those callers break if they receive minimatch 11.
+Frontron therefore only replaces the affected majors, using each manager's
+narrowest syntax. It adds nothing when the project already overrides
+`minimatch` in any form.
+
+| Manager | Written setting | Lockfile check |
+| --- | --- | --- |
+| npm 12.2.1 | `package.json` `overrides.electron-builder["minimatch@>=9 <12"]` | audit 6 moderate → 0; 3.x/5.x kept |
+| pnpm 12.21.0 | `pnpm-workspace.yaml` `overrides["app-builder-lib>minimatch@>=9 <12"]` and `["@electron/universal>minimatch@>=9 <12"]` | audit 1 moderate → 0; 3.x/5.x kept |
+| Yarn 4.9.2 | `package.json` `resolutions["app-builder-lib/minimatch"]` and `["@electron/universal/minimatch"]` | `yarn npm audit` 1 → 0; 3.x/5.x kept |
+| Bun 1.3.14 | Nothing | Not mitigated: Bun ignores nested and version-scoped overrides, and a top-level `minimatch` override breaks the 3.x/5.x callers |
+
+These are lockfile resolutions checked on Windows x64 with Node 26, not native
+packaging runs. pnpm 11.11.0 did not run under Node 26, so pnpm 12.21.0 was used
+for the resolution check. A pnpm `electron-builder>minimatch` override has no
+effect because pnpm only matches direct dependencies.
+
 ## Evidence
 
 The completed baseline is commit

@@ -96,7 +96,9 @@ export function createHarness(label) {
     const packageRoot = join(repoRoot, name)
     await npm(['run', 'build'], packageRoot)
     const { stdout } = await npm(['pack', '--json', '--ignore-scripts', '--pack-destination', root], packageRoot)
-    const packed = JSON.parse(stdout)
+    // npm 11은 배열을, npm 12는 패키지 이름을 키로 하는 객체를 출력한다.
+    const parsed = JSON.parse(stdout)
+    const packed = Array.isArray(parsed) ? parsed : Object.values(parsed)
     assert.equal(packed.length, 1)
     assert.equal(typeof packed[0].filename, 'string')
     return join(root, packed[0].filename)

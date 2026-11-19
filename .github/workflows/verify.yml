@@ -19,6 +19,14 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        node: ['22']
+        # The newest Node line ships npm 12, whose `npm pack --json` output and
+        # registry rules differ from npm 10/11. Keep one job on it so those
+        # changes surface here instead of on contributor machines.
+        include:
+          - os: ubuntu-latest
+            node: '26'
+    name: quality (${{ matrix.os }}, node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     steps:
@@ -27,7 +35,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v7.0.0
         with:
-          node-version: '22'
+          node-version: ${{ matrix.node }}
           package-manager-cache: false
       - name: Verify from a clean checkout including real desktop execution
         env:

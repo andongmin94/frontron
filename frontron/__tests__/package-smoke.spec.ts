@@ -34,16 +34,24 @@ function runNpm(args: string[], cwd: string) {
   return result.stdout
 }
 
+type PackEntry = { filename?: string; files?: Array<{ path: string }> }
+
+// npm 11은 배열을, npm 12는 패키지 이름을 키로 하는 객체를 출력한다.
+function readPackEntries(output: string): PackEntry[] {
+  const parsed = JSON.parse(output) as PackEntry[] | Record<string, PackEntry>
+  return Array.isArray(parsed) ? parsed : Object.values(parsed)
+}
+
 function pack(packageDirectory: string, prefix: string) {
   runNpm(['run', 'build'], packageDirectory)
   const outputDirectory = mkdtempSync(join(tmpdir(), prefix))
   tempDirs.push(outputDirectory)
-  const result = JSON.parse(
+  const result = readPackEntries(
     runNpm(
       ['pack', '--json', '--ignore-scripts', '--pack-destination', outputDirectory],
       packageDirectory,
     ),
-  ) as Array<{ filename?: string }>
+  )
   const filename = result[0]?.filename
 
   if (!filename) throw new Error('npm pack did not report an output filename')
@@ -61,9 +69,9 @@ test(
   { timeout: 60_000 },
   () => {
     runNpm(['run', 'build'], packageRoot)
-    const result = JSON.parse(
+    const result = readPackEntries(
       runNpm(['pack', '--json', '--dry-run', '--ignore-scripts'], packageRoot),
-    ) as Array<{ files?: Array<{ path: string }> }>
+    )
     const files = new Set((result[0]?.files ?? []).map((entry) => entry.path))
     const packageJson = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as {
       version: string

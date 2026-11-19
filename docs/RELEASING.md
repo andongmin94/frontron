@@ -37,7 +37,7 @@ Require all of these jobs for the exact candidate; none may be skipped:
 
 | Workflow | Required jobs |
 | --- | --- |
-| Verify | `quality (ubuntu-latest)` and `quality (windows-latest)` |
+| Verify | `quality (ubuntu-latest, node 22)`, `quality (windows-latest, node 22)` and `quality (ubuntu-latest, node 26)` |
 | Native consumers | `windows-distribution` and `next-standalone` |
 | macOS consumers | `apple-silicon` |
 

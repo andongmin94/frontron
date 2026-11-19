@@ -33,11 +33,13 @@ function packPackageForReal(packageRoot: string, prefix: string) {
   runNpm(['run', 'build'], packageRoot)
   const outputDir = mkdtempSync(join(tmpdir(), prefix))
   tempDirs.push(outputDir)
-  const packed = JSON.parse(
+  const parsed = JSON.parse(
     runNpm(['pack', '--json', '--ignore-scripts', '--pack-destination', outputDir], packageRoot),
-  ) as Array<{ filename?: string }>
-  if (!packed[0]?.filename) throw new Error('npm pack did not report an output filename')
-  return join(outputDir, packed[0].filename)
+  ) as Array<{ filename?: string }> | Record<string, { filename?: string }>
+  // npm 11은 배열을, npm 12는 패키지 이름을 키로 하는 객체를 출력한다.
+  const filename = (Array.isArray(parsed) ? parsed : Object.values(parsed))[0]?.filename
+  if (!filename) throw new Error('npm pack did not report an output filename')
+  return join(outputDir, filename)
 }
 
 // Runs inside the actual renderer; DOM checks wait for React, not only did-finish-load.

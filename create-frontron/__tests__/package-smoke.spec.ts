@@ -45,13 +45,17 @@ function readPackedFiles() {
   ensureBuildOutput()
 
   const output = runNpm(['pack', '--json', '--dry-run', '--ignore-scripts'], packageRoot)
-  const packResult = JSON.parse(output) as Array<{
-    files?: Array<{
-      path: string
-    }>
-  }>
+  const packResult = readPackEntries(output)
 
   return new Set((packResult[0]?.files ?? []).map((entry) => entry.path))
+}
+
+type PackEntry = { filename?: string; files?: Array<{ path: string }> }
+
+// npm 11은 배열을, npm 12는 패키지 이름을 키로 하는 객체를 출력한다.
+function readPackEntries(output: string): PackEntry[] {
+  const parsed = JSON.parse(output) as PackEntry[] | Record<string, PackEntry>
+  return Array.isArray(parsed) ? parsed : Object.values(parsed)
 }
 
 function packPackageForReal() {
@@ -64,10 +68,7 @@ function packPackageForReal() {
     ['pack', '--json', '--ignore-scripts', '--pack-destination', outputDir],
     packageRoot,
   )
-  const packResult = JSON.parse(output) as Array<{
-    filename?: string
-  }>
-  const filename = packResult[0]?.filename
+  const filename = readPackEntries(output)[0]?.filename
 
   if (!filename) {
     throw new Error('npm pack did not report an output filename')

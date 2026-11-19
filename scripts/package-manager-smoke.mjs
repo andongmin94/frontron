@@ -50,7 +50,9 @@ function pack(packageRoot, prefix) {
     throw new Error(result.stderr || result.stdout || 'npm pack failed')
   }
 
-  const filename = JSON.parse(result.stdout)[0]?.filename
+  // npm 11은 배열을, npm 12는 패키지 이름을 키로 하는 객체를 출력한다.
+  const parsed = JSON.parse(result.stdout)
+  const filename = (Array.isArray(parsed) ? parsed : Object.values(parsed))[0]?.filename
   if (!filename) throw new Error('npm pack did not report a filename')
   return join(outputDirectory, filename)
 }
